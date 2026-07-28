@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.0
+// @version      0.3.0
 // @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Optional order execution is a seam and ships disabled.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -366,7 +366,11 @@
   // series and returns a promise. Registering one turns this script from a
   // pure reader into something that ORIGINATES WRITE REQUESTS to politiko.io.
   //
-  //   registerExecutor('stocks/instruments/PNRG', async ({ side, rule, ev }) => { ... })
+  //   registerExecutor('stocks/instruments/PNRG',
+  //     async ({ side, shares, price, rule, ev }) => { ... })
+  //
+  // `shares` is already resolved and clamped — a sell can never exceed what the
+  // holdings series says you hold. The executor's only job is the request.
   //
   // Nothing can be written here yet: the order endpoint, its request shape, and
   // the session auth scheme are all still unknown, and CLAUDE.md hard rule 4
@@ -384,22 +388,43 @@
     refresh();
   }
 
+  /** Current price for sizing: the series' headline field, not whatever tripped the rule. */
+  function priceFor(series, fallback) {
+    const fields = seriesIndex().get(series) || [];
+    if (!fields.length) return fallback;
+    const l = latest(`${series}::${headlineField(series, fields)}`);
+    return l ? l[1] : fallback;
+  }
+
   async function tryExecute(rule, ev, hit) {
     const side = rule.action === 'buy' ? 'buy' : 'sell';
     const exec = EXECUTORS.get(rule.series);
+    const sym = shortSeries(rule.series);
+
+    // Size the order now, against holdings as they stand this second.
+    const price = priceFor(rule.series, ev.value);
+    const { shares, why } = resolveQty(rule, price);
+
+    if (shares === null) {
+      toast('err', `${side.toUpperCase()} SKIPPED — ${sym}`,
+        `${describe(rule, ev, hit).body}\nNo order sized: ${why}.`);
+      return;
+    }
+
+    const sizing = `${side} ${fmtNum(shares)} sh — ${why}`;
 
     if (!CFG.AUTO_EXECUTE || !exec) {
-      const why = !CFG.AUTO_EXECUTE ? 'AUTO_EXECUTE is off' : `no executor registered for ${rule.series}`;
-      toast('warn', `WOULD ${side.toUpperCase()} — ${shortSeries(rule.series)}`,
-        `${describe(rule, ev, hit).body}\nNot sent: ${why}.`);
+      const blocked = !CFG.AUTO_EXECUTE ? 'AUTO_EXECUTE is off' : `no executor registered for ${rule.series}`;
+      toast('warn', `WOULD ${side.toUpperCase()} — ${sym}`,
+        `${describe(rule, ev, hit).body}\n${sizing}\nNot sent: ${blocked}.`);
       return;
     }
 
     try {
-      const result = await exec({ side, rule, ev, hit, qty: rule.qty ?? null });
-      toast('ok', `${side.toUpperCase()} SENT — ${shortSeries(rule.series)}`, String(result ?? 'order placed'));
+      const result = await exec({ side, shares, price, rule, ev, hit });
+      toast('ok', `${side.toUpperCase()} SENT — ${sym}`, `${sizing}\n${String(result ?? 'order placed')}`);
     } catch (e) {
-      toast('err', `${side.toUpperCase()} FAILED — ${shortSeries(rule.series)}`, String((e && e.message) || e));
+      toast('err', `${side.toUpperCase()} FAILED — ${sym}`, `${sizing}\n${String((e && e.message) || e)}`);
     }
   }
 
@@ -487,6 +512,126 @@
     const pool = live.length ? live : fields;
     for (const h of HEADLINE) if (pool.includes(h)) return h;
     return pool[0];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Position sizing — "how many shares" resolved against what you actually hold.
+  //
+  // Field names are guessed from a preference list rather than hardcoded to
+  // Politiko's schema, and every guess is overridable per rule, because the only
+  // holdings field confirmed so far is `current_price`.
+  // ---------------------------------------------------------------------------
+  const HOLDING_GROUPS = ['holding', 'portfolio', 'position', 'owned', 'inventory'];
+  const QTY_FIELDS = ['shares', 'quantity', 'qty', 'units', 'owned', 'held', 'position', 'count'];
+  const CASH_FIELDS = ['cash', 'balance', 'money', 'funds', 'available', 'wallet', 'liquid'];
+
+  /** The holdings-side series for the same symbol, if one has been observed. */
+  function holdingSeriesFor(series) {
+    const sym = shortSeries(series);
+    const [ownGroup] = splitSeries(series);
+    if (HOLDING_GROUPS.some((h) => ownGroup.toLowerCase().includes(h))) return series;
+    for (const s of seriesIndex().keys()) {
+      if (s === series || shortSeries(s) !== sym) continue;
+      const [g] = splitSeries(s);
+      if (HOLDING_GROUPS.some((h) => g.toLowerCase().includes(h))) return s;
+    }
+    return null;
+  }
+
+  /** @returns {{ qty: number, source: string } | null} */
+  function heldShares(series, fieldOverride) {
+    const hs = holdingSeriesFor(series) || series;
+    const fields = seriesIndex().get(hs) || [];
+    const candidates = fieldOverride ? [fieldOverride] : QTY_FIELDS;
+    for (const f of candidates) {
+      if (!fields.includes(f)) continue;
+      const l = latest(`${hs}::${f}`);
+      if (l) return { qty: l[1], source: `${hs}::${f}` };
+    }
+    return null;
+  }
+
+  /** @returns {{ cash: number, source: string } | null} */
+  function cashAvailable() {
+    for (const [s, fields] of seriesIndex()) {
+      for (const f of CASH_FIELDS) {
+        if (!fields.includes(f)) continue;
+        const l = latest(`${s}::${f}`);
+        if (l) return { cash: l[1], source: `${s}::${f}` };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Turn a rule's quantity spec into a concrete share count, at fire time.
+   * Never returns more than is held for a sell — the clamp is the whole point
+   * of resolving late rather than storing a fixed number.
+   * @returns {{ shares: number|null, why: string }}
+   */
+  function resolveQty(rule, price) {
+    const q = rule.qty;
+    if (!q || !q.mode) return { shares: null, why: 'no quantity set on this rule' };
+    if (q.mode !== 'all' && !Number.isFinite(q.value)) return { shares: null, why: 'enter a size' };
+    const selling = rule.action === 'sell';
+    const held = heldShares(rule.series, q.field);
+
+    const clamp = (n) => {
+      if (!selling || !held) return { n, note: '' };
+      if (n > held.qty) return { n: held.qty, note: ` (capped at ${fmtNum(held.qty)} held)` };
+      return { n, note: '' };
+    };
+
+    switch (q.mode) {
+      case 'shares': {
+        const { n, note } = clamp(q.value);
+        // The clamp is the safety net; say so out loud when there's nothing to
+        // clamp against, rather than implying a check that didn't happen.
+        const unverified = selling && !held ? ' — holding UNVERIFIED, no share count observed' : '';
+        return { shares: n, why: `${fmtNum(n)} shares${note}${unverified}` };
+      }
+      case 'all': {
+        if (!held) return { shares: null, why: 'holdings not observed yet — open the portfolio screen once' };
+        return { shares: held.qty, why: `all ${fmtNum(held.qty)} held (${held.source})` };
+      }
+      case 'pctHeld': {
+        if (!held) return { shares: null, why: 'holdings not observed yet — open the portfolio screen once' };
+        const n = Math.floor((held.qty * q.value) / 100);
+        if (n < 1) return { shares: null, why: `${q.value}% of ${fmtNum(held.qty)} held rounds to zero` };
+        return { shares: n, why: `${q.value}% of ${fmtNum(held.qty)} held` };
+      }
+      case 'cash': {
+        if (!(price > 0)) return { shares: null, why: 'no current price to size against' };
+        let n = Math.floor(q.value / price);
+        let note = `${fmtNum(q.value)} at ${fmtNum(price)}`;
+        const cash = cashAvailable();
+        if (cash && cash.cash < q.value) {
+          n = Math.floor(cash.cash / price);
+          note += ` (limited to ${fmtNum(cash.cash)} available)`;
+        }
+        if (n < 1) return { shares: null, why: `${note} buys less than one share` };
+        const c = clamp(n);
+        return { shares: c.n, why: `${note}${c.note}` };
+      }
+      default:
+        return { shares: null, why: `unknown quantity mode "${q.mode}"` };
+    }
+  }
+
+  const QTY_MODES = {
+    pctHeld: { label: '% of holding', unit: '%', needsValue: true },
+    shares:  { label: 'exactly N shares', unit: 'sh', needsValue: true },
+    all:     { label: 'everything held', unit: '', needsValue: false },
+    cash:    { label: 'spend amount', unit: '$', needsValue: true },
+  };
+
+  /** One-line human summary of a rule's sizing, for the rules list. */
+  function qtyLabel(rule) {
+    const q = rule.qty;
+    if (!q || !q.mode) return '';
+    const m = QTY_MODES[q.mode];
+    if (!m) return '';
+    return m.needsValue ? `${fmtNum(q.value)}${m.unit}` : m.label;
   }
 
   function sparkline(key) {
@@ -606,6 +751,14 @@
     .sub .f.stat .n, .sub .f.stat .v { color: #3f3f46; }
     .sub .f.stat .n::after { content: ' · fixed'; font-size: 9px; }
     .empty { color: #52525b; padding: 4px 0; line-height: 1.5; }
+
+    .qty { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+           padding: 7px; border: 1px dashed #27272a; border-radius: 6px; }
+    .qty .lbl { grid-column: 1 / -1; font-size: 10px; text-transform: uppercase;
+                letter-spacing: .07em; color: #52525b; }
+    .qty .prev { grid-column: 1 / -1; color: #71717a; line-height: 1.4; }
+    .qty .prev.ok { color: #22c55e; }
+    .qty .prev.no { color: #f59e0b; }
   `;
 
   function paintToast(kind, head, body) {
@@ -714,6 +867,7 @@
       paintObserved();
       paintRules();
       syncFormOptions();
+      updateQtyPreview();   // holdings may have just arrived — resize the preview
     });
   }
 
@@ -860,6 +1014,7 @@
       txt.title = r.series;
       txt.append(el('em', null,
         (o.needsWindow ? ` in ${winLabel(r.windowMs)}` : '') +
+        (r.qty ? ` → ${qtyLabel(r)}` : '') +
         (r.lastFiredAt ? ` · fired ${fmtAgo(r.lastFiredAt)} ago` : '')));
 
       const del = el('button', 'mini danger', '×');
@@ -890,11 +1045,27 @@
     const selAct = mk('select', { className: 'full' });
     selAct.append(new Option('notify me', 'notify'), new Option('auto-buy', 'buy'), new Option('auto-sell', 'sell'));
 
+    // --- position size. Hidden entirely for notify rules, so the common case
+    //     stays a four-field form.
+    const qtyBox = el('div', 'qty');
+    const selQty = mk('select');
+    for (const [k, v] of Object.entries(QTY_MODES)) selQty.append(new Option(v.label, k));
+    selQty.value = 'pctHeld';
+    const inQtyVal = mk('input', { type: 'number', step: 'any', min: '0', placeholder: 'percent' });
+    const selQtyField = mk('select');
+    selQtyField.className = 'full';
+    const prev = el('div', 'prev');
+    qtyBox.append(el('div', 'lbl', 'position size'), selQty, inQtyVal, selQtyField, prev);
+
     const submit = mk('button', { type: 'submit', className: 'mini full', textContent: 'add rule' });
     submit.style.padding = '5px';
 
-    selSeries.onchange = () => syncFieldOptions();
+    selSeries.onchange = () => { syncFieldOptions(); updateQtyPreview(); };
     selOp.onchange = () => { selWin.disabled = !OPS[selOp.value].needsWindow; };
+    selAct.onchange = () => updateQtyPreview();
+    selQty.onchange = () => updateQtyPreview();
+    selQtyField.onchange = () => updateQtyPreview();
+    inQtyVal.oninput = () => updateQtyPreview();
 
     f.onsubmit = (e) => {
       e.preventDefault();
@@ -903,7 +1074,19 @@
         toast('err', 'Incomplete rule', 'Pick a series, a field, and a numeric threshold.');
         return;
       }
-      if (selAct.value !== 'notify' && !(CFG.AUTO_EXECUTE && EXECUTORS.has(selSeries.value))) {
+
+      const trading = selAct.value !== 'notify';
+      const mode = QTY_MODES[selQty.value];
+      const qtyVal = parseFloat(inQtyVal.value);
+      if (trading && mode.needsValue && !Number.isFinite(qtyVal)) {
+        toast('err', 'Incomplete rule', `An auto-${selAct.value} rule needs a position size.`);
+        return;
+      }
+      const qty = trading
+        ? { mode: selQty.value, value: mode.needsValue ? qtyVal : null, field: selQtyField.value || null }
+        : null;
+
+      if (trading && !(CFG.AUTO_EXECUTE && EXECUTORS.has(selSeries.value))) {
         toast('warn', 'Rule added — but it cannot trade',
           'No executor is wired for this series, so it will alert with the order it would have sent instead. That seam is unimplemented on purpose; the endpoint and auth shape are still unknown.');
       }
@@ -911,15 +1094,68 @@
         id: `r${now().toString(36)}${rules.length + 1}`,
         series: selSeries.value, field: selField.value, op: selOp.value, value,
         windowMs: Number(selWin.value), cooldownMs: Number(selCd.value),
-        action: selAct.value, enabled: true, lastFiredAt: 0,
+        action: selAct.value, qty, enabled: true, lastFiredAt: 0,
       });
       saveRules(); inVal.value = ''; paintRules(); paintHeader(); paintWarn();
     };
 
-    f.append(selSeries, selField, selOp, inVal, selWin, selCd, selAct, submit);
+    f.append(selSeries, selField, selOp, inVal, selWin, selCd, selAct, qtyBox, submit);
     sk.formHost.append(f);
-    form = { f, selSeries, selField, selOp, inVal, selWin, selCd, selAct };
+    form = { f, selSeries, selField, selOp, inVal, selWin, selCd, selAct,
+      qtyBox, selQty, inQtyVal, selQtyField, prev };
     syncFormOptions();
+    updateQtyPreview();
+  }
+
+  /** Repopulate the "which field counts shares" override for the chosen series. */
+  function syncQtyFieldOptions(series) {
+    if (root.activeElement === form.selQtyField) return;
+    const hs = holdingSeriesFor(series);
+    const fields = hs ? (seriesIndex().get(hs) || []).slice().sort() : [];
+    const sig = `${hs}|${fields.join(',')}`;
+    if (sig === form._qtySig) return;
+    form._qtySig = sig;
+
+    const keep = form.selQtyField.value;
+    form.selQtyField.replaceChildren();
+    const auto = heldShares(series);
+    form.selQtyField.append(new Option(
+      auto ? `auto — reads ${auto.source.split('::')[1]}`
+        : hs ? `auto — no share count found in ${shortSeries(hs)}`
+          : 'auto — no holdings series observed yet', ''));
+    for (const fl of fields) form.selQtyField.append(new Option(`count shares from "${fl}"`, fl));
+    if (keep && fields.includes(keep)) form.selQtyField.value = keep;
+  }
+
+  /** Live "→ sell 120 shares" line under the size controls. */
+  function updateQtyPreview() {
+    if (!form || !form.qtyBox) return;
+    const act = form.selAct.value;
+    form.qtyBox.style.display = act === 'notify' ? 'none' : 'grid';
+    if (act === 'notify') return;
+
+    const mode = QTY_MODES[form.selQty.value];
+    form.inQtyVal.style.display = mode.needsValue ? '' : 'none';
+    form.inQtyVal.placeholder =
+      mode.unit === '%' ? 'percent' : mode.unit === '$' ? 'amount to spend' : 'share count';
+
+    const series = form.selSeries.value;
+    if (!series) return;
+    syncQtyFieldOptions(series);
+
+    const probe = {
+      series, action: act,
+      qty: {
+        mode: form.selQty.value,
+        value: mode.needsValue ? parseFloat(form.inQtyVal.value) : null,
+        field: form.selQtyField.value || null,
+      },
+    };
+    const { shares, why } = resolveQty(probe, priceFor(series, null));
+    form.prev.className = `prev ${shares === null ? 'no' : 'ok'}`;
+    form.prev.textContent = shares === null
+      ? `can't size yet — ${why}`
+      : `→ ${act} ${fmtNum(shares)} shares · ${why}`;
   }
 
   let lastOptSig = '';
@@ -967,6 +1203,7 @@
     form.selField.value = field;
     const last = latest(`${series}::${field}`);
     if (last) form.inVal.value = String(Number(last[1].toFixed(2)));
+    updateQtyPreview();
     form.f.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     form.inVal.focus();
     form.inVal.select();
