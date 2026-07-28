@@ -41,7 +41,7 @@ requests. The core technique works.
 
 ## Where things stand
 
-Recon only, logged out, no account touched. Known so far:
+Recon logged out, plus one measured pass over an authenticated screen. Known so far:
 
 - Vite + React + React Router SPA, TanStack Query, ~80 lazy route chunks whose names leak
   the entire game surface (combat, hacking, smuggling, corps, factions, marriage, jail…)
@@ -53,7 +53,12 @@ Recon only, logged out, no account touched. Known so far:
 - The landing page's live-looking stats are hardcoded marketing content; only
   `/api/public/*` is real
 
-Full detail with evidence: [`docs/00-recon-baseline.md`](docs/00-recon-baseline.md).
+- A **stock market** exists that the logged-out chunk list gives no sign of:
+  `stocks/instruments/<SYMBOL>` carrying `bid`/`ask`/`price`/`spread_bps`/`float_shares`/
+  `ipo_game_day`, read passively off the player's own open page
+
+Full detail with evidence: [`docs/00-recon-baseline.md`](docs/00-recon-baseline.md) and
+[`docs/04-stocks-surface.md`](docs/04-stocks-surface.md).
 
 ## Next
 
@@ -71,14 +76,23 @@ Picking up cold: [`HANDOFF.md`](HANDOFF.md)
 docs/                 numbered findings and plans
 tools/                fetch-bundles.ps1 — one-shot static-asset pull for local grepping
 userscripts/          _template.user.js — passive-tap skeleton, SPA-aware
+                      market-watch.user.js — market monitor, thresholds, alerts
 artifacts/            gitignored: downloaded bundles, HARs, captures
 CLAUDE.md             working rules for agent sessions
 ```
 
 ## Conduct
 
-One account, no alts, no automation, no probing endpoints to see what they do, exploits
-get reported rather than tested, and nothing from an authenticated session goes in git.
-The rules are in [`CLAUDE.md`](CLAUDE.md) and they're there because the penalties are
-real.
+One account, no alts, no probing endpoints to see what they do, exploits get reported
+rather than tested, and nothing from an authenticated session goes in git. The rules are
+in [`CLAUDE.md`](CLAUDE.md) and they're there because the penalties are real.
+
+**Changed 2026-07-28:** script-initiated market orders are now in scope. That is a
+deliberate departure from the passive-only posture the rest of this repo was built on,
+and from Politiko's scripting clause, which is unambiguous that it's bannable. The
+reasoning and the accepted risk are recorded in
+[`docs/01-rules-envelope.md`](docs/01-rules-envelope.md); that file still describes
+Politiko's published rules accurately, because it's a record of theirs, not ours. Nothing
+else moved — the passive core is still the default and no other action automation is
+planned.
 </content>

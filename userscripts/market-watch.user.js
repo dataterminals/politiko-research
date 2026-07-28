@@ -4,6 +4,10 @@
 // @version      0.2.0
 // @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Optional order execution is a seam and ships disabled.
 // @author       dataterminals
+// @homepageURL  https://github.com/dataterminals/politiko-research
+// @supportURL   https://github.com/dataterminals/politiko-research/issues
+// @updateURL    https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js
+// @downloadURL  https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js
 // @match        https://politiko.io/*
 // @run-at       document-start
 // @grant        none
