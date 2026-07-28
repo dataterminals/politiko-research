@@ -14,9 +14,12 @@ const sampler = between('const ID_KEYS', '// Passive tap');
 const preamble = `
   const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
   const location = { origin: 'https://politiko.io' };
+  const entityIds = new Map();
+  const saveIds = () => {};
 `;
 
-const mod = new Function(`${preamble}\n${sampler}\nreturn { scopeOf, harvest, identityOf };`)();
+const mod = new Function(
+  `${preamble}\n${sampler}\nreturn { scopeOf, harvest, identityOf, entityIds };`)();
 
 const cases = [
   ['/api/public/stats', {
@@ -62,5 +65,24 @@ const leaks = [];
 }
 console.log(`\npagination/meta fields leaked as series: ${leaks.length ? leaks.join(', ') : 'none'}`);
 if (leaks.length) fail++;
+
+// Order requests are addressed by instrument_id, and SKIP_FIELD keeps *_id out of
+// the series data — so the id has to be captured on the side, with provenance.
+console.log('\ninstrument ids captured alongside tickers:');
+mod.entityIds.clear();
+mod.harvest([{ id: 10, symbol: 'RCRD', price: 28.7 }], 'stocks/instruments', []);
+mod.harvest([{ id: 77, symbol: 'RCRD', shares: 92 }], 'stocks/holdings', []);
+mod.harvest([{ instrument_id: 42, symbol: 'BRDL', shares: 5 }], 'stocks/holdings', []);
+for (const [k, v] of mod.entityIds) console.log(`   ${k} -> ${v.id} (sure: ${v.sure})`);
+
+const expect = (k, want) => {
+  const got = mod.entityIds.get(k);
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  console.log(`${ok ? ' ok ' : 'FAIL'}  ${k}`);
+  if (!ok) { console.log(`        got ${JSON.stringify(got)} want ${JSON.stringify(want)}`); fail++; }
+};
+expect('stocks/instruments/RCRD', { id: 10, sure: true });   // bare id, but on the instruments list
+expect('stocks/holdings/RCRD', { id: 77, sure: false });     // bare id on a holding: not an instrument id
+expect('stocks/holdings/BRDL', { id: 42, sure: true });      // named instrument_id: unambiguous
 console.log(fail ? `\nFAIL (${fail})` : '\nOK');
 process.exit(fail ? 1 : 0);

@@ -45,6 +45,36 @@ that the holdings price field is `current_price`, not `price`.
   window; `price`, `bid` and `ask` did.
 - `ipo_game_day` read **1408** identically across every instrument.
 
+## The order endpoint
+
+Captured **2026-07-28** from a buy the player placed by hand, via the userscript's
+passive write tap. Not probed — this is the request the app itself sent.
+
+```
+POST /api/stocks/buy
+{ "instrument_id": 10, "shares": 92, "idempotency_key": "1785269781763-jbdjuee201q" }
+```
+
+Three things follow from this:
+
+- **Orders are addressed by `instrument_id`, not by ticker.** Nothing in the price
+  series carries it — the sampler uses `symbol` as the identity and skips `*_id`
+  fields — so the symbol→id mapping has to be captured separately, which the script
+  now does at harvest time.
+- **The id must be the *instrument's*.** A holdings record plausibly carries its own
+  id in a different space, and sending that would trade the wrong stock. The script
+  records provenance and refuses to place an order on an id it isn't sure about.
+- **`idempotency_key` is `<epoch_ms>-<11 chars base36>`**, generated per attempt.
+
+`sell` has **not** been observed. `/api/stocks/sell` is the obvious guess and it is
+deliberately not wired — firing at an endpoint the app hasn't been seen calling is
+the probing hard rule 4 rules out. The script learns the route the moment a real
+sell goes past the tap.
+
+Auth was not captured and is not replayed: requests go out with same-origin
+credentials, so a cookie session carries itself. If it turns out to be header-based
+the executor returns 401 and says so rather than reading the token.
+
 ## Inferred
 
 - Roughly 8–9 listed instruments (53 series ≈ 6 fields each, plus the tax record and
@@ -62,11 +92,11 @@ that the holdings price field is `current_price`, not `price`.
 ## Still unknown
 
 - The exact request path, and whether the page polls it or pushes over the WebSocket.
-- **The order-placement endpoint, its payload, and the session auth scheme.** All three
-  are required before `registerExecutor()` in
-  [`../userscripts/market-watch.user.js`](../userscripts/market-watch.user.js) can be
-  filled in. Hard rule 4 stands: these get answered by observing a real order placed by
-  hand in DevTools, not by probing.
+- **The sell route.** Buy is known; sell is not, and will not be guessed. One sell
+  placed by hand teaches it.
+- **Whether `instrument_id` and a holding's `id` share a space.** Assumed not, and the
+  script refuses to place orders on an unconfirmed id rather than find out the
+  expensive way.
 - A **cash / balance field**. Nothing matching one has appeared on any response the
   tap has seen, which is what currently blocks spend-an-amount position sizing. It may
   live on a player/account response rather than the stocks one.

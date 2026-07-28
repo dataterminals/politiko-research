@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.7.0
+// @version      0.8.0
 // @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Optional order execution is a seam and ships disabled.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -78,7 +78,7 @@
     ['wide', 640, 520],
   ];
 
-  const K = { hist: 'pkmw:hist', rules: 'pkmw:rules', ui: 'pkmw:ui' };
+  const K = { hist: 'pkmw:hist', rules: 'pkmw:rules', ui: 'pkmw:ui', ids: 'pkmw:ids' };
 
   // ===========================================================================
   // Utils
@@ -131,6 +131,12 @@
       fab: null, size: null, sizeBar: false },
     readJSON(K.ui, {}),
   );
+
+  // symbol-series -> the numeric key the API uses for it. Orders are addressed by
+  // instrument_id, not by ticker, and SKIP_FIELD deliberately keeps *_id out of
+  // the price series — so the mapping has to be kept on the side.
+  const entityIds = new Map(Object.entries(readJSON(K.ids, {})));
+  const saveIds = () => writeJSON(K.ids, Object.fromEntries(entityIds));
 
   let saveTimer = null;
   const saveSoon = () => {
@@ -252,6 +258,25 @@
     const self = ident ? `${scope}/${ident[1]}` : scope;
     const idKey = ident ? ident[0] : null;
 
+    // Remember this entity's numeric key while we can still see it next to the
+    // ticker. Orders need it and the series data never carries it.
+    //
+    // `sure` tracks whether this is definitely the *instrument* id. A field
+    // literally named instrument_id is unambiguous; a bare `id` only is when it
+    // came off the instruments list. A holding almost certainly has its own id in
+    // a different space, and sending that as instrument_id would trade the wrong
+    // stock — so an unsure id is recorded but never used to place an order.
+    if (ident) {
+      const rec = isNum(obj.instrument_id) ? { id: obj.instrument_id, sure: true }
+        : isNum(obj.id) ? { id: obj.id, sure: /instrument/i.test(scope) }
+          : null;
+      const had = entityIds.get(self);
+      if (rec && (!had || had.id !== rec.id || had.sure !== rec.sure)) {
+        entityIds.set(self, rec);
+        saveIds();
+      }
+    }
+
     for (const [k, v] of Object.entries(obj)) {
       if (isNum(v) && k !== idKey && !SKIP_FIELD.test(k)) out.push([self, k, v]);
     }
@@ -276,6 +301,7 @@
       const ev = record(series, field, value);
       if (ev) events.push(ev);
     }
+    autoWire();
     if (events.length) {
       for (const ev of events) evaluate(ev);
       refresh();
@@ -320,10 +346,25 @@
     return `<${body.constructor ? body.constructor.name : typeof body}, not read>`;
   }
 
+  // Order routes are only ever taken from requests the app itself made. `buy` was
+  // observed 2026-07-28; `sell` stays null until a real sell is seen, because
+  // guessing /api/stocks/sell and firing at it is exactly the probing hard rule 4
+  // rules out.
+  const ORDER_ROUTES = { buy: '/api/stocks/buy', sell: null };
+
+  function learnRoute(method, pathname) {
+    if (method !== 'POST') return;
+    const m = /\/api\/stocks\/(buy|sell)\b/.exec(pathname);
+    if (!m || ORDER_ROUTES[m[1]] === pathname) return;
+    ORDER_ROUTES[m[1]] = pathname;
+    log('learned order route', m[1], '->', pathname);
+  }
+
   function captureWrite(method, url, body, status) {
     try {
       const u = new URL(url, location.origin);
       if (!u.pathname.includes('/api/')) return;
+      learnRoute(method.toUpperCase(), u.pathname);
       writes.unshift({
         t: now(), method: method.toUpperCase(), path: u.pathname + u.search,
         body: parseBody(body), status,
@@ -513,8 +554,14 @@
     }
     registerExecutor(series, async ({ side, shares, price }) => {
       const symbol = shortSeries(series);
-      const payload = body({ symbol, side, shares, price });
-      const desc = `${method} ${url} ${JSON.stringify(payload)}`;
+      const ctx = { symbol, side, shares, price };
+      const target = typeof url === 'function' ? url(ctx) : url;
+      if (!target) {
+        throw new Error(`no ${side} route known — none has been observed yet. `
+          + `Place one ${side} by hand and it will be picked up.`);
+      }
+      const payload = body(ctx);
+      const desc = `${method} ${target} ${JSON.stringify(payload)}`;
 
       if (CFG.DRY_RUN) return `DRY RUN — not sent: ${desc}`;
       if (ordersThisSession >= CFG.MAX_ORDERS_PER_SESSION) {
@@ -524,7 +571,7 @@
 
       // origFetch, not the patched one — our own orders stay out of the capture
       // list, which is meant to show only what the app did.
-      const res = await origFetch.call(window, url, {
+      const res = await origFetch.call(window, target, {
         method,
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
@@ -537,6 +584,52 @@
       if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
       return `${desc} → ${res.status}`;
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Politiko stocks wiring, built from a real order observed 2026-07-28:
+  //   POST /api/stocks/buy  {instrument_id, shares, idempotency_key}
+  // Orders are addressed by instrument_id, not by ticker, and the key format is
+  // <epoch_ms>-<base36>. A fresh key per attempt is the point — it's what stops a
+  // retry from filling twice.
+  // ---------------------------------------------------------------------------
+  const idempotencyKey = () =>
+    `${Date.now()}-${Math.random().toString(36).slice(2).padEnd(11, '0').slice(0, 11)}`;
+
+  /** Only ever returns an id we're certain addresses the instrument. */
+  function instrumentIdFor(series) {
+    const sym = shortSeries(series);
+    for (const [s, rec] of entityIds) {
+      if (rec.sure && shortSeries(s) === sym && /instrument/i.test(splitSeries(s)[0])) return rec.id;
+    }
+    for (const [s, rec] of entityIds) if (rec.sure && shortSeries(s) === sym) return rec.id;
+    return null;
+  }
+
+  function wireStocksExecutor(series) {
+    wireExecutor({
+      series,
+      method: 'POST',
+      url: ({ side }) => ORDER_ROUTES[side],
+      body: ({ shares }) => {
+        const id = instrumentIdFor(series);
+        if (id == null) {
+          throw new Error(`no confirmed instrument_id for ${shortSeries(series)} — `
+            + 'open the market list once so it can be read next to the ticker');
+        }
+        return { instrument_id: id, shares, idempotency_key: idempotencyKey() };
+      },
+    });
+  }
+
+  /** Wire every stocks series whose instrument id is known. Idempotent. */
+  function autoWire() {
+    for (const s of seriesIndex().keys()) {
+      if (EXECUTORS.has(s)) continue;
+      if (!/^stocks\/(instruments|holdings)\//.test(s)) continue;
+      if (instrumentIdFor(s) == null) continue;
+      wireStocksExecutor(s);
+    }
   }
 
   /** Current price for sizing: the series' headline field, not whatever tripped the rule. */
@@ -1117,9 +1210,13 @@
     const armed = rules.some((r) => r.action !== 'notify');
     sk.warnSec.style.display = armed ? '' : 'none';
     if (!armed) return;
-    sk.warn.textContent = CFG.AUTO_EXECUTE && EXECUTORS.size
-      ? `LIVE: ${EXECUTORS.size} executor(s) registered. This script will place real orders.`
-      : 'Execute rules are armed but no executor is wired — they will alert with the order they would have sent, and send nothing. See the seam in this file.';
+    const sells = rules.some((r) => r.enabled && r.action === 'sell');
+    const noSell = sells && !ORDER_ROUTES.sell ? ' No sell route has been observed yet, so sell rules cannot fire.' : '';
+    sk.warn.textContent = !CFG.AUTO_EXECUTE
+      ? `AUTO_EXECUTE is off — execute rules report the order they would have sent and send nothing.${noSell}`
+      : CFG.DRY_RUN
+        ? `DRY RUN — ${EXECUTORS.size} executor(s) wired. Rules will show the exact request and send nothing.${noSell}`
+        : `LIVE — ${EXECUTORS.size} executor(s) wired. This script will place real orders.${noSell}`;
   }
 
   // --- observed -------------------------------------------------------------
