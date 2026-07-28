@@ -70,5 +70,42 @@ check('a moved route seen on the wire wins over the default',
   routeMod.ORDER_ROUTES.sell, '/api/v2/stocks/sell');
 check('...and does not disturb the other side', routeMod.ORDER_ROUTES.buy, '/api/stocks/buy');
 
+console.log('\n— arming —');
+let clock = 1_700_000_000_000;
+const ui = { arm: null };
+const CFG = { AUTO_EXECUTE: false, DRY_RUN: true };
+const armMod = new Function('ui', 'CFG', 'now', 'saveUI', 'paintFabState', 'refresh', 'log', 'EXECUTORS',
+  `${cut('const armMode', 'let ordersThisSession')}
+   return { armMode, canExecute, isDryRun, arm, disarm, armState };`
+)(ui, CFG, () => clock, () => {}, () => {}, () => {}, () => {}, new Map());
+
+const state = () => [armMod.canExecute(), armMod.isDryRun()];
+check('unarmed: nothing executes', state(), [false, true]);
+check('...and reports as off', armMod.armState().mode, 'off');
+
+armMod.arm('dry');
+check("arm('dry'): builds orders but holds them", state(), [true, true]);
+check('...and is not live', armMod.armState().live, false);
+
+armMod.arm('live');
+check("arm('live'): orders go out", state(), [true, false]);
+check('...and reports live', armMod.armState().live, true);
+
+clock += 23 * 3_600_000;
+check('still live at 23h', state(), [true, false]);
+clock += 2 * 3_600_000;
+check('expired at 25h — falls back to unarmed, not to live', state(), [false, true]);
+check('...and reports off', armMod.armState().mode, 'off');
+
+armMod.arm('live', 0);
+check('hours:0 arms without an expiry', [state(), armMod.armState().expiresIn], [[true, false], null]);
+armMod.disarm();
+check('disarm returns to unarmed', state(), [false, true]);
+
+let threw = false;
+try { armMod.arm('sorta'); } catch { threw = true; }
+check('an unknown mode is refused rather than defaulted', threw, true);
+check('a refused arm leaves state untouched', state(), [false, true]);
+
 console.log(fail ? `\nFAIL (${fail})` : '\nALL OK');
 process.exit(fail ? 1 : 0);

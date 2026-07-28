@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.9.0
+// @version      0.10.0
 // @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Optional order execution is a seam and ships disabled.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -128,7 +128,7 @@
   let rules = readJSON(K.rules, []);
   const ui = Object.assign(
     { open: false, sound: true, deltaWin: 3_600_000, filter: '', expanded: {}, hidden: {},
-      fab: null, size: null, sizeBar: false },
+      fab: null, size: null, sizeBar: false, arm: null },
     readJSON(K.ui, {}),
   );
 
@@ -532,6 +532,62 @@
     refresh();
   }
 
+  // ---------------------------------------------------------------------------
+  // Arming
+  //
+  // The CFG constants are the source-level default, but editing them in the
+  // Tampermonkey editor loses the change on the next auto-update — the two
+  // mechanisms fight. So arming is persisted state instead, and deliberately
+  // console-only: there is no button that turns on live trading by accident.
+  //
+  //   __pkmw.arm('dry')          rules build and report the exact request, send nothing
+  //   __pkmw.arm('live')         rules place real orders
+  //   __pkmw.arm('live', 2)      ...for the next 2 hours
+  //   __pkmw.disarm()
+  //
+  // Armed state expires (24h default). An auto-trader that stays armed because
+  // someone forgot is a worse failure than one that needs re-arming.
+  // ---------------------------------------------------------------------------
+  const armMode = () => {
+    const a = ui.arm;
+    if (!a || !a.mode) return null;
+    if (a.until && now() > a.until) return null;
+    return a.mode;
+  };
+  const canExecute = () => CFG.AUTO_EXECUTE || armMode() !== null;
+  const isDryRun = () => {
+    const m = armMode();
+    if (m === 'live') return false;
+    if (m === 'dry') return true;
+    return CFG.DRY_RUN;
+  };
+
+  function armState() {
+    const m = armMode();
+    return {
+      mode: m || (CFG.AUTO_EXECUTE ? (CFG.DRY_RUN ? 'dry' : 'live') : 'off'),
+      live: canExecute() && !isDryRun(),
+      expiresIn: ui.arm && ui.arm.until ? Math.max(0, ui.arm.until - now()) : null,
+      executors: EXECUTORS.size,
+    };
+  }
+
+  function arm(mode, hours = 24) {
+    if (mode !== 'dry' && mode !== 'live') {
+      throw new Error("arm('dry'|'live', hours?) — 'dry' reports orders, 'live' places them");
+    }
+    ui.arm = { mode, until: hours > 0 ? now() + hours * 3_600_000 : null };
+    saveUI(); paintFabState(); refresh();
+    log(mode === 'live' ? 'ARMED LIVE — rules will place real orders' : 'armed dry — nothing will be sent');
+    return armState();
+  }
+
+  function disarm() {
+    ui.arm = null;
+    saveUI(); paintFabState(); refresh();
+    return armState();
+  }
+
   let ordersThisSession = 0;
 
   /**
@@ -564,7 +620,7 @@
       const payload = body(ctx);
       const desc = `${method} ${target} ${JSON.stringify(payload)}`;
 
-      if (CFG.DRY_RUN) return `DRY RUN — not sent: ${desc}`;
+      if (isDryRun()) return `DRY RUN — not sent: ${desc}`;
       if (ordersThisSession >= CFG.MAX_ORDERS_PER_SESSION) {
         throw new Error(`session cap reached (${CFG.MAX_ORDERS_PER_SESSION}); reload to reset`);
       }
@@ -658,8 +714,10 @@
 
     const sizing = `${side} ${fmtNum(shares)} sh — ${why}`;
 
-    if (!CFG.AUTO_EXECUTE || !exec) {
-      const blocked = !CFG.AUTO_EXECUTE ? 'AUTO_EXECUTE is off' : `no executor registered for ${rule.series}`;
+    if (!canExecute() || !exec) {
+      const blocked = !canExecute()
+        ? "not armed — __pkmw.arm('dry') to build orders, __pkmw.arm('live') to place them"
+        : `no executor registered for ${rule.series}`;
       toast('warn', `WOULD ${side.toUpperCase()} — ${sym}`,
         `${describe(rule, ev, hit).body}\n${sizing}\nNot sent: ${blocked}.`);
       return;
@@ -955,6 +1013,9 @@
            cursor: grab; font-size: 15px; box-shadow: 0 4px 14px rgba(0,0,0,.45);
            touch-action: none; user-select: none; }
     .fab.dragging { cursor: grabbing; border-color: #52525b; box-shadow: 0 6px 20px rgba(0,0,0,.6); }
+    /* A live-armed session should be obvious without opening the panel. */
+    .fab.live { border-color: #ef4444; color: #ef4444; box-shadow: 0 0 0 1px #ef4444, 0 4px 14px rgba(0,0,0,.45); }
+    section.live .warnbox { background: #1a0f0f; border-color: #7f1d1d; color: #fca5a5; }
 
     /* Resize grip. It lives on whichever corner is free — the panel is pinned to
        the button, so the grip sits opposite the pinned edges and the panel grows
@@ -1194,6 +1255,7 @@
       dirty = false;
       paintHeader();
       paintWarn();
+      paintFabState();
       paintObserved();
       paintRules();
       paintWrites();
@@ -1212,12 +1274,28 @@
     sk.warnSec.style.display = armed ? '' : 'none';
     if (!armed) return;
     const sells = rules.some((r) => r.enabled && r.action === 'sell');
-    const noSell = sells && !ORDER_ROUTES.sell ? ' No sell route has been observed yet, so sell rules cannot fire.' : '';
-    sk.warn.textContent = !CFG.AUTO_EXECUTE
-      ? `AUTO_EXECUTE is off — execute rules report the order they would have sent and send nothing.${noSell}`
-      : CFG.DRY_RUN
-        ? `DRY RUN — ${EXECUTORS.size} executor(s) wired. Rules will show the exact request and send nothing.${noSell}`
-        : `LIVE — ${EXECUTORS.size} executor(s) wired. This script will place real orders.${noSell}`;
+    const noSell = sells && !ORDER_ROUTES.sell ? ' No sell route observed, so sell rules cannot fire.' : '';
+    const st = armState();
+    const left = st.expiresIn ? ` Expires in ${Math.round(st.expiresIn / 3_600_000) || '<1'}h.` : '';
+
+    sk.warnSec.classList.toggle('live', st.live);
+    sk.warn.textContent = st.mode === 'off'
+      ? 'Not armed — rules report the order they would have sent and send nothing. '
+        + "Run __pkmw.arm('dry') in the console to build real requests, or arm('live') to place them."
+        + noSell
+      : st.live
+        ? `LIVE — ${st.executors} executor(s) wired. Rules will place real orders.${left}${noSell}`
+        : `DRY RUN — ${st.executors} executor(s) wired. Rules show the exact request and send nothing.${left}${noSell}`;
+  }
+
+  /** Make a live-armed session obvious from the button alone, panel open or not. */
+  function paintFabState() {
+    if (!$fab) return;
+    const live = armState().live;
+    $fab.classList.toggle('live', live);
+    $fab.title = live
+      ? 'Market Watch — ARMED LIVE. Rules can place real orders. __pkmw.disarm() to stop.'
+      : 'Market Watch (Alt+M) — drag to move, double-click to reset';
   }
 
   // --- observed -------------------------------------------------------------
@@ -1467,9 +1545,13 @@
         ? { mode: selQty.value, value: mode.needsValue ? qtyVal : null, field: selQtyField.value || null }
         : null;
 
-      if (trading && !(CFG.AUTO_EXECUTE && EXECUTORS.has(selSeries.value))) {
-        toast('warn', 'Rule added — but it cannot trade',
-          'No executor is wired for this series, so it will alert with the order it would have sent instead. That seam is unimplemented on purpose; the endpoint and auth shape are still unknown.');
+      if (trading && !canExecute()) {
+        toast('warn', 'Rule added — but nothing is armed',
+          "It will report the order it would have sent and send nothing. "
+          + "__pkmw.arm('dry') to build real requests, arm('live') to place them.");
+      } else if (trading && !EXECUTORS.has(selSeries.value)) {
+        toast('warn', 'Rule added — but this series has no executor',
+          'Only stock series with a confirmed instrument_id get wired. Open the market list once so the id can be read next to the ticker.');
       }
       rules.push({
         id: `r${now().toString(36)}${rules.length + 1}`,
@@ -1792,6 +1874,7 @@
 
     buildSkeleton();
     placeFab();
+    paintFabState();
     makeDraggable();
     makeResizable();
     window.addEventListener('resize', placeFab);
@@ -1823,6 +1906,7 @@
   // point — nothing here phones home.
   window.__pkmw = {
     hist, get rules() { return rules; }, CFG, EXECUTORS, registerExecutor, wireExecutor, refresh,
+    arm, disarm, armState, ORDER_ROUTES, get ids() { return entityIds; },
     get writes() { return writes; },   // in memory only; deliberately not in export()
     series: () => [...seriesIndex()].map(([s, f]) => ({ series: s, fields: f })),
     export: () => JSON.stringify({ hist, rules }, null, 2),
