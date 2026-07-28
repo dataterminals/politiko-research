@@ -1,0 +1,18 @@
+# Downloaded client bundles, HARs, scratch captures — reproducible, not source
+artifacts/
+*.har
+
+# Never commit anything from an authenticated session
+**/session/
+*.session.json
+*cookies*
+*token*
+!docs/**
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+</content>
