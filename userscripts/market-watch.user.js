@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.6.0
+// @version      0.7.0
 // @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Optional order execution is a seam and ships disabled.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -18,6 +18,11 @@
  *
  *   Reads:    JSON bodies of /api/* responses the app requested on its own, via a
  *             passive fetch/XHR tap. No DOM scraping, no polling, no prefetch.
+ *             Also records the method, path and request body of non-GET /api/*
+ *             calls the app makes, so the shape of a real order can be read off
+ *             an action you took yourself. Credential-shaped values are redacted,
+ *             request headers are never touched, and these captures live in
+ *             memory only — never localStorage, never the export.
  *   Requests: ZERO additional requests to politiko.io in the shipped configuration.
  *   Sends:    nothing, to anyone, ever. No telemetry, no remote config.
  *   Storage:  localStorage keys prefixed `pkmw:` — observed price history, watch rules,
@@ -43,9 +48,13 @@
   // Config
   // ===========================================================================
   const CFG = {
-    // Master switch for the execution seam. Flipping this alone does nothing —
-    // an executor must also be registered for the series. See EXECUTORS below.
+    // Two switches stand between a rule firing and a real order. AUTO_EXECUTE
+    // arms the seam; DRY_RUN still holds the request back and only reports what
+    // would have been sent. Both must be changed deliberately, and an executor
+    // must be wired for the series on top of that.
     AUTO_EXECUTE: false,
+    DRY_RUN: true,
+    MAX_ORDERS_PER_SESSION: 3,   // backstop against a rule loop; reset on reload
 
     MAX_POINTS_PER_SERIES: 300,   // ring buffer depth
     MAX_SERIES: 400,              // total tracked series::field pairs
@@ -274,6 +283,58 @@
   }
 
   // ===========================================================================
+  // Write capture
+  //
+  // Records the shape of non-GET /api/* calls the app makes on its own. This is
+  // how the order endpoint gets learned: place one trade by hand and the request
+  // that carried it shows up here, ready to be turned into an executor. Still
+  // strictly passive — it reads what the app already sent.
+  //
+  // Deliberately narrow: method, path and request body only. Headers are never
+  // read, so no session token ever passes through this script, and captures are
+  // held in memory only — they are not persisted and not part of the export.
+  // ===========================================================================
+  const writes = [];
+  const MAX_WRITES = 25;
+  const SECRETISH = /pass|token|secret|auth|cookie|session|bearer|otp|csrf|api[-_]?key/i;
+
+  function redact(v, depth = 0) {
+    if (depth > 4 || v == null) return v;
+    if (Array.isArray(v)) return v.map((x) => redact(x, depth + 1));
+    if (typeof v !== 'object') return v;
+    const out = {};
+    for (const [k, val] of Object.entries(v)) {
+      out[k] = SECRETISH.test(k) ? '<redacted>' : redact(val, depth + 1);
+    }
+    return out;
+  }
+
+  function parseBody(body) {
+    if (body == null) return null;
+    if (typeof body === 'string') {
+      try { return redact(JSON.parse(body)); } catch { return body.slice(0, 300); }
+    }
+    if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+      return redact(Object.fromEntries(body));
+    }
+    return `<${body.constructor ? body.constructor.name : typeof body}, not read>`;
+  }
+
+  function captureWrite(method, url, body, status) {
+    try {
+      const u = new URL(url, location.origin);
+      if (!u.pathname.includes('/api/')) return;
+      writes.unshift({
+        t: now(), method: method.toUpperCase(), path: u.pathname + u.search,
+        body: parseBody(body), status,
+      });
+      if (writes.length > MAX_WRITES) writes.length = MAX_WRITES;
+      log('write', method, u.pathname, writes[0].body);
+      refresh();
+    } catch (e) { log('capture error', e); }
+  }
+
+  // ===========================================================================
   // Passive tap — reads responses already in flight. Adds no requests.
   // ===========================================================================
   const origFetch = window.fetch;
@@ -281,6 +342,17 @@
     const res = await origFetch.apply(this, args);
     try {
       const raw = typeof args[0] === 'string' ? args[0] : (args[0]?.url ?? '');
+      const init = args[1] || {};
+      const method = (init.method
+        || (typeof args[0] === 'object' && args[0] && args[0].method)
+        || 'GET').toUpperCase();
+
+      if (method !== 'GET' && method !== 'HEAD') {
+        // Only init.body is readable — consuming a Request's body would starve
+        // the app's own call, so a Request-carried body is noted, not read.
+        captureWrite(method, raw, init.body ?? '<body on Request object, not read>', res.status);
+      }
+
       if (raw.includes('/api/') && (res.headers.get('content-type') || '').includes('json')) {
         res.clone().json().then((d) => ingest(raw, d), () => {});
       }
@@ -291,6 +363,7 @@
   const origOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     this.__pkmwUrl = url;
+    this.__pkmwMethod = String(method || 'GET').toUpperCase();
     return origOpen.call(this, method, url, ...rest);
   };
   const origSend = XMLHttpRequest.prototype.send;
@@ -298,6 +371,9 @@
     this.addEventListener('load', () => {
       try {
         const url = this.__pkmwUrl || '';
+        if (this.__pkmwMethod && this.__pkmwMethod !== 'GET' && this.__pkmwMethod !== 'HEAD') {
+          captureWrite(this.__pkmwMethod, String(url), a[0] ?? null, this.status);
+        }
         if (!String(url).includes('/api/')) return;
         const ct = this.getResponseHeader('content-type') || '';
         if (!ct.includes('json')) return;
@@ -414,6 +490,55 @@
     refresh();
   }
 
+  let ordersThisSession = 0;
+
+  /**
+   * Build an executor from an order request read off the capture list.
+   *
+   *   __pkmw.wireExecutor({
+   *     series: 'stocks/instruments/RCRD',
+   *     url:    '/api/stocks/order',            // copied from a captured write
+   *     method: 'POST',
+   *     body:   ({ symbol, side, shares }) => ({ symbol, side, quantity: shares }),
+   *   })
+   *
+   * Auth is never handled here: the request goes out with same-origin
+   * credentials, so a cookie session rides along on its own. If the app
+   * authenticates with a header instead, this returns 401 and says so rather
+   * than reaching for the token — reading it is not something this script does.
+   */
+  function wireExecutor({ series, url, method = 'POST', body }) {
+    if (!series || !url || typeof body !== 'function') {
+      throw new TypeError('wireExecutor needs { series, url, body(ctx) }');
+    }
+    registerExecutor(series, async ({ side, shares, price }) => {
+      const symbol = shortSeries(series);
+      const payload = body({ symbol, side, shares, price });
+      const desc = `${method} ${url} ${JSON.stringify(payload)}`;
+
+      if (CFG.DRY_RUN) return `DRY RUN — not sent: ${desc}`;
+      if (ordersThisSession >= CFG.MAX_ORDERS_PER_SESSION) {
+        throw new Error(`session cap reached (${CFG.MAX_ORDERS_PER_SESSION}); reload to reset`);
+      }
+      ordersThisSession++;
+
+      // origFetch, not the patched one — our own orders stay out of the capture
+      // list, which is meant to show only what the app did.
+      const res = await origFetch.call(window, url, {
+        method,
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(`${res.status} — the session cookie did not carry this. `
+          + 'Auth is header-based; this script does not read or replay tokens.');
+      }
+      if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
+      return `${desc} → ${res.status}`;
+    });
+  }
+
   /** Current price for sizing: the series' headline field, not whatever tripped the rule. */
   function priceFor(series, fallback) {
     const fields = seriesIndex().get(series) || [];
@@ -448,7 +573,9 @@
 
     try {
       const result = await exec({ side, shares, price, rule, ev, hit });
-      toast('ok', `${side.toUpperCase()} SENT — ${sym}`, `${sizing}\n${String(result ?? 'order placed')}`);
+      const dry = String(result).startsWith('DRY RUN');
+      toast(dry ? 'warn' : 'ok', `${side.toUpperCase()} ${dry ? 'DRY RUN' : 'SENT'} — ${sym}`,
+        `${sizing}\n${String(result ?? 'order placed')}`);
     } catch (e) {
       toast('err', `${side.toUpperCase()} FAILED — ${sym}`, `${sizing}\n${String((e && e.message) || e)}`);
     }
@@ -825,6 +952,14 @@
     .sub .f.stat .n::after { content: ' · unchanged'; font-size: 9px; }
     .empty { color: #52525b; padding: 4px 0; line-height: 1.5; }
 
+    .wr { display: flex; gap: 6px; align-items: center; padding: 4px 0; border-top: 1px solid #18181b; }
+    .wr .m { color: #f59e0b; font-weight: 600; font-size: 10px; letter-spacing: .04em; }
+    .wr .p { flex: 1; color: #a1a1aa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wr .st { color: #52525b; font-variant-numeric: tabular-nums; font-size: 10px; }
+    .wb { margin: 0 0 7px; padding: 5px 7px; background: #0d0d10; border: 1px solid #18181b;
+          color: #71717a; font: 10px/1.45 ui-monospace, SFMono-Regular, monospace;
+          white-space: pre-wrap; word-break: break-all; max-height: 88px; overflow: auto; }
+
     .qty { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
            padding: 7px; border: 1px dashed #27272a; }
     .qty .lbl { grid-column: 1 / -1; font-size: 10px; text-transform: uppercase;
@@ -910,6 +1045,13 @@
     const ruleBody = el('div');
     ruleSec.append(el('h5', null, 'Rules'), ruleBody);
 
+    // Appears only once the app has actually made a write — placing one trade by
+    // hand is what fills this in, and it's what an executor gets built from.
+    const wrSec = el('section');
+    const wrBody = el('div');
+    wrSec.style.display = 'none';
+    wrSec.append(el('h5', null, 'Captured writes'), wrBody);
+
     const formSec = el('section');
     formSec.append(el('h5', null, 'New rule'));
     const formHost = el('div');
@@ -930,10 +1072,10 @@
     note.style.cssText = 'margin-top:7px;line-height:1.5';
     ft.append(wipe, exp, note);
 
-    scroll.append(warnSec, obs, ruleSec, formSec, ft);
+    scroll.append(warnSec, obs, ruleSec, wrSec, formSec, ft);
     $panel.append(hdr, sizes, bar, scroll);
 
-    sk = { cnt, warnSec, warn, obs, ruleBody, formHost, filter, sizes, dim };
+    sk = { cnt, warnSec, warn, obs, ruleBody, formHost, filter, sizes, dim, wrSec, wrBody };
     buildForm();
 
     // If a tick arrived while the user held a control open, apply it on release.
@@ -960,6 +1102,7 @@
       paintWarn();
       paintObserved();
       paintRules();
+      paintWrites();
       syncFormOptions();
       updateQtyPreview();   // holdings may have just arrived — resize the preview
     });
@@ -1140,6 +1283,28 @@
 
       row.append(on, el('span', `badge ${r.action}`, r.action), txt, del);
       sk.ruleBody.append(row);
+    }
+  }
+
+  // --- captured writes ------------------------------------------------------
+  function paintWrites() {
+    if (!sk || !sk.wrBody) return;
+    sk.wrSec.style.display = writes.length ? '' : 'none';
+    if (!writes.length) return;
+
+    sk.wrBody.replaceChildren();
+    for (const w of writes.slice(0, 8)) {
+      const row = el('div', 'wr');
+      const p = el('span', 'p', w.path);
+      p.title = `${w.path} · ${fmtAgo(w.t)} ago`;
+      const copy = el('button', 'mini', 'copy');
+      copy.title = 'copy this request so it can be turned into an executor';
+      copy.onclick = () => navigator.clipboard?.writeText(
+        JSON.stringify({ method: w.method, path: w.path, body: w.body }, null, 2),
+      ).then(() => toast('ok', 'Copied', `${w.method} ${w.path}`), () => {});
+      row.append(el('span', 'm', w.method), p, el('span', 'st', String(w.status)), copy);
+      sk.wrBody.append(row, el('pre', 'wb',
+        w.body == null ? '(no body)' : JSON.stringify(w.body, null, 1)));
     }
   }
 
@@ -1559,7 +1724,8 @@
   // Disclosed debug handle. Read-only helpers plus the executor registration
   // point — nothing here phones home.
   window.__pkmw = {
-    hist, get rules() { return rules; }, CFG, EXECUTORS, registerExecutor, refresh,
+    hist, get rules() { return rules; }, CFG, EXECUTORS, registerExecutor, wireExecutor, refresh,
+    get writes() { return writes; },   // in memory only; deliberately not in export()
     series: () => [...seriesIndex()].map(([s, f]) => ({ series: s, fields: f })),
     export: () => JSON.stringify({ hist, rules }, null, 2),
   };
