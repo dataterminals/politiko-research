@@ -74,10 +74,11 @@ console.log('\n— arming —');
 let clock = 1_700_000_000_000;
 const ui = { arm: null };
 const CFG = { AUTO_EXECUTE: false, DRY_RUN: true };
-const armMod = new Function('ui', 'CFG', 'now', 'saveUI', 'paintFabState', 'refresh', 'log', 'EXECUTORS',
+const armMod = new Function('ui', 'CFG', 'now', 'saveUI', 'paintArmBar', 'paintFabState',
+  'refresh', 'log', 'EXECUTORS',
   `${cut('const armMode', 'let ordersThisSession')}
    return { armMode, canExecute, isDryRun, arm, disarm, armState };`
-)(ui, CFG, () => clock, () => {}, () => {}, () => {}, () => {}, new Map());
+)(ui, CFG, () => clock, () => {}, () => {}, () => {}, () => {}, () => {}, new Map());
 
 const state = () => [armMod.canExecute(), armMod.isDryRun()];
 check('unarmed: nothing executes', state(), [false, true]);

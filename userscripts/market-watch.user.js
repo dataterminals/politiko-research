@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.10.0
+// @version      0.11.0
 // @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Optional order execution is a seam and ships disabled.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -577,14 +577,14 @@
       throw new Error("arm('dry'|'live', hours?) — 'dry' reports orders, 'live' places them");
     }
     ui.arm = { mode, until: hours > 0 ? now() + hours * 3_600_000 : null };
-    saveUI(); paintFabState(); refresh();
+    saveUI(); paintArmBar(); paintFabState(); refresh();
     log(mode === 'live' ? 'ARMED LIVE — rules will place real orders' : 'armed dry — nothing will be sent');
     return armState();
   }
 
   function disarm() {
     ui.arm = null;
-    saveUI(); paintFabState(); refresh();
+    saveUI(); paintArmBar(); paintFabState(); refresh();
     return armState();
   }
 
@@ -1032,6 +1032,16 @@
     .grip.tr::after { border-right-width: 2px; border-top-width: 2px; }
     .grip.tl::after { border-left-width: 2px;  border-top-width: 2px; }
 
+    .armbar { flex: 0 0 auto; display: flex; gap: 6px; align-items: center;
+              padding: 6px 12px; border-bottom: 1px solid #18181b; }
+    .armbar .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: #52525b; }
+    .armbar .st { margin-left: auto; font-size: 10px; color: #3f3f46; text-align: right; }
+    .armbar select { width: auto; flex: 0 0 auto; }
+    .armbar.live { background: #180d0d; border-bottom-color: #7f1d1d; }
+    .armbar.live .st { color: #fca5a5; }
+    .seg button.on.live-on { background: #7f1d1d; color: #fecaca; }
+    .seg button.pending { background: #7c2d12; color: #fdba74; }
+
     .sizes { flex: 0 0 auto; display: flex; gap: 4px; align-items: center;
              padding: 6px 12px; border-bottom: 1px solid #18181b; }
     .sizes button.on { border-color: #52525b; color: #e4e4e7; }
@@ -1150,6 +1160,36 @@
     snd.textContent = ui.sound ? '🔊' : '🔇';
     hdr.append(el('b', null, 'Market Watch'), el('span', 'sp'), cnt, szBtn, snd);
 
+    // Arm control. Off and dry apply on one click; live needs a second click to
+    // confirm. Turning it off is always one click — the asymmetry is the point.
+    const armBar = el('div', 'armbar');
+    const armSeg = el('div', 'seg');
+    const armSt = el('span', 'st');
+    const armHours = document.createElement('select');
+    for (const [label, h] of [['1h', 1], ['8h', 8], ['24h', 24], ['no expiry', 0]]) {
+      armHours.append(new Option(label, String(h)));
+    }
+    armHours.value = '24';
+    armHours.title = 'how long the arming lasts';
+    armHours.onchange = () => { if (armMode()) arm(armMode(), Number(armHours.value)); paintArmBar(); };
+
+    for (const [label, mode] of [['off', null], ['dry', 'dry'], ['live', 'live']]) {
+      const b = el('button', null, label);
+      b.onclick = () => {
+        if (mode === null) { livePending = false; disarm(); }
+        else if (mode === 'dry') { livePending = false; arm('dry', Number(armHours.value)); }
+        else if (livePending) { livePending = false; arm('live', Number(armHours.value)); }
+        else {
+          livePending = true;
+          clearTimeout(livePendingTimer);
+          livePendingTimer = setTimeout(() => { livePending = false; paintArmBar(); }, 5000);
+        }
+        paintArmBar();
+      };
+      armSeg.append(b);
+    }
+    armBar.append(el('span', 'lbl', 'orders'), armSeg, armHours, armSt);
+
     // Size presets, folded away behind the header button until wanted.
     const sizes = el('div', 'sizes');
     sizes.style.display = ui.sizeBar ? 'flex' : 'none';
@@ -1228,9 +1268,11 @@
     ft.append(wipe, exp, note);
 
     scroll.append(warnSec, obs, ruleSec, wrSec, formSec, ft);
-    $panel.append(hdr, sizes, bar, scroll);
+    $panel.append(hdr, armBar, sizes, bar, scroll);
 
-    sk = { cnt, warnSec, warn, obs, ruleBody, formHost, filter, sizes, dim, wrSec, wrBody };
+    sk = { cnt, warnSec, warn, obs, ruleBody, formHost, filter, sizes, dim, wrSec, wrBody,
+      armBar, armSeg, armSt, armHours };
+    paintArmBar();
     buildForm();
 
     // If a tick arrived while the user held a control open, apply it on release.
@@ -1255,6 +1297,7 @@
       dirty = false;
       paintHeader();
       paintWarn();
+      paintArmBar();
       paintFabState();
       paintObserved();
       paintRules();
@@ -1286,6 +1329,32 @@
       : st.live
         ? `LIVE — ${st.executors} executor(s) wired. Rules will place real orders.${left}${noSell}`
         : `DRY RUN — ${st.executors} executor(s) wired. Rules show the exact request and send nothing.${left}${noSell}`;
+  }
+
+  let livePending = false, livePendingTimer = null;
+
+  function paintArmBar() {
+    if (!sk || !sk.armBar) return;
+    const st = armState();
+    const mode = armMode();
+    sk.armBar.classList.toggle('live', st.live);
+
+    const [offB, dryB, liveB] = sk.armSeg.children;
+    offB.classList.toggle('on', !mode);
+    dryB.classList.toggle('on', mode === 'dry');
+    liveB.classList.toggle('on', mode === 'live');
+    liveB.classList.toggle('live-on', mode === 'live');
+    liveB.classList.toggle('pending', livePending);
+    liveB.textContent = livePending ? 'sure?' : 'live';
+    liveB.title = livePending
+      ? 'click again to place real orders'
+      : 'arm live order placement (needs a second click)';
+
+    const hrs = st.expiresIn == null ? null : Math.max(1, Math.round(st.expiresIn / 3_600_000));
+    sk.armSt.textContent = livePending ? 'click live again to confirm'
+      : !mode ? 'nothing will be sent'
+        : mode === 'dry' ? `building orders · ${st.executors} wired`
+          : hrs ? `LIVE · ${hrs}h left` : 'LIVE · no expiry';
   }
 
   /** Make a live-armed session obvious from the button alone, panel open or not. */
