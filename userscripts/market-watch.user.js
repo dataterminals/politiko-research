@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.8.0
+// @version      0.9.0
 // @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Optional order execution is a seam and ships disabled.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -346,15 +346,16 @@
     return `<${body.constructor ? body.constructor.name : typeof body}, not read>`;
   }
 
-  // Order routes are only ever taken from requests the app itself made. `buy` was
-  // observed 2026-07-28; `sell` stays null until a real sell is seen, because
-  // guessing /api/stocks/sell and firing at it is exactly the probing hard rule 4
-  // rules out.
-  const ORDER_ROUTES = { buy: '/api/stocks/buy', sell: null };
+  // Order routes are only ever taken from requests the app itself made. Both were
+  // observed 2026-07-28 from real trades placed by hand — neither is a guess, and
+  // an unobserved route stays null rather than being inferred from its sibling.
+  const ORDER_ROUTES = { buy: '/api/stocks/buy', sell: '/api/stocks/sell' };
 
+  // Still live: paths move between deploys, so a route seen on the wire wins over
+  // the baked-in default. Matched loosely enough to survive versioning.
   function learnRoute(method, pathname) {
     if (method !== 'POST') return;
-    const m = /\/api\/stocks\/(buy|sell)\b/.exec(pathname);
+    const m = /\/stocks\/(buy|sell)\b/.exec(pathname);
     if (!m || ORDER_ROUTES[m[1]] === pathname) return;
     ORDER_ROUTES[m[1]] = pathname;
     log('learned order route', m[1], '->', pathname);

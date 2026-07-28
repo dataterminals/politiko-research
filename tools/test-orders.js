@@ -56,15 +56,19 @@ check('every generated key matches that shape', keys.every(shape), true);
 check('keys are unique across a burst', new Set(keys).size, keys.length);
 console.log(`        sample: ${keys[0]}`);
 
-console.log('\n— route learning —');
-check('buy is known from the observed order', routeMod.ORDER_ROUTES.buy, '/api/stocks/buy');
-check('sell starts unknown rather than guessed', routeMod.ORDER_ROUTES.sell, null);
+console.log('\n— routes —');
+check('buy, observed 2026-07-28', routeMod.ORDER_ROUTES.buy, '/api/stocks/buy');
+check('sell, observed 2026-07-28', routeMod.ORDER_ROUTES.sell, '/api/stocks/sell');
+
+console.log('\n— route learning (paths move between deploys) —');
 routeMod.learnRoute('GET', '/api/stocks/sell');
-check('a GET does not teach a route', routeMod.ORDER_ROUTES.sell, null);
+check('a GET teaches nothing', routeMod.ORDER_ROUTES.sell, '/api/stocks/sell');
 routeMod.learnRoute('POST', '/api/stocks/nonsense');
-check('an unrelated POST does not teach a route', routeMod.ORDER_ROUTES.sell, null);
-routeMod.learnRoute('POST', '/api/stocks/sell');
-check('a real sell POST teaches it', routeMod.ORDER_ROUTES.sell, '/api/stocks/sell');
+check('an unrelated POST teaches nothing', routeMod.ORDER_ROUTES.sell, '/api/stocks/sell');
+routeMod.learnRoute('POST', '/api/v2/stocks/sell');
+check('a moved route seen on the wire wins over the default',
+  routeMod.ORDER_ROUTES.sell, '/api/v2/stocks/sell');
+check('...and does not disturb the other side', routeMod.ORDER_ROUTES.buy, '/api/stocks/buy');
 
 console.log(fail ? `\nFAIL (${fail})` : '\nALL OK');
 process.exit(fail ? 1 : 0);

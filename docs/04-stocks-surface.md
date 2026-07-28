@@ -51,9 +51,12 @@ Captured **2026-07-28** from a buy the player placed by hand, via the userscript
 passive write tap. Not probed — this is the request the app itself sent.
 
 ```
-POST /api/stocks/buy
-{ "instrument_id": 10, "shares": 92, "idempotency_key": "1785269781763-jbdjuee201q" }
+POST /api/stocks/buy    { "instrument_id": 10, "shares": 92, "idempotency_key": "…" }
+POST /api/stocks/sell   { "instrument_id": 10, "shares": 1,  "idempotency_key": "…" }
 ```
+
+Both sides were captured from real trades. **The body shape is identical** — only the
+path differs, so one executor covers both with the side selecting the route.
 
 Three things follow from this:
 
@@ -66,10 +69,10 @@ Three things follow from this:
   records provenance and refuses to place an order on an id it isn't sure about.
 - **`idempotency_key` is `<epoch_ms>-<11 chars base36>`**, generated per attempt.
 
-`sell` has **not** been observed. `/api/stocks/sell` is the obvious guess and it is
-deliberately not wired — firing at an endpoint the app hasn't been seen calling is
-the probing hard rule 4 rules out. The script learns the route the moment a real
-sell goes past the tap.
+`sell` was guessable from `buy`, and was deliberately left unwired until a real sell
+was seen anyway — the guess turning out correct doesn't make guessing the method.
+Route learning stays live regardless, since paths move between deploys: a route
+observed on the wire overrides the baked-in default.
 
 Auth was not captured and is not replayed: requests go out with same-origin
 credentials, so a cookie session carries itself. If it turns out to be header-based
@@ -92,11 +95,13 @@ the executor returns 401 and says so rather than reading the token.
 ## Still unknown
 
 - The exact request path, and whether the page polls it or pushes over the WebSocket.
-- **The sell route.** Buy is known; sell is not, and will not be guessed. One sell
-  placed by hand teaches it.
 - **Whether `instrument_id` and a holding's `id` share a space.** Assumed not, and the
   script refuses to place orders on an unconfirmed id rather than find out the
   expensive way.
+- **What the order response returns**, and whether a rejected order (insufficient
+  funds, insufficient shares, market closed) comes back as a non-2xx or as a 200 with
+  an error body. Only the request side has been captured; the executor currently
+  treats any 2xx as filled.
 - A **cash / balance field**. Nothing matching one has appeared on any response the
   tap has seen, which is what currently blocks spend-an-amount position sizing. It may
   live on a player/account response rather than the stocks one.
