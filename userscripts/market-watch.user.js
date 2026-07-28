@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.5.0
+// @version      0.6.0
 // @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Optional order execution is a seam and ships disabled.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -54,9 +54,20 @@
     DEFAULT_COOLDOWN_MS: 15 * 60_000,
     HOTKEY: 'm',                  // Alt+M toggles the panel
     PANEL_W: 430,
+    PANEL_MIN_W: 240,
+    PANEL_MIN_H: 160,
     FAB_SIZE: 40,
     EDGE: 8,                      // keep this much gap from the viewport edge
   };
+
+  // h:null means "take whatever vertical room there is" — that's what makes
+  // `sidebar` and `tall` dock properly instead of floating at a fixed height.
+  const SIZE_PRESETS = [
+    ['sidebar', 280, null],
+    ['compact', 430, 380],
+    ['tall', 430, null],
+    ['wide', 640, 520],
+  ];
 
   const K = { hist: 'pkmw:hist', rules: 'pkmw:rules', ui: 'pkmw:ui' };
 
@@ -107,7 +118,8 @@
   const hist = readJSON(K.hist, {});
   let rules = readJSON(K.rules, []);
   const ui = Object.assign(
-    { open: false, sound: true, deltaWin: 3_600_000, filter: '', expanded: {}, hidden: {}, fab: null },
+    { open: false, sound: true, deltaWin: 3_600_000, filter: '', expanded: {}, hidden: {},
+      fab: null, size: null, sizeBar: false },
     readJSON(K.ui, {}),
   );
 
@@ -525,6 +537,12 @@
     const live = fields.filter((f) => !isStatic(`${series}::${f}`));
     const pool = live.length ? live : fields;
     for (const h of HEADLINE) if (pool.includes(h)) return h;
+    // Substring pass, so current_price / last_price / mid_price resolve to a
+    // price instead of falling through to whatever happens to sort first.
+    for (const h of HEADLINE) {
+      const hit = pool.find((f) => f.includes(h));
+      if (hit) return hit;
+    }
     return pool[0];
   }
 
@@ -538,6 +556,17 @@
   const HOLDING_GROUPS = ['holding', 'portfolio', 'position', 'owned', 'inventory'];
   const QTY_FIELDS = ['shares', 'quantity', 'qty', 'units', 'owned', 'held', 'position', 'count'];
   const CASH_FIELDS = ['cash', 'balance', 'money', 'funds', 'available', 'wallet', 'liquid'];
+
+  // Position fields stay prominent even while they sit still. `shares` reading 1
+  // for an hour means you hold one share, not that the field is immutable the
+  // way ipo_game_day is — and it's the field sizing reads, so greying it out
+  // hides the most important number on the row.
+  const NEVER_DEMOTE = new Set([...QTY_FIELDS, 'avg_cost', 'cost_basis', 'book_cost',
+    'unrealized_pnl', 'realized_pnl', 'market_value']);
+
+  /** Visually de-emphasise a field: unchanged so far AND not position state. */
+  const demoted = (series, field) =>
+    isStatic(`${series}::${field}`) && !NEVER_DEMOTE.has(field);
 
   /** The holdings-side series for the same symbol, if one has been observed. */
   function holdingSeriesFor(series) {
@@ -677,17 +706,18 @@
   // UI — shadow DOM so the app's stylesheet (and its hashed classes) can't
   // reach us and we can't reach it.
   // ===========================================================================
-  let root = null, $panel = null, $toasts = null, $fab = null;
+  let root = null, $panel = null, $toasts = null, $fab = null, $grip = null;
   let sk = null;          // skeleton refs, built exactly once
   let dirty = false;      // a refresh was suppressed while the user was busy
 
   const CSS = `
     :host { all: initial; }
-    * { box-sizing: border-box; font-family: ui-sans-serif, system-ui, sans-serif; }
+    /* Squared off throughout — nothing in this panel gets a rounded corner. */
+    * { box-sizing: border-box; font-family: ui-sans-serif, system-ui, sans-serif; border-radius: 0; }
     .wrap { position: fixed; inset: 0; pointer-events: none; z-index: 2147483000; }
     .toasts { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 8px; width: 340px; }
     .toast { pointer-events: auto; background: #09090b; color: #e4e4e7; border: 1px solid #27272a;
-             border-left-width: 3px; border-radius: 8px; padding: 10px 12px; font-size: 12px;
+             border-left-width: 3px; padding: 10px 12px; font-size: 12px;
              box-shadow: 0 8px 24px rgba(0,0,0,.5); animation: in .18s ease-out; }
     .toast h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: .01em; }
     .toast p { margin: 0; color: #a1a1aa; white-space: pre-wrap; line-height: 1.45; }
@@ -700,14 +730,35 @@
 
     .fab { pointer-events: auto; position: absolute; bottom: 16px; right: 16px;
            width: ${CFG.FAB_SIZE}px; height: ${CFG.FAB_SIZE}px;
-           border-radius: 999px; background: #18181b; color: #e4e4e7; border: 1px solid #3f3f46;
+           background: #18181b; color: #e4e4e7; border: 1px solid #3f3f46;
            cursor: grab; font-size: 15px; box-shadow: 0 4px 14px rgba(0,0,0,.45);
            touch-action: none; user-select: none; }
     .fab.dragging { cursor: grabbing; border-color: #52525b; box-shadow: 0 6px 20px rgba(0,0,0,.6); }
 
+    /* Resize grip. It lives on whichever corner is free — the panel is pinned to
+       the button, so the grip sits opposite the pinned edges and the panel grows
+       away from the button rather than out from under the pointer. */
+    .grip { position: absolute; width: 16px; height: 16px; z-index: 3; touch-action: none; }
+    .grip::after { content: ''; position: absolute; inset: 4px; border: 0 solid #52525b; }
+    .grip:hover::after { border-color: #a1a1aa; }
+    .grip.br { right: 0; bottom: 0; cursor: nwse-resize; }
+    .grip.bl { left: 0;  bottom: 0; cursor: nesw-resize; }
+    .grip.tr { right: 0; top: 0;    cursor: nesw-resize; }
+    .grip.tl { left: 0;  top: 0;    cursor: nwse-resize; }
+    .grip.br::after { border-right-width: 2px; border-bottom-width: 2px; }
+    .grip.bl::after { border-left-width: 2px;  border-bottom-width: 2px; }
+    .grip.tr::after { border-right-width: 2px; border-top-width: 2px; }
+    .grip.tl::after { border-left-width: 2px;  border-top-width: 2px; }
+
+    .sizes { flex: 0 0 auto; display: flex; gap: 4px; align-items: center;
+             padding: 6px 12px; border-bottom: 1px solid #18181b; }
+    .sizes button.on { border-color: #52525b; color: #e4e4e7; }
+    .sizes .dim { margin-left: auto; color: #3f3f46; font-size: 10px;
+                  font-variant-numeric: tabular-nums; }
+
     .panel { pointer-events: auto; position: absolute; bottom: 66px; right: 16px; width: ${CFG.PANEL_W}px;
              max-height: 74vh; display: flex; flex-direction: column; background: #09090b;
-             color: #e4e4e7; border: 1px solid #27272a; border-radius: 10px; font-size: 12px;
+             color: #e4e4e7; border: 1px solid #27272a; font-size: 12px;
              box-shadow: 0 16px 48px rgba(0,0,0,.6); }
     .panel > .scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
     header { flex: 0 0 auto; border-bottom: 1px solid #27272a; padding: 9px 12px;
@@ -719,7 +770,7 @@
     section:last-child { border-bottom: 0; }
     h5 { margin: 0 0 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #52525b; }
     .muted { color: #52525b; }
-    button.mini { background: #18181b; border: 1px solid #27272a; color: #a1a1aa; border-radius: 5px;
+    button.mini { background: #18181b; border: 1px solid #27272a; color: #a1a1aa;
                   padding: 2px 7px; cursor: pointer; font-size: 11px; }
     button.mini:hover { border-color: #3f3f46; color: #e4e4e7; }
     button.mini.danger:hover { border-color: #ef4444; color: #ef4444; }
@@ -730,21 +781,21 @@
     .rule .txt { flex: 1; line-height: 1.35; }
     .rule .txt em { font-style: normal; color: #71717a; }
     .badge { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; padding: 1px 5px;
-             border-radius: 3px; border: 1px solid currentColor; }
+             border: 1px solid currentColor; }
     .badge.notify { color: #3b82f6; } .badge.buy { color: #22c55e; } .badge.sell { color: #f59e0b; }
 
     form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
     form .full { grid-column: 1 / -1; }
     input, select { width: 100%; background: #18181b; border: 1px solid #27272a; color: #e4e4e7;
-                    border-radius: 5px; padding: 4px 6px; font-size: 11px; }
+                    padding: 4px 6px; font-size: 11px; }
     input:focus, select:focus { outline: 1px solid #3f3f46; }
-    .warnbox { background: #1c1410; border: 1px solid #7c2d12; color: #fdba74; border-radius: 6px;
+    .warnbox { background: #1c1410; border: 1px solid #7c2d12; color: #fdba74;
                padding: 7px 9px; line-height: 1.45; }
 
     .toolbar { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 7px 12px;
                border-bottom: 1px solid #18181b; }
     .toolbar input { flex: 1; }
-    .seg { display: flex; border: 1px solid #27272a; border-radius: 5px; overflow: hidden; flex: 0 0 auto; }
+    .seg { display: flex; border: 1px solid #27272a; overflow: hidden; flex: 0 0 auto; }
     .seg button { background: none; border: 0; color: #52525b; padding: 3px 6px; cursor: pointer;
                   font-size: 10px; font-variant-numeric: tabular-nums; }
     .seg button.on { background: #27272a; color: #e4e4e7; }
@@ -771,11 +822,11 @@
     .sub .f .n { flex: 1; color: #71717a; }
     .sub .f .v { font-variant-numeric: tabular-nums; color: #a1a1aa; }
     .sub .f.stat .n, .sub .f.stat .v { color: #3f3f46; }
-    .sub .f.stat .n::after { content: ' · fixed'; font-size: 9px; }
+    .sub .f.stat .n::after { content: ' · unchanged'; font-size: 9px; }
     .empty { color: #52525b; padding: 4px 0; line-height: 1.5; }
 
     .qty { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
-           padding: 7px; border: 1px dashed #27272a; border-radius: 6px; }
+           padding: 7px; border: 1px dashed #27272a; }
     .qty .lbl { grid-column: 1 / -1; font-size: 10px; text-transform: uppercase;
                 letter-spacing: .07em; color: #52525b; }
     .qty .prev { grid-column: 1 / -1; color: #71717a; line-height: 1.4; }
@@ -802,10 +853,31 @@
   function buildSkeleton() {
     const hdr = el('header');
     const cnt = el('span', 'cnt');
+    const szBtn = el('button', 'mini', '⤢');
+    szBtn.title = 'panel size';
     const snd = el('button', 'mini');
     snd.onclick = () => { ui.sound = !ui.sound; saveUI(); snd.textContent = ui.sound ? '🔊' : '🔇'; };
     snd.textContent = ui.sound ? '🔊' : '🔇';
-    hdr.append(el('b', null, 'Market Watch'), el('span', 'sp'), cnt, snd);
+    hdr.append(el('b', null, 'Market Watch'), el('span', 'sp'), cnt, szBtn, snd);
+
+    // Size presets, folded away behind the header button until wanted.
+    const sizes = el('div', 'sizes');
+    sizes.style.display = ui.sizeBar ? 'flex' : 'none';
+    szBtn.onclick = () => {
+      ui.sizeBar = !ui.sizeBar; saveUI();
+      sizes.style.display = ui.sizeBar ? 'flex' : 'none';
+      paintSizes();
+    };
+    for (const [name, w, h] of SIZE_PRESETS) {
+      const b = el('button', 'mini', name);
+      b.onclick = () => { ui.size = { w, h }; saveUI(); placePanel(); paintSizes(); };
+      sizes.append(b);
+    }
+    const auto = el('button', 'mini', 'auto');
+    auto.title = 'let the panel size itself to the space available';
+    auto.onclick = () => { ui.size = null; saveUI(); placePanel(); paintSizes(); };
+    const dim = el('span', 'dim');
+    sizes.append(auto, dim);
 
     // toolbar: filter + delta window. Both persist across refreshes.
     const bar = el('div', 'toolbar');
@@ -859,9 +931,9 @@
     ft.append(wipe, exp, note);
 
     scroll.append(warnSec, obs, ruleSec, formSec, ft);
-    $panel.append(hdr, bar, scroll);
+    $panel.append(hdr, sizes, bar, scroll);
 
-    sk = { cnt, warnSec, warn, obs, ruleBody, formHost, filter };
+    sk = { cnt, warnSec, warn, obs, ruleBody, formHost, filter, sizes, dim };
     buildForm();
 
     // If a tick arrived while the user held a control open, apply it on release.
@@ -1004,8 +1076,7 @@
       sub = el('div', 'sub');
       for (const f of it.fields) {
         const key = `${it.series}::${f}`;
-        const stat = isStatic(key);
-        const row = el('div', `f${stat ? ' stat' : ''}`);
+        const row = el('div', `f${demoted(it.series, f) ? ' stat' : ''}`);
         const v = el('span', 'v');
         const add = el('button', 'mini', '+');
         add.onclick = (e) => { e.stopPropagation(); prefill(it.series, f); };
@@ -1273,8 +1344,16 @@
     y: Math.min(Math.max(y, CFG.EDGE), Math.max(CFG.EDGE, window.innerHeight - CFG.FAB_SIZE - CFG.EDGE)),
   });
 
+  /**
+   * A hidden tab, a minimised window, or a collapsed devtools pane can report a
+   * ~zero viewport. Clamping against that pins everything to the top-left corner
+   * and the next save makes it permanent, so treat it as "no information" and
+   * leave the stored position alone until real dimensions come back.
+   */
+  const viewportUsable = () => window.innerWidth > 120 && window.innerHeight > 120;
+
   function placeFab() {
-    if (!$fab) return;
+    if (!$fab || !viewportUsable()) return;
     ui.fab = clampFab(ui.fab || defaultFabPos());
     Object.assign($fab.style, {
       left: `${ui.fab.x}px`, top: `${ui.fab.y}px`, right: 'auto', bottom: 'auto',
@@ -1282,32 +1361,106 @@
     placePanel();
   }
 
+  const panelW = () => Math.max(CFG.PANEL_MIN_W,
+    Math.min((ui.size && ui.size.w) || CFG.PANEL_W, window.innerWidth - CFG.EDGE * 2));
+
+  // Which edges the panel is currently pinned by — the grip goes on the others.
+  let panelAlign = 'right', panelAnchor = 'bottom';
+
   function placePanel() {
-    if (!$panel || !ui.fab) return;
+    if (!$panel || !ui.fab || !viewportUsable()) return;
     const { x, y } = ui.fab;
     const gap = 10;
     const vw = window.innerWidth, vh = window.innerHeight;
+    const w = panelW();
+    $panel.style.width = `${w}px`;
 
     // Horizontal: hang the panel off whichever edge of the button leaves it
     // fully on screen, preferring right-aligned to match the default corner.
-    let left = x + CFG.FAB_SIZE - CFG.PANEL_W;
-    if (left < CFG.EDGE) left = x;
-    left = Math.max(CFG.EDGE, Math.min(left, vw - CFG.PANEL_W - CFG.EDGE));
+    // Sticky: keep the current side while it still fits, otherwise shrinking the
+    // panel makes right-alignment viable again and the resize grip — which lives
+    // on the free corner — hops across the panel mid-drag.
+    const rightAligned = x + CFG.FAB_SIZE - w;
+    const leftAligned = x;
+    const fits = (l) => l >= CFG.EDGE && l + w <= vw - CFG.EDGE;
+
+    let left;
+    if (panelAlign === 'left' && fits(leftAligned)) left = leftAligned;
+    else if (fits(rightAligned)) { left = rightAligned; panelAlign = 'right'; }
+    else if (fits(leftAligned)) { left = leftAligned; panelAlign = 'left'; }
+    else { left = rightAligned; panelAlign = 'right'; }
+    left = Math.max(CFG.EDGE, Math.min(left, vw - w - CFG.EDGE));
     $panel.style.left = `${left}px`;
     $panel.style.right = 'auto';
 
-    // Vertical: whichever side of the button has more room, and cap the height
-    // to exactly that much so it always fits.
+    // Vertical: whichever side of the button has more room, capped to exactly
+    // that much so it always fits.
     const above = y - gap - CFG.EDGE;
     const below = vh - (y + CFG.FAB_SIZE) - gap - CFG.EDGE;
-    if (above >= below) {
+    panelAnchor = above >= below ? 'bottom' : 'top';
+    if (panelAnchor === 'bottom') {
       $panel.style.bottom = `${vh - y + gap}px`;
       $panel.style.top = 'auto';
     } else {
       $panel.style.top = `${y + CFG.FAB_SIZE + gap}px`;
       $panel.style.bottom = 'auto';
     }
-    $panel.style.maxHeight = `${Math.max(180, Math.min(Math.max(above, below), vh * 0.8))}px`;
+
+    const room = Math.max(CFG.PANEL_MIN_H, Math.max(above, below));
+    const h = ui.size && ui.size.h
+      ? Math.max(CFG.PANEL_MIN_H, Math.min(ui.size.h, room))
+      : room;
+    $panel.style.maxHeight = `${h}px`;
+    // An explicit height holds the panel open at that size; without one it
+    // stays content-sized, which is what the fill-the-space presets want.
+    $panel.style.height = ui.size && ui.size.h ? `${h}px` : '';
+
+    if ($grip) {
+      $grip.className = `grip ${panelAnchor === 'top' ? 'b' : 't'}${panelAlign === 'right' ? 'l' : 'r'}`;
+    }
+  }
+
+  function makeResizable() {
+    let rz = null;
+    $grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const r = $panel.getBoundingClientRect();
+      // Freeze which edges are pinned for the duration of the drag, so the
+      // grow direction can't flip mid-gesture.
+      rz = { x: e.clientX, y: e.clientY, w: r.width, h: r.height,
+        align: panelAlign, anchor: panelAnchor, id: e.pointerId };
+      try { $grip.setPointerCapture(e.pointerId); } catch { /* capture optional */ }
+      e.preventDefault(); e.stopPropagation();
+    });
+
+    $grip.addEventListener('pointermove', (e) => {
+      if (!rz || e.pointerId !== rz.id) return;
+      const dw = (rz.align === 'right' ? -1 : 1) * (e.clientX - rz.x);
+      const dh = (rz.anchor === 'top' ? 1 : -1) * (e.clientY - rz.y);
+      ui.size = { w: rz.w + dw, h: rz.h + dh };
+      placePanel(); paintSizes();
+    });
+
+    const end = (e) => {
+      if (!rz) return;
+      rz = null;
+      try { $grip.releasePointerCapture(e.pointerId); } catch { /* already gone */ }
+      saveUI(); paintSizes();
+    };
+    $grip.addEventListener('pointerup', end);
+    $grip.addEventListener('pointercancel', end);
+  }
+
+  function paintSizes() {
+    if (!sk || !sk.sizes) return;
+    const r = $panel.getBoundingClientRect();
+    sk.dim.textContent = `${Math.round(r.width)}×${Math.round(r.height)}`;
+    for (const b of sk.sizes.querySelectorAll('button')) {
+      const p = SIZE_PRESETS.find(([n]) => n === b.textContent);
+      b.classList.toggle('on', p
+        ? !!(ui.size && ui.size.w === p[1] && ui.size.h === p[2])
+        : b.textContent === 'auto' && !ui.size);
+    }
   }
 
   function makeDraggable() {
@@ -1317,7 +1470,7 @@
     $fab.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       drag = { dx: e.clientX - ui.fab.x, dy: e.clientY - ui.fab.y, id: e.pointerId, moved: false };
-      $fab.setPointerCapture(e.pointerId);
+      try { $fab.setPointerCapture(e.pointerId); } catch { /* capture optional */ }
       e.preventDefault();
     });
 
@@ -1367,6 +1520,8 @@
 
     $panel = el('div', 'panel');
     $panel.style.display = 'none';
+    $grip = el('div', 'grip');
+    $panel.append($grip);
 
     wrap.append($toasts, $panel, $fab);
     root.append(style, wrap);
@@ -1375,6 +1530,7 @@
     buildSkeleton();
     placeFab();
     makeDraggable();
+    makeResizable();
     window.addEventListener('resize', placeFab);
     if (ui.open) togglePanel(true);
   }
@@ -1383,7 +1539,7 @@
     ui.open = typeof force === 'boolean' ? force : !ui.open;
     saveUI();
     $panel.style.display = ui.open ? 'flex' : 'none';
-    if (ui.open) { placePanel(); lastStructSig = ''; refresh(); }
+    if (ui.open) { placePanel(); paintSizes(); lastStructSig = ''; refresh(); }
   }
 
   window.addEventListener('keydown', (e) => {
