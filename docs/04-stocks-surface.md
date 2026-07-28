@@ -21,13 +21,23 @@ stocks/instruments/<SYMBOL> :: ask
                             :: spread_bps
                             :: float_shares
                             :: ipo_game_day
+stocks/holdings/<SYMBOL>    :: shares
+                            :: avg_cost
+                            :: current_price
+                            :: market_value
+                            :: unrealized_pnl
 stocks/tax                  :: owed
 ```
 
+**Every symbol appears under both `instruments` and `holdings`** — confirmed
+2026-07-28 from the panel. The two sides carry different fields: `instruments` is
+the market's view of the listing, `holdings` is the player's position in it. Note
+that the holdings price field is `current_price`, not `price`.
+
 - **URL scope resolved to `stocks`.** The tap strips `/api/` and `public`, so the request
   path is `/api/stocks` or `/api/stocks/<numeric>`. The exact path was not captured.
-- **Symbols seen:** `PNRG`, `RCRD`, `SNTL`, `USTL`, plus more above the panel's scroll
-  position. 53 series were tracked in that session.
+- **Symbols seen:** `PNRG`, `RCRD`, `SNTL`, `USTL`, `BRDL`, plus more above the panel's
+  scroll position. 53 series were tracked in that session.
 - **`instruments` is an object, not a top-level array.** The tap keeps a parent's scope
   when recursing into an array and only names a sub-scope for a nested *object* — the
   literal `stocks/instruments/…` prefix proves it was the latter.
@@ -57,4 +67,8 @@ stocks/tax                  :: owed
   [`../userscripts/market-watch.user.js`](../userscripts/market-watch.user.js) can be
   filled in. Hard rule 4 stands: these get answered by observing a real order placed by
   hand in DevTools, not by probing.
-- Whether holdings/portfolio state arrives on the same response or a separate one.
+- A **cash / balance field**. Nothing matching one has appeared on any response the
+  tap has seen, which is what currently blocks spend-an-amount position sizing. It may
+  live on a player/account response rather than the stocks one.
+- Whether `holdings` arrives on the same response as `instruments` or a separate one —
+  both are under the `stocks` scope, so the tap can't tell them apart.
