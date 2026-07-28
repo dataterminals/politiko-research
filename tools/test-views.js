@@ -1,7 +1,7 @@
 // Slices the real derived-views layer and exercises it against a history shaped
 // like the live stocks page (symbols + fields taken from an actual panel capture).
 const fs = require('fs');
-const SRC = fs.readFileSync('H:/Github Repositories/politiko-research/userscripts/market-watch.user.js', 'utf8');
+const SRC = fs.readFileSync(require('path').join(__dirname,'..','userscripts','market-watch.user.js'), 'utf8');
 
 const i = SRC.indexOf('const HEADLINE'), j = SRC.indexOf('function sparkline');
 if (i < 0 || j < 0) throw new Error('markers not found');

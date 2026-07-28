@@ -1,7 +1,7 @@
 // Slices the real sampler out of market-watch.user.js and exercises it, so the
 // test can't drift from the shipped source.
 const fs = require('fs');
-const SRC = fs.readFileSync('H:/Github Repositories/politiko-research/userscripts/market-watch.user.js', 'utf8');
+const SRC = fs.readFileSync(require('path').join(__dirname,'..','userscripts','market-watch.user.js'), 'utf8');
 
 const between = (a, b) => {
   const i = SRC.indexOf(a), j = SRC.indexOf(b);

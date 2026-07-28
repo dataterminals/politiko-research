@@ -1,6 +1,6 @@
 // Slices the real redaction/body-parsing layer out of the userscript.
 const fs = require('fs');
-const SRC = fs.readFileSync('H:/Github Repositories/politiko-research/userscripts/market-watch.user.js', 'utf8');
+const SRC = fs.readFileSync(require('path').join(__dirname,'..','userscripts','market-watch.user.js'), 'utf8');
 const i = SRC.indexOf('const SECRETISH'), j = SRC.indexOf('function captureWrite');
 if (i < 0 || j < 0) throw new Error('markers not found');
 const mod = new Function(`${SRC.slice(i, j)}\nreturn { redact, parseBody };`)();
