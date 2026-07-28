@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.0
+// @version      0.4.0
 // @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Optional order execution is a seam and ships disabled.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -104,7 +104,7 @@
   const hist = readJSON(K.hist, {});
   let rules = readJSON(K.rules, []);
   const ui = Object.assign(
-    { open: false, sound: true, deltaWin: 3_600_000, filter: '', expanded: {} },
+    { open: false, sound: true, deltaWin: 3_600_000, filter: '', expanded: {}, hidden: {} },
     readJSON(K.ui, {}),
   );
 
@@ -126,8 +126,19 @@
       .forEach(([k]) => delete hist[k]);
   }
 
+  /**
+   * True when a series belongs to a hidden group AND no live rule depends on it.
+   * Hidden groups stop consuming the history budget, but a group you've muted
+   * can't silently kill a rule you left running on it.
+   */
+  function muted(series) {
+    if (!ui.hidden[splitSeries(series)[0]]) return false;
+    return !rules.some((r) => r.enabled && r.series === series);
+  }
+
   /** Append a sample, deduping unchanged values inside MIN_SAMPLE_GAP_MS. */
   function record(series, field, value, t = now()) {
+    if (muted(series)) return null;
     const key = `${series}::${field}`;
     let arr = hist[key];
     if (!arr) arr = hist[key] = [];
@@ -734,7 +745,12 @@
 
     .grp { padding: 9px 12px 5px; }
     .grp h6 { margin: 0 0 3px; font-size: 10px; font-weight: 500; color: #3f3f46;
-              letter-spacing: .04em; display: flex; gap: 6px; align-items: baseline; }
+              letter-spacing: .04em; display: flex; gap: 6px; align-items: center; }
+    .grp h6 .sp { flex: 1; }
+    .grp h6 button { visibility: hidden; }
+    .grp:hover h6 button { visibility: visible; }
+    .muted-grp { display: flex; align-items: center; gap: 6px; padding: 3px 0; color: #3f3f46; }
+    .muted-grp .sp { flex: 1; }
     .row { display: flex; align-items: center; gap: 7px; padding: 4px 0;
            border-top: 1px solid #131316; cursor: pointer; }
     .row:hover { background: #0d0d10; }
@@ -900,7 +916,7 @@
     }
 
     const structSig = visible.map(([g, its]) =>
-      `${g}>${its.map((i) => `${i.entity}:${i.fields.join(',')}:${ui.expanded[i.series] ? 1 : 0}`).join('|')}`
+      `${g}${ui.hidden[g] ? '!' : ''}>${its.map((i) => `${i.entity}:${i.fields.join(',')}:${ui.expanded[i.series] ? 1 : 0}`).join('|')}`
     ).join('||');
 
     if (force || structSig !== lastStructSig) {
@@ -917,11 +933,36 @@
         return;
       }
 
-      for (const [g, items] of visible) {
+      for (const [g, items] of visible.filter(([g2]) => !ui.hidden[g2])) {
         const grp = el('div', 'grp');
-        grp.append(el('h6', null, g || 'root'));
+        const h = el('h6');
+        const hide = el('button', 'mini', 'hide');
+        hide.title = 'stop showing and recording this group';
+        hide.onclick = (e) => {
+          e.stopPropagation();
+          ui.hidden[g] = 1; saveUI(); paintObserved(true);
+        };
+        h.append(el('span', null, g || 'root'), el('span', 'sp'), hide);
+        grp.append(h);
         for (const it of items) grp.append(buildRow(g, it));
         sk.obs.append(grp);
+      }
+
+      // Muted groups collapse to one line each, so they're easy to bring back.
+      const off = visible.filter(([g2]) => ui.hidden[g2]);
+      if (off.length) {
+        const box = el('div', 'grp');
+        for (const [g, items] of off) {
+          const line = el('div', 'muted-grp');
+          const keptFor = rules.some((r) => r.enabled && splitSeries(r.series)[0] === g);
+          line.append(el('span', null, `${g || 'root'} · ${items.length} hidden${keptFor ? ', still recording for a rule' : ''}`),
+            el('span', 'sp'));
+          const show = el('button', 'mini', 'show');
+          show.onclick = () => { delete ui.hidden[g]; saveUI(); paintObserved(true); };
+          line.append(show);
+          box.append(line);
+        }
+        sk.obs.append(box);
       }
     }
     updateRowValues();
