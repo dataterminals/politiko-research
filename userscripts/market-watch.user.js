@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.4.0
+// @version      0.5.0
 // @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Optional order execution is a seam and ships disabled.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -53,6 +53,9 @@
     SAVE_DEBOUNCE_MS: 2_000,
     DEFAULT_COOLDOWN_MS: 15 * 60_000,
     HOTKEY: 'm',                  // Alt+M toggles the panel
+    PANEL_W: 430,
+    FAB_SIZE: 40,
+    EDGE: 8,                      // keep this much gap from the viewport edge
   };
 
   const K = { hist: 'pkmw:hist', rules: 'pkmw:rules', ui: 'pkmw:ui' };
@@ -104,7 +107,7 @@
   const hist = readJSON(K.hist, {});
   let rules = readJSON(K.rules, []);
   const ui = Object.assign(
-    { open: false, sound: true, deltaWin: 3_600_000, filter: '', expanded: {}, hidden: {} },
+    { open: false, sound: true, deltaWin: 3_600_000, filter: '', expanded: {}, hidden: {}, fab: null },
     readJSON(K.ui, {}),
   );
 
@@ -674,7 +677,7 @@
   // UI — shadow DOM so the app's stylesheet (and its hashed classes) can't
   // reach us and we can't reach it.
   // ===========================================================================
-  let root = null, $panel = null, $toasts = null;
+  let root = null, $panel = null, $toasts = null, $fab = null;
   let sk = null;          // skeleton refs, built exactly once
   let dirty = false;      // a refresh was suppressed while the user was busy
 
@@ -695,11 +698,14 @@
     .toast button { float: right; background: none; border: 0; color: #52525b; cursor: pointer; font-size: 14px; line-height: 1; }
     @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
 
-    .fab { pointer-events: auto; position: absolute; bottom: 16px; right: 16px; width: 40px; height: 40px;
+    .fab { pointer-events: auto; position: absolute; bottom: 16px; right: 16px;
+           width: ${CFG.FAB_SIZE}px; height: ${CFG.FAB_SIZE}px;
            border-radius: 999px; background: #18181b; color: #e4e4e7; border: 1px solid #3f3f46;
-           cursor: pointer; font-size: 15px; box-shadow: 0 4px 14px rgba(0,0,0,.45); }
+           cursor: grab; font-size: 15px; box-shadow: 0 4px 14px rgba(0,0,0,.45);
+           touch-action: none; user-select: none; }
+    .fab.dragging { cursor: grabbing; border-color: #52525b; box-shadow: 0 6px 20px rgba(0,0,0,.6); }
 
-    .panel { pointer-events: auto; position: absolute; bottom: 66px; right: 16px; width: 430px;
+    .panel { pointer-events: auto; position: absolute; bottom: 66px; right: 16px; width: ${CFG.PANEL_W}px;
              max-height: 74vh; display: flex; flex-direction: column; background: #09090b;
              color: #e4e4e7; border: 1px solid #27272a; border-radius: 10px; font-size: 12px;
              box-shadow: 0 16px 48px rgba(0,0,0,.6); }
@@ -1253,6 +1259,100 @@
   // ===========================================================================
   // Boot
   // ===========================================================================
+  // ---------------------------------------------------------------------------
+  // Placement — the button is draggable and the panel follows it, flipping to
+  // whichever side has room so it can't end up hanging off the viewport.
+  // ---------------------------------------------------------------------------
+  const defaultFabPos = () => ({
+    x: window.innerWidth - CFG.FAB_SIZE - 16,
+    y: window.innerHeight - CFG.FAB_SIZE - 16,
+  });
+
+  const clampFab = ({ x, y }) => ({
+    x: Math.min(Math.max(x, CFG.EDGE), Math.max(CFG.EDGE, window.innerWidth - CFG.FAB_SIZE - CFG.EDGE)),
+    y: Math.min(Math.max(y, CFG.EDGE), Math.max(CFG.EDGE, window.innerHeight - CFG.FAB_SIZE - CFG.EDGE)),
+  });
+
+  function placeFab() {
+    if (!$fab) return;
+    ui.fab = clampFab(ui.fab || defaultFabPos());
+    Object.assign($fab.style, {
+      left: `${ui.fab.x}px`, top: `${ui.fab.y}px`, right: 'auto', bottom: 'auto',
+    });
+    placePanel();
+  }
+
+  function placePanel() {
+    if (!$panel || !ui.fab) return;
+    const { x, y } = ui.fab;
+    const gap = 10;
+    const vw = window.innerWidth, vh = window.innerHeight;
+
+    // Horizontal: hang the panel off whichever edge of the button leaves it
+    // fully on screen, preferring right-aligned to match the default corner.
+    let left = x + CFG.FAB_SIZE - CFG.PANEL_W;
+    if (left < CFG.EDGE) left = x;
+    left = Math.max(CFG.EDGE, Math.min(left, vw - CFG.PANEL_W - CFG.EDGE));
+    $panel.style.left = `${left}px`;
+    $panel.style.right = 'auto';
+
+    // Vertical: whichever side of the button has more room, and cap the height
+    // to exactly that much so it always fits.
+    const above = y - gap - CFG.EDGE;
+    const below = vh - (y + CFG.FAB_SIZE) - gap - CFG.EDGE;
+    if (above >= below) {
+      $panel.style.bottom = `${vh - y + gap}px`;
+      $panel.style.top = 'auto';
+    } else {
+      $panel.style.top = `${y + CFG.FAB_SIZE + gap}px`;
+      $panel.style.bottom = 'auto';
+    }
+    $panel.style.maxHeight = `${Math.max(180, Math.min(Math.max(above, below), vh * 0.8))}px`;
+  }
+
+  function makeDraggable() {
+    let drag = null;
+    let suppressClick = false;
+
+    $fab.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      drag = { dx: e.clientX - ui.fab.x, dy: e.clientY - ui.fab.y, id: e.pointerId, moved: false };
+      $fab.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+
+    $fab.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const nx = e.clientX - drag.dx, ny = e.clientY - drag.dy;
+      // A few px of slop so a slightly shaky click still counts as a click.
+      if (!drag.moved && Math.hypot(nx - ui.fab.x, ny - ui.fab.y) < 4) return;
+      if (!drag.moved) { drag.moved = true; $fab.classList.add('dragging'); }
+      ui.fab = clampFab({ x: nx, y: ny });
+      placeFab();
+    });
+
+    const end = (e) => {
+      if (!drag || (e.pointerId != null && e.pointerId !== drag.id)) return;
+      const moved = drag.moved;
+      drag = null;
+      $fab.classList.remove('dragging');
+      try { $fab.releasePointerCapture(e.pointerId); } catch { /* already gone */ }
+      if (moved) { suppressClick = true; saveUI(); }
+    };
+    $fab.addEventListener('pointerup', end);
+    $fab.addEventListener('pointercancel', end);
+
+    // Click still drives the toggle, so the keyboard path keeps working; a drag
+    // just swallows the click that follows it.
+    $fab.onclick = () => {
+      if (suppressClick) { suppressClick = false; return; }
+      togglePanel();
+    };
+
+    // Double-click returns it to the corner if it gets lost.
+    $fab.ondblclick = () => { ui.fab = defaultFabPos(); saveUI(); placeFab(); };
+  }
+
   function mount() {
     if (root) return;
     const host = el('div');
@@ -1262,18 +1362,20 @@
     const wrap = el('div', 'wrap');
     $toasts = el('div', 'toasts');
 
-    const fab = el('button', 'fab', '📈');
-    fab.title = 'Market Watch (Alt+M)';
-    fab.onclick = () => togglePanel();
+    $fab = el('button', 'fab', '📈');
+    $fab.title = 'Market Watch (Alt+M) — drag to move, double-click to reset';
 
     $panel = el('div', 'panel');
     $panel.style.display = 'none';
 
-    wrap.append($toasts, $panel, fab);
+    wrap.append($toasts, $panel, $fab);
     root.append(style, wrap);
     document.documentElement.append(host);
 
     buildSkeleton();
+    placeFab();
+    makeDraggable();
+    window.addEventListener('resize', placeFab);
     if (ui.open) togglePanel(true);
   }
 
@@ -1281,7 +1383,7 @@
     ui.open = typeof force === 'boolean' ? force : !ui.open;
     saveUI();
     $panel.style.display = ui.open ? 'flex' : 'none';
-    if (ui.open) { lastStructSig = ''; refresh(); }
+    if (ui.open) { placePanel(); lastStructSig = ''; refresh(); }
   }
 
   window.addEventListener('keydown', (e) => {
