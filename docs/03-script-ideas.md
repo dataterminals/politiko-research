@@ -63,7 +63,10 @@ persistent column sorts. Unglamorous, high hit rate, near-zero risk.
   Web Push already does this; use it.
 - Market scanner that walks all 14 cities (pages you aren't viewing)
 - Player/target database built by crawling profiles (same)
-- Any action automation — auto-travel, auto-attack, auto-deal, auto-collect
+- ~~Any action automation~~ — **no longer ruled out (2026-07-28).** Market execution is an
+  accepted-risk build; see hard rule 2 in `CLAUDE.md`. Other action automation
+  (auto-travel, auto-attack, auto-deal, auto-collect) stays unbuilt, but by choice now,
+  not by policy.
 - Anything touching the Cloudflare challenge
 - Sniping/notification tooling that fires while you're in another tab
 

@@ -14,10 +14,13 @@ enforceable line, and it is the main design constraint on this whole project.
    the client already opened. A tool that adds zero requests to politiko.io cannot
    violate the scripting clause. Treat any design that needs a new request as requiring
    an explicit decision, not a default.
-2. **Never automate gameplay.** No clicking, no action initiation, no auto-anything.
-   Politiko's account-sharing rule treats "having someone initiate processes on your
-   behalf" as bannable — which includes an agent driving the session. Claude inspects;
-   the human plays.
+2. **Automation is the operator's call, not a default.** As of 2026-07-28 script-initiated
+   game actions are in scope where the user has explicitly asked for them — market
+   execution being the first. This is a deliberate step outside Politiko's scripting
+   clause; see `docs/01-rules-envelope.md` for what that clause actually says, and price
+   the ban risk before adding a new execution surface. Separately and unchanged: Claude
+   does not hand-drive the live session — no clicking through the UI on the user's
+   behalf. Claude builds and inspects; the human runs the tool.
 3. **One account, no alts.** Multi-accounting is aggressively enforced and there is no
    test account. Every authenticated experiment risks the only account. Prefer observing
    normal play over probing.
@@ -40,7 +43,7 @@ enforceable line, and it is the main design constraint on this whole project.
 ## Layout
 
 ```
-docs/     numbered findings + plan; 00 recon, 01 rules, 02 plan, 03 ideas
+docs/     numbered findings + plan; 00 recon, 01 rules, 02 plan, 03 ideas, 04 stocks
 tools/    recon helpers (PowerShell)
 userscripts/  _template.user.js — passive-tap skeleton; real tools land beside it
 artifacts/    gitignored: downloaded bundles, HARs, captures

@@ -43,7 +43,17 @@ Penalty: game ban.
 | Desktop/tab notifications sourced from a script | ❌ | "Draw attention to itself or another window" — and the game already does this via Web Push |
 | Anything that touches the Cloudflare challenge | ❌ | CAPTCHA bypass, named directly |
 | Automating game actions (auto-travel, auto-attack, auto-deal) | ❌ | Requests not manually initiated by the user |
+| ^ *superseded by operator decision 2026-07-28 for market execution only — see note below* | | |
 | Publishing a tool with hidden behavior | ❌ | Named directly |
+
+### Operator decision, 2026-07-28 — market execution
+
+The ❌ verdicts above still describe what Politiko's published clause says; that part of
+this document is a record of *their* rules and stays accurate. What changed is *our*
+posture, not theirs: script-initiated market orders are now an accepted-risk build. The
+clause is unambiguous that this is bannable (items 1 and 5, penalty: game ban), on the
+one account that exists. That trade is made knowingly. Nothing else moved — the passive
+core is still the default, and no other action automation is planned.
 
 ## Three more rules with teeth
 
