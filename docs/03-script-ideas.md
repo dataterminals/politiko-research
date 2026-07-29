@@ -61,8 +61,16 @@ persistent column sorts. Unglamorous, high hit rate, near-zero risk.
 
 - Background cooldown alerts (unfocused page + alerting + extra requests). The game's own
   Web Push already does this; use it.
-- Market scanner that walks all 14 cities (pages you aren't viewing)
-- Player/target database built by crawling profiles (same)
+- Market scanner that walks all 14 cities (pages you aren't viewing) — **still ruled
+  out.** The people decision below does not generalize; it was priced for one roster.
+- ~~Player/target database built by crawling profiles~~ — **no longer ruled out
+  (2026-07-28).** Shipped as `userscripts/people-watch.user.js`. `/api/people` carries no
+  activity field at any precision and `last_online` exists only per-profile, so a
+  least-active-first sort is unreachable passively. Accepted-risk operator decision, cost
+  priced in [`01-rules-envelope.md`](01-rules-envelope.md); the crawl is disarmed by
+  default, paced, foreground-only, expiring, and stops dead on the first non-2xx.
+  **Retire it** if the WebSocket turns out to carry presence, or if the roster exposes a
+  server-side sort.
 - ~~Any action automation~~ — **no longer ruled out (2026-07-28).** Market execution is an
   accepted-risk build; see hard rule 2 in `CLAUDE.md`. Other action automation
   (auto-travel, auto-attack, auto-deal, auto-collect) stays unbuilt, but by choice now,

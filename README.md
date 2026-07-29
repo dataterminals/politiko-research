@@ -57,8 +57,14 @@ Recon logged out, plus one measured pass over an authenticated screen. Known so 
   `stocks/instruments/<SYMBOL>` carrying `bid`/`ask`/`price`/`spread_bps`/`float_shares`/
   `ipo_game_day`, read passively off the player's own open page
 
-Full detail with evidence: [`docs/00-recon-baseline.md`](docs/00-recon-baseline.md) and
-[`docs/04-stocks-surface.md`](docs/04-stocks-surface.md).
+- The **people roster** is paginated ten at a time (292 players, 30 pages) and carries
+  only `username` / `status` / `in_city` — no activity field at any precision. Last-online
+  lives on the per-player profile as an exact microsecond timestamp, which the UI rounds
+  to whole days
+
+Full detail with evidence: [`docs/00-recon-baseline.md`](docs/00-recon-baseline.md),
+[`docs/04-stocks-surface.md`](docs/04-stocks-surface.md) and
+[`docs/05-people-surface.md`](docs/05-people-surface.md).
 
 ## Next
 
@@ -77,6 +83,7 @@ docs/                 numbered findings and plans
 tools/                fetch-bundles.ps1 — one-shot static-asset pull for local grepping
 userscripts/          _template.user.js — passive-tap skeleton, SPA-aware
                       market-watch.user.js — market monitor, thresholds, alerts
+                      people-watch.user.js — player ledger, least-active-first sort
 artifacts/            gitignored: downloaded bundles, HARs, captures
 CLAUDE.md             working rules for agent sessions
 ```
@@ -87,12 +94,20 @@ One account, no alts, no probing endpoints to see what they do, exploits get rep
 rather than tested, and nothing from an authenticated session goes in git. The rules are
 in [`CLAUDE.md`](CLAUDE.md) and they're there because the penalties are real.
 
-**Changed 2026-07-28:** script-initiated market orders are now in scope. That is a
-deliberate departure from the passive-only posture the rest of this repo was built on,
-and from Politiko's scripting clause, which is unambiguous that it's bannable. The
-reasoning and the accepted risk are recorded in
+**Changed 2026-07-28.** Two deliberate departures from the passive-only posture the rest
+of this repo was built on, and from Politiko's scripting clause, which is unambiguous
+that both are bannable. Each was taken knowingly, with the cost priced:
+
+1. **Script-initiated market orders** — `market-watch` can place buys and sells.
+2. **Roster backfill** — `people-watch` crawls `/api/people` and `/api/users/<name>` to
+   build a least-active-first player ledger, because the roster carries no activity field
+   and `last_online` exists only per-profile. ~322 requests, recurring. This is the
+   larger of the two risks: market orders look like play, enumerating every player does
+   not.
+
+Reasoning and mitigations for both are in
 [`docs/01-rules-envelope.md`](docs/01-rules-envelope.md); that file still describes
-Politiko's published rules accurately, because it's a record of theirs, not ours. Nothing
-else moved — the passive core is still the default and no other action automation is
-planned.
+Politiko's published rules accurately, because it's a record of theirs, not ours. The
+passive core remains the default — every other tool here adds zero requests, both
+crawlers ship disarmed, and arming is explicit and expiring.
 </content>
