@@ -1,3 +1,5 @@
+Devman note: Please don't ban me I made very sure to stay within the EULA/TOS and this repository exists so that other people can make >>non rule-breaking<< companion apps for the game <3 
+
 # politiko-research
 
 Research into browser-runtime tooling — userscripts, overlays, passive data taps — for
