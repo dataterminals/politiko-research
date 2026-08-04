@@ -86,6 +86,7 @@ tools/                fetch-bundles.ps1 — one-shot static-asset pull for local
 userscripts/          _template.user.js — passive-tap skeleton, SPA-aware
                       market-watch.user.js — market monitor, thresholds, alerts
                       people-watch.user.js — player ledger, least-active-first sort
+                      time-watch.user.js — reads /api/time, emits a Time Wire calibration code
 artifacts/            gitignored: downloaded bundles, HARs, captures
 CLAUDE.md             working rules for agent sessions
 ```
