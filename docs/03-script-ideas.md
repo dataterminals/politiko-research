@@ -64,7 +64,7 @@ persistent column sorts. Unglamorous, high hit rate, near-zero risk.
 - Market scanner that walks all 14 cities (pages you aren't viewing) — **still ruled
   out.** The people decision below does not generalize; it was priced for one roster.
 - ~~Player/target database built by crawling profiles~~ — **no longer ruled out
-  (2026-07-28).** Shipped as `userscripts/people-watch.user.js`. `/api/people` carries no
+  (2026-07-28).** Built and shipped separately. `/api/people` carries no
   activity field at any precision and `last_online` exists only per-profile, so a
   least-active-first sort is unreachable passively. Accepted-risk operator decision, cost
   priced in [`01-rules-envelope.md`](01-rules-envelope.md); the crawl is disarmed by

@@ -2,7 +2,7 @@
 
 Measured **2026-07-28**, from an authenticated session, by reading responses the app
 fetched on its own while the stock market page was open in front of the player.
-Evidence: the `market-watch` userscript's passive tap, panel capture. No requests were
+Evidence: a passive tap and panel capture. No requests were
 originated, no endpoint was probed, no page the player wasn't viewing was touched.
 
 This closes the biggest gap in [`00-recon-baseline.md`](00-recon-baseline.md), which was

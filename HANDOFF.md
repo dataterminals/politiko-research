@@ -1,7 +1,7 @@
 # Handoff — 2026-07-28
 
 > **Partly superseded later the same day.** Two things below no longer hold: something
-> *has* been built (`userscripts/market-watch.user.js`), and the "Claude must not play"
+> *has* been built, and the "Claude must not play"
 > trap has been narrowed — script-initiated market orders are now in scope by operator
 > decision, though Claude still doesn't hand-drive the session. See `CLAUDE.md` hard
 > rule 2, `docs/01-rules-envelope.md`, and `docs/04-stocks-surface.md`. The rest of this

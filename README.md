@@ -84,12 +84,12 @@ Picking up cold: [`HANDOFF.md`](HANDOFF.md)
 docs/                 numbered findings and plans
 tools/                fetch-bundles.ps1 — one-shot static-asset pull for local grepping
 userscripts/          _template.user.js — passive-tap skeleton, SPA-aware
-                      market-watch.user.js — market monitor, thresholds, alerts
-                      people-watch.user.js — player ledger, least-active-first sort
-                      time-watch.user.js — reads /api/time, emits a Time Wire calibration code
 artifacts/            gitignored: downloaded bundles, HARs, captures
 CLAUDE.md             working rules for agent sessions
 ```
+
+Tools that came out of this research live in their own repositories; this one keeps the
+findings, the rules analysis, and the skeleton they were built on.
 
 ## Conduct
 
@@ -97,20 +97,15 @@ One account, no alts, no probing endpoints to see what they do, exploits get rep
 rather than tested, and nothing from an authenticated session goes in git. The rules are
 in [`CLAUDE.md`](CLAUDE.md) and they're there because the penalties are real.
 
-**Changed 2026-07-28.** Two deliberate departures from the passive-only posture the rest
-of this repo was built on, and from Politiko's scripting clause, which is unambiguous
-that both are bannable. Each was taken knowingly, with the cost priced:
+**Changed 2026-07-28.** The passive-only posture the rest of this repo was built on now
+admits deliberate exceptions, where tooling originates requests rather than only consuming
+what the client already holds. Politiko's scripting clause is unambiguous that this is
+bannable, and each exception was taken knowingly with the cost priced.
 
-1. **Script-initiated market orders** — `market-watch` can place buys and sells.
-2. **Roster backfill** — `people-watch` crawls `/api/people` and `/api/users/<name>` to
-   build a least-active-first player ledger, because the roster carries no activity field
-   and `last_online` exists only per-profile. ~322 requests, recurring. This is the
-   larger of the two risks: market orders look like play, enumerating every player does
-   not.
-
-Reasoning and mitigations for both are in
+Reasoning and mitigations are in
 [`docs/01-rules-envelope.md`](docs/01-rules-envelope.md); that file still describes
 Politiko's published rules accurately, because it's a record of theirs, not ours. The
-passive core remains the default — every other tool here adds zero requests, both
-crawlers ship disarmed, and arming is explicit and expiring.
+passive core remains the default — anything that departs from it ships disarmed, arming is
+explicit and expiring, and each tool states in its own disclosure block exactly what it
+originates.
 </content>

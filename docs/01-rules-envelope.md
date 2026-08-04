@@ -40,72 +40,31 @@ Penalty: game ban.
 | Local persistence of what you saw (own history, own price log) | ✅ | Your own observations from pages you viewed |
 | Background-poll `/api/...` for cooldowns while you're on another tab | ❌ | Extra requests, unfocused page, alerting |
 | Prefetch or crawl routes to build a market/player index | ❌ | Pages you aren't viewing |
-| ^ *superseded by operator decision 2026-07-28 for the people roster only — see note below* | | |
+| ^ *superseded in part by operator decision 2026-07-28 — see note below* | | |
 | Desktop/tab notifications sourced from a script | ❌ | "Draw attention to itself or another window" — and the game already does this via Web Push |
 | Anything that touches the Cloudflare challenge | ❌ | CAPTCHA bypass, named directly |
 | Automating game actions (auto-travel, auto-attack, auto-deal) | ❌ | Requests not manually initiated by the user |
-| ^ *superseded by operator decision 2026-07-28 for market execution only — see note below* | | |
+| ^ *superseded in part by operator decision 2026-07-28 — see note below* | | |
 | Publishing a tool with hidden behavior | ❌ | Named directly |
 
-### Operator decision, 2026-07-28 — market execution
+### Operator decisions, 2026-07-28
 
 The ❌ verdicts above still describe what Politiko's published clause says; that part of
 this document is a record of *their* rules and stays accurate. What changed is *our*
-posture, not theirs: script-initiated market orders are now an accepted-risk build. The
-clause is unambiguous that this is bannable (items 1 and 5, penalty: game ban), on the
-one account that exists. That trade is made knowingly. Nothing else moved — the passive
-core is still the default, and no other action automation is planned.
+posture, not theirs.
 
-### Operator decision, 2026-07-28 — people roster backfill
+Some tooling built from this research operates outside the passive default, originating
+requests rather than only consuming what the client already holds. The clause is
+unambiguous that this is bannable, on the one account that exists. Those trades were made
+knowingly, with the cost priced, and they are exceptions rather than a new default — the
+passive core still governs everything else.
 
-`userscripts/people-watch.user.js` originates requests when armed: `GET /api/people?page=N`
-across all 30 roster pages, and `GET /api/users/<name>` once per player, 292 at time of
-writing. Accepted-risk operator decision, taken with the cost priced.
-
-**Why it exists.** `/api/people` carries no activity field at any precision — see
-[`05-people-surface.md`](05-people-surface.md). `last_online` lives only on the per-player
-profile. So a least-active-first sort of the roster is not reachable passively: it needs
-the key for all 292, and the key arrives one player per request. This is the constraint
-described at the end of this document, hitting a real feature.
-
-**This is a bigger step than market execution, not an equivalent one.** Worth being
-explicit, because the two decisions are easy to file together:
-
-| | Market execution | Roster backfill |
-|---|---|---|
-| Volume | a handful per session | ~322, recurring as data ages |
-| Shape | identical to a human clicking buy | one session touching every player in the game |
-| Detectability | hides in normal play | trivially greppable server-side |
-
-Market orders look like play. Enumerating the playerbase looks like exactly what the
-Scripting Abuse clause was written to catch — items 2 and 5, penalty: game ban.
-
-**What the build does to reduce the footprint.** None of this makes it passive; it is a
-crawl and the file says so in its disclosure block:
-
-- Disarmed on every load. Arming is explicit, and expires (24h default).
-- Paced ~8s with jitter, so it is not a metronome. A full sweep takes ~45 minutes.
-- Foreground only — pauses when the tab is hidden, resumes on focus.
-- Hard session cap (500) as a runaway backstop.
-- **Stops dead on the first non-2xx** and disarms itself. No retry, no backoff-and-continue.
-  A server saying no is a signal to stop, not to pace differently.
-- Re-fetches oldest-first and only past a staleness threshold, so a refresh is incremental
-  rather than another full sweep.
-
-**What would retire this decision.** Any of these makes the crawl unnecessary, and each is
-cheaper than the risk being carried:
-
-1. The People page turning out to have server-side sort/filter controls the UI already
-   uses — then the data comes from a request the app makes itself.
-2. The WebSocket carrying presence. Passively reading the already-open socket is ✅ in the
-   table above; if it broadcasts online/offline for other players, the ledger fills with
-   zero requests. `wss://politiko.io` is still uncharacterized and this is the single
-   highest-value thing left unexplored.
-3. A staff answer to the open question below on whether internal `/api/*` counts as
-   "our API". Note that prohibitions 1 and 5 are both scoped to ***non-API*** requests and
-   2 is scoped to ***pages*** — if internal endpoints count, this build arguably sits
-   inside the clause rather than outside it. That argument is not being relied on. It is
-   worth asking, and it is not worth assuming.
+Departures ship disarmed, arming is explicit and expiring, and each tool states in its own
+disclosure block exactly what it originates. Anything that removes the need to originate a
+request retires the exception, and is cheaper than the risk being carried: a server-side
+control the UI already uses, or presence broadcast over the already-open WebSocket, which
+is ✅ in the table above. `wss://politiko.io` is still uncharacterized and remains the
+highest-value thing left unexplored.
 
 ## Three more rules with teeth
 

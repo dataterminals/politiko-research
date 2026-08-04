@@ -15,10 +15,10 @@ enforceable line, and it is the main design constraint on this whole project.
    violate the scripting clause. Treat any design that needs a new request as requiring
    an explicit decision, not a default.
 2. **Automation is the operator's call, not a default.** As of 2026-07-28 script-initiated
-   game actions are in scope where the user has explicitly asked for them — market
-   execution being the first. This is a deliberate step outside Politiko's scripting
-   clause; see `docs/01-rules-envelope.md` for what that clause actually says, and price
-   the ban risk before adding a new execution surface. Separately and unchanged: Claude
+   game actions are in scope where the user has explicitly asked for them. This is a
+   deliberate step outside Politiko's scripting clause; see `docs/01-rules-envelope.md`
+   for what that clause actually says, and price the ban risk before adding a new
+   execution surface. Separately and unchanged: Claude
    does not hand-drive the live session — no clicking through the UI on the user's
    behalf. Claude builds and inspects; the human runs the tool.
 3. **One account, no alts.** Multi-accounting is aggressively enforced and there is no
@@ -45,7 +45,7 @@ enforceable line, and it is the main design constraint on this whole project.
 ```
 docs/     numbered findings + plan; 00 recon, 01 rules, 02 plan, 03 ideas, 04 stocks
 tools/    recon helpers (PowerShell)
-userscripts/  _template.user.js — passive-tap skeleton; real tools land beside it
+userscripts/  _template.user.js — passive-tap skeleton; tools ship in their own repos
 artifacts/    gitignored: downloaded bundles, HARs, captures
 ```
 
