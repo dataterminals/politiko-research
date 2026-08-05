@@ -88,6 +88,9 @@ the executor returns 401 and says so rather than reading the token.
   response body in DevTools settles it.
 - A shared `ipo_game_day` across all instruments suggests the market was seeded in one
   batch at world start rather than growing by individual IPOs.
+  *Refined 2026-08-03:* the batch part holds, the world-start part doesn't — decoding
+  1408 through the game calendar ([`06-time-surface.md`](06-time-surface.md)) puts the
+  IPO at Nov 14, Y4 ≈ real 2026-07-08, about four weeks after world start.
 - `spread_bps` being static per instrument implies the spread is a fixed per-listing
   parameter, not a live function of order flow — so `bid`/`ask` are probably derived from
   `price` ± half the spread rather than being a real book.

@@ -8,7 +8,7 @@
   poked at live.
 
   Rules note: this makes non-API requests to politiko.io, which the Scripting Abuse
-  clause permits only when "directly and manually initiated by the user" — that is what
+  clause permits only when "directly and manually initiated by the user" -- that is what
   running this script by hand is. It is deliberately one-shot: no loop, no schedule, no
   polling, no crawling of game routes. It touches only static build assets, never game
   state. Do not wire it into anything automated. See docs/01-rules-envelope.md.
@@ -80,7 +80,7 @@ while ($queue.Count -gt 0) {
     }
     catch {
         $fail++
-        Write-Warning "  FAIL $name — $($_.Exception.Message)"
+        Write-Warning "  FAIL $name - $($_.Exception.Message)"
     }
 }
 

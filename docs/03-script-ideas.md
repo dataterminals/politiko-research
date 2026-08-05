@@ -37,6 +37,13 @@ The hacking screen is a real command line with ~72 commands. An on-page referenc
 history, and trace-budget counter — no automation, just stop making the player
 memorize the manual.
 
+### Game-clock calibrator — **shipped 2026-08-03** as `time-watch.user.js`
+Passive tap on the `/api/time` responses the app already polls every 60 s. Records
+`{realMs, gameSeconds, acceleration}`, shows the live game clock, measures the true
+acceleration against its own baseline, and renders the month schedule / next-September
+countdown in local time. Zero added requests. Findings that motivated it:
+[`06-time-surface.md`](06-time-surface.md).
+
 ### Wire-feed filter
 The live wire is firehose-shaped. Client-side filter/highlight on the events already
 streaming into the page you're viewing (your faction, your city, your rivals). Purely a
