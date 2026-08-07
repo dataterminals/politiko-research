@@ -1,9 +1,13 @@
 // ==UserScript==
 // @name         Politiko — Align Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.0
+// @version      0.1.1
 // @description  Mirrors your character's political-compass chart from the profile screen onto the home page: last measured social/economic axes, every change since you installed it, and the projected effect of alignment actions you have taken since that reading. Passive — zero added requests.
 // @author       dataterminals
+// @homepageURL  https://github.com/dataterminals/politiko-research
+// @supportURL   https://github.com/dataterminals/politiko-research/issues
+// @updateURL    https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js
+// @downloadURL  https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js
 // @match        https://politiko.io/*
 // @run-at       document-start
 // @grant        none

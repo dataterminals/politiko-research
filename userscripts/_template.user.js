@@ -4,12 +4,21 @@
 // @version      0.1.0
 // @description  <one line — state plainly what it reads and what it shows; clause 6 requires full disclosure>
 // @author       dataterminals
+// @homepageURL  https://github.com/dataterminals/politiko-research
+// @supportURL   https://github.com/dataterminals/politiko-research/issues
+// @updateURL    https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/<NAME>.user.js
+// @downloadURL  https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/<NAME>.user.js
 // @match        https://politiko.io/*
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
 
 /*
+ * `@grant none` above is load-bearing, not a leftover default. Under any other grant
+ * both Tampermonkey and Violentmonkey hand the script a sandboxed `window`, so the
+ * fetch wrap below patches the sandbox's fetch and the page's real traffic never
+ * passes through it — the tap silently sees nothing.
+ *
  * DISCLOSURE (Politiko rules, Scripting Abuse clause)
  *
  *   Reads:    <what, from where — DOM of the page you are viewing / responses the app

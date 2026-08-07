@@ -1,9 +1,13 @@
 // ==UserScript==
 // @name         Politiko — Time Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.0
+// @version      0.3.1
 // @description  Passive game-clock calibrator: reads the /api/time responses the app already polls, shows the real↔game time mapping, month schedule, and next-September countdown in your local timezone. Zero added requests.
 // @author       dataterminals
+// @homepageURL  https://github.com/dataterminals/politiko-research
+// @supportURL   https://github.com/dataterminals/politiko-research/issues
+// @updateURL    https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js
+// @downloadURL  https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js
 // @match        https://politiko.io/*
 // @run-at       document-start
 // @grant        none
