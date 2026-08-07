@@ -14,13 +14,16 @@ enforceable line, and it is the main design constraint on this whole project.
    the client already opened. A tool that adds zero requests to politiko.io cannot
    violate the scripting clause. Treat any design that needs a new request as requiring
    an explicit decision, not a default.
-2. **Automation is the operator's call, not a default.** As of 2026-07-28 script-initiated
-   game actions are in scope where the user has explicitly asked for them. This is a
-   deliberate step outside Politiko's scripting clause; see `docs/01-rules-envelope.md`
-   for what that clause actually says, and price the ban risk before adding a new
-   execution surface. Separately and unchanged: Claude
-   does not hand-drive the live session — no clicking through the UI on the user's
-   behalf. Claude builds and inspects; the human runs the tool.
+2. **Automation is the operator's call, and the answer is currently no.** Script-initiated
+   game actions were in scope from 2026-07-28; as of **2026-08-07 nothing ships one** —
+   both exceptions were deleted rather than disabled (`docs/01-rules-envelope.md`).
+   Before proposing another, note what retired these two: in both cases the thing the
+   automation bought was tedium, and a shortcut the operator presses bought it just as
+   well. **Reach for that first.** A sized alert with a jump button, or a next/previous
+   walk, costs one keypress and stays inside the clause; price the ban risk properly
+   before concluding a request is genuinely needed. Separately and unchanged: Claude does
+   not hand-drive the live session — no clicking through the UI on the user's behalf.
+   Claude builds and inspects; the human runs the tool.
 3. **One account, no alts.** Multi-accounting is aggressively enforced and there is no
    test account. Every authenticated experiment risks the only account. Prefer observing
    normal play over probing.

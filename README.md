@@ -116,10 +116,11 @@ deliberate exceptions, where tooling originates requests rather than only consum
 client already holds. Politiko's scripting clause is unambiguous that this is bannable, and
 each exception was taken knowingly with the cost priced.
 
-The largest of them — a profile crawler — was **retired** on 2026-08-07: `people-watch` 1.0.0
-deletes it outright in favour of a keyboard walk along the roster, where every fetch is a
-navigation the operator asked for. One departure remains, an order-execution seam that ships
-disabled.
+Both were **retired on 2026-08-07**. `people-watch` 1.0.0 deletes its profile crawler in
+favour of a keyboard walk along the roster; `market-watch` 1.0.0 deletes its order-execution
+seam in favour of an alert that sizes the trade and hands you a shortcut to the stocks
+screen. In each case every fetch is now a navigation the operator asked for, and the repo is
+back to originating nothing.
 
 Reasoning and mitigations are in
 [`docs/01-rules-envelope.md`](docs/01-rules-envelope.md); that file still describes

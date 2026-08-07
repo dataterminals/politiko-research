@@ -67,8 +67,17 @@ roster, so filling the ledger is one keypress per player and every fetch is a na
 the operator asked for. It turns out the thing the crawl was buying was not data the
 passive surface couldn't reach, only the tedium of reaching it.
 
-Still outstanding: `market-watch` carries an order-execution seam that ships disabled. It
-is the last departure, and the same retirement rule applies to it.
+**`market-watch`'s order-execution seam went the same day**, under the same rule and to the
+same pattern: sizing a trade is arithmetic on data the game already sent, placing one is a
+request, and the line belongs between them. A buy/sell rule now produces an alert with the
+size worked out and a button to the stocks screen; the operator places the trade. The seam,
+its arming switch and the write-capture that fed it are deleted, with a test that fails the
+build if any of it returns.
+
+**As of 2026-08-07 there are no outstanding departures.** Every tool in and around this repo
+is back inside the passive envelope, and the two exceptions taken in July are both closed —
+neither because the risk was reconsidered, but because in both cases the thing being bought
+turned out to be tedium-relief that a keypress could supply instead.
 
 The cheaper unlocks named in July are still the ones worth wanting — a server-side control
 the UI already uses, or presence broadcast over the already-open WebSocket, which is ✅ in
