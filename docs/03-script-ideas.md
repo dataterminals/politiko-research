@@ -52,6 +52,15 @@ plotted, and — since alignment is a running average — what one more ±3 acti
 Alignment-affecting actions submitted since the last reading are logged and projected as a
 range. Zero added requests. Findings: [`07-alignment-surface.md`](07-alignment-surface.md).
 
+### Comms mover — **shipped 2026-08-07** as `comms-move.user.js`
+The game's Comms dock is fixed to the bottom-right (`.ch-overlay`, 320×420, z-index 9999)
+and owns that corner outright, which is what every other panel has to plan around. This
+adds a drag bar above it and remembers where you put it. The most conservative thing in the
+repo: no network code at all, not even a tap — DOM of the page you're on, one localStorage
+key. Its one side effect is disclosed in the header: an inline position beats the game's
+own `body.store-drawer-open` rule, so a parked dock stops making way for the store drawer
+until you double-click the bar to hand it back.
+
 ### Wire-feed filter
 The live wire is firehose-shaped. Client-side filter/highlight on the events already
 streaming into the page you're viewing (your faction, your city, your rivals). Purely a

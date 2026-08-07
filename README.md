@@ -92,6 +92,7 @@ tools/                fetch-bundles.ps1 — one-shot static-asset pull for local
 userscripts/          _template.user.js — passive-tap skeleton, SPA-aware, PANEL KIT
                       time-watch.user.js  — game-clock calibrator
                       align-watch.user.js — your political compass on the home page
+                      comms-move.user.js  — makes the game's Comms dock draggable
 artifacts/            gitignored: downloaded bundles, HARs, captures
 CLAUDE.md             working rules for agent sessions
 ```

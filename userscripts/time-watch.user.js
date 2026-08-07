@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Time Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.1
+// @version      0.4.0
 // @description  Passive game-clock calibrator: reads the /api/time responses the app already polls, shows the real↔game time mapping, month schedule, and next-September countdown in your local timezone. Zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -175,12 +175,18 @@
   let drag = null, fabDrag = null;
 
   const CSS = `
-    .pktw-fab { position: fixed; right: 12px; bottom: 64px; z-index: 2147482000;
+    /* Default corner deliberately avoids bottom-right: the game's own Comms dock is
+       fixed there (right: 20px, bottom: 0, 320×420), so anything parked in that corner
+       lands on top of it. Bottom-left is align-watch's. That leaves the top-left, and
+       the panel is anchored from the top rather than the bottom because it is ~500px
+       tall — bottom-anchoring a panel that size pushes its head off a 720px screen.
+       Drag it anywhere you like; it remembers. */
+    .pktw-fab { position: fixed; left: 12px; top: 12px; z-index: 2147482000;
       width: 34px; height: 34px; border-radius: 17px; border: 1px solid #3f3f46;
       background: #18181b; color: #e4e4e7; font-size: 16px; line-height: 32px;
       text-align: center; cursor: pointer; user-select: none; opacity: .85; }
     .pktw-fab:hover { opacity: 1; }
-    .pktw-panel { position: fixed; right: 12px; bottom: 104px; z-index: 2147482000;
+    .pktw-panel { position: fixed; left: 12px; top: 52px; z-index: 2147482000;
       width: min(340px, calc(100vw - 24px)); max-height: 70vh;
       display: flex; flex-direction: column; border: 1px solid #3f3f46;
       border-radius: 8px; background: #09090bf2; color: #e4e4e7;
@@ -310,7 +316,14 @@
   };
 
   let renderTimer = null;
-  const scheduleRender = () => { if (!renderTimer) renderTimer = setTimeout(() => { renderTimer = null; render(); }, 50); };
+  /**
+   * render() decides the panel's height, so nothing may draw without re-checking that
+   * the header is still on screen afterwards. The panel starts small and grows once
+   * the first /api/time sample lands — bottom-anchored, that growth pushes its head
+   * straight off the top of the viewport, and the drag handle with it.
+   */
+  const draw = () => { render(); drag?.fit(); };
+  const scheduleRender = () => { if (!renderTimer) renderTimer = setTimeout(() => { renderTimer = null; draw(); }, 50); };
 
   // ===========================================================================
   // PANEL KIT v1 — shared verbatim block, see userscripts/_template.user.js.
@@ -474,9 +487,9 @@
   // and not while the pointer is over the panel (so the copy button isn't rebuilt
   // out from under a click).
   setInterval(() => {
-    if (!document.hidden && ui.open && !(panel && panel.matches(':hover'))) render();
+    if (!document.hidden && ui.open && !(panel && panel.matches(':hover'))) draw();
   }, 1000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) draw(); });
 
   const boot = () => { mount(); log('ready'); };
   if (document.readyState === 'loading') {
