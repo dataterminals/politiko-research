@@ -87,14 +87,15 @@ persistent column sorts. Unglamorous, high hit rate, near-zero risk.
   Web Push already does this; use it.
 - Market scanner that walks all 14 cities (pages you aren't viewing) — **still ruled
   out.** The people decision below does not generalize; it was priced for one roster.
-- ~~Player/target database built by crawling profiles~~ — **no longer ruled out
-  (2026-07-28).** Built and shipped separately. `/api/people` carries no
-  activity field at any precision and `last_online` exists only per-profile, so a
-  least-active-first sort is unreachable passively. Accepted-risk operator decision, cost
-  priced in [`01-rules-envelope.md`](01-rules-envelope.md); the crawl is disarmed by
-  default, paced, foreground-only, expiring, and stops dead on the first non-2xx.
-  **Retire it** if the WebSocket turns out to carry presence, or if the roster exposes a
-  server-side sort.
+- **Player/target database built by crawling profiles** — unruled-out 2026-07-28,
+  **ruled back out 2026-08-07**, and the round trip is the useful part. `/api/people`
+  carries no activity field at any precision and `last_online` exists only per-profile, so
+  a least-active-first sort genuinely cannot be *filled* passively — which is what
+  justified the crawl. But the ledger never needed the crawl, only the profiles, and those
+  arrive free from profiles you open. `people-watch` 1.0.0 deletes the crawler and ships a
+  next/previous walk instead: one keypress per player, every fetch a navigation the
+  operator asked for. The exception was retired because it turned out to be buying
+  tedium-relief, not reach.
 - ~~Any action automation~~ — **no longer ruled out (2026-07-28).** Market execution is an
   accepted-risk build; see hard rule 2 in `CLAUDE.md`. Other action automation
   (auto-travel, auto-attack, auto-deal, auto-collect) stays unbuilt, but by choice now,

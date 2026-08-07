@@ -40,31 +40,40 @@ Penalty: game ban.
 | Local persistence of what you saw (own history, own price log) | ✅ | Your own observations from pages you viewed |
 | Background-poll `/api/...` for cooldowns while you're on another tab | ❌ | Extra requests, unfocused page, alerting |
 | Prefetch or crawl routes to build a market/player index | ❌ | Pages you aren't viewing |
-| ^ *superseded in part by operator decision 2026-07-28 — see note below* | | |
+| ^ *departed from 2026-07-28, **retired 2026-08-07** — see note below* | | |
 | Desktop/tab notifications sourced from a script | ❌ | "Draw attention to itself or another window" — and the game already does this via Web Push |
 | Anything that touches the Cloudflare challenge | ❌ | CAPTCHA bypass, named directly |
 | Automating game actions (auto-travel, auto-attack, auto-deal) | ❌ | Requests not manually initiated by the user |
 | ^ *superseded in part by operator decision 2026-07-28 — see note below* | | |
 | Publishing a tool with hidden behavior | ❌ | Named directly |
 
-### Operator decisions, 2026-07-28
+### Operator decisions, 2026-07-28 — and what became of them
 
 The ❌ verdicts above still describe what Politiko's published clause says; that part of
 this document is a record of *their* rules and stays accurate. What changed is *our*
 posture, not theirs.
 
-Some tooling built from this research operates outside the passive default, originating
-requests rather than only consuming what the client already holds. The clause is
-unambiguous that this is bannable, on the one account that exists. Those trades were made
-knowingly, with the cost priced, and they are exceptions rather than a new default — the
-passive core still governs everything else.
+On 2026-07-28 some tooling was allowed outside the passive default, originating requests
+rather than only consuming what the client already holds. The clause is unambiguous that
+this is bannable, on the one account that exists. Those trades were made knowingly, with
+the cost priced, as exceptions rather than a new default. The rule attached to them was:
+*anything that removes the need to originate a request retires the exception, and is
+cheaper than the risk being carried.*
 
-Departures ship disarmed, arming is explicit and expiring, and each tool states in its own
-disclosure block exactly what it originates. Anything that removes the need to originate a
-request retires the exception, and is cheaper than the risk being carried: a server-side
-control the UI already uses, or presence broadcast over the already-open WebSocket, which
-is ✅ in the table above. `wss://politiko.io` is still uncharacterized and remains the
-highest-value thing left unexplored.
+**The profile crawl was retired on 2026-08-07 under exactly that rule.** `people-watch`
+1.0.0 removes the arming system, the queue, the pacing and every request-originating line
+— removed, not disabled. What replaced it costs nothing: a next/previous walk along the
+roster, so filling the ledger is one keypress per player and every fetch is a navigation
+the operator asked for. It turns out the thing the crawl was buying was not data the
+passive surface couldn't reach, only the tedium of reaching it.
+
+Still outstanding: `market-watch` carries an order-execution seam that ships disabled. It
+is the last departure, and the same retirement rule applies to it.
+
+The cheaper unlocks named in July are still the ones worth wanting — a server-side control
+the UI already uses, or presence broadcast over the already-open WebSocket, which is ✅ in
+the table above. `wss://politiko.io` is still uncharacterized and remains the highest-value
+thing left unexplored.
 
 ## Three more rules with teeth
 

@@ -111,10 +111,15 @@ One account, no alts, no probing endpoints to see what they do, exploits get rep
 rather than tested, and nothing from an authenticated session goes in git. The rules are
 in [`CLAUDE.md`](CLAUDE.md) and they're there because the penalties are real.
 
-**Changed 2026-07-28.** The passive-only posture the rest of this repo was built on now
-admits deliberate exceptions, where tooling originates requests rather than only consuming
-what the client already holds. Politiko's scripting clause is unambiguous that this is
-bannable, and each exception was taken knowingly with the cost priced.
+**Changed 2026-07-28, largely undone 2026-08-07.** The passive-only posture briefly admitted
+deliberate exceptions, where tooling originates requests rather than only consuming what the
+client already holds. Politiko's scripting clause is unambiguous that this is bannable, and
+each exception was taken knowingly with the cost priced.
+
+The largest of them — a profile crawler — was **retired** on 2026-08-07: `people-watch` 1.0.0
+deletes it outright in favour of a keyboard walk along the roster, where every fetch is a
+navigation the operator asked for. One departure remains, an order-execution seam that ships
+disabled.
 
 Reasoning and mitigations are in
 [`docs/01-rules-envelope.md`](docs/01-rules-envelope.md); that file still describes
