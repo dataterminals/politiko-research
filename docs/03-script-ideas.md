@@ -44,6 +44,14 @@ acceleration against its own baseline, and renders the month schedule / next-Sep
 countdown in local time. Zero added requests. Findings that motivated it:
 [`06-time-surface.md`](06-time-surface.md).
 
+### Alignment mirror — **shipped 2026-08-06** as `align-watch.user.js`
+The political compass only exists on `ProfilePage`, and the home page never fetches it, so
+the panel mirrors the last `/api/users/<you>` response the app pulled when you opened your
+own profile: the chart redrawn from the client's own constants, a change log with the trail
+plotted, and — since alignment is a running average — what one more ±3 action would move.
+Alignment-affecting actions submitted since the last reading are logged and projected as a
+range. Zero added requests. Findings: [`07-alignment-surface.md`](07-alignment-surface.md).
+
 ### Wire-feed filter
 The live wire is firehose-shaped. Client-side filter/highlight on the events already
 streaming into the page you're viewing (your faction, your city, your rivals). Purely a
@@ -89,10 +97,16 @@ persistent column sorts. Unglamorous, high hit rate, near-zero risk.
 
 ## Delivery format
 
-Userscript first — Violentmonkey/Tampermonkey, single file, no build step, trivially
-auditable by anyone (which matters for clause 6's disclosure requirement). A DevTools
-snippet is fine for throwaway inspection. An extension is only worth it if we outgrow
-the userscript sandbox, and it raises the disclosure bar. Note that the app is an
-installable PWA — check whether userscripts run in the installed-standalone window, or
-only in a normal tab.
-</content>
+Userscript first — Tampermonkey (what this operator runs) or Violentmonkey, single file,
+no build step, trivially auditable by anyone (which matters for clause 6's disclosure
+requirement). A DevTools snippet is fine for throwaway inspection. An extension is only
+worth it if we outgrow the userscript sandbox, and it raises the disclosure bar. Note that
+the app is an installable PWA — check whether userscripts run in the installed-standalone
+window, or only in a normal tab.
+
+**`@grant none` is load-bearing, not a default.** Every tool here works by wrapping
+`window.fetch` to read responses the app already asked for. Under any `@grant` other than
+`none`, both managers hand the script a sandboxed `window`, so the wrap lands on the
+sandbox's `fetch` and the page's real traffic never passes through it — the tap silently
+sees nothing and the panel just sits there waiting. If a tool ever needs a `GM_*` API,
+that trade has to be made deliberately.

@@ -64,9 +64,15 @@ Recon logged out, plus one measured pass over an authenticated screen. Known so 
   lives on the per-player profile as an exact microsecond timestamp, which the UI rounds
   to whole days
 
+- **Political alignment is a profile-only surface.** `social_axis` appears in exactly one
+  of the ~80 route chunks; no other screen — the home page included — fetches or renders
+  it. Each axis is a running average over a per-axis action count, so a new action's
+  influence decays as `1/(n+1)`
+
 Full detail with evidence: [`docs/00-recon-baseline.md`](docs/00-recon-baseline.md),
-[`docs/04-stocks-surface.md`](docs/04-stocks-surface.md) and
-[`docs/05-people-surface.md`](docs/05-people-surface.md).
+[`docs/04-stocks-surface.md`](docs/04-stocks-surface.md),
+[`docs/05-people-surface.md`](docs/05-people-surface.md) and
+[`docs/07-alignment-surface.md`](docs/07-alignment-surface.md).
 
 ## Next
 
@@ -83,13 +89,20 @@ Picking up cold: [`HANDOFF.md`](HANDOFF.md)
 ```
 docs/                 numbered findings and plans
 tools/                fetch-bundles.ps1 — one-shot static-asset pull for local grepping
-userscripts/          _template.user.js — passive-tap skeleton, SPA-aware
+userscripts/          _template.user.js — passive-tap skeleton, SPA-aware, PANEL KIT
+                      time-watch.user.js  — game-clock calibrator
+                      align-watch.user.js — your political compass on the home page
 artifacts/            gitignored: downloaded bundles, HARs, captures
 CLAUDE.md             working rules for agent sessions
 ```
 
-Tools that came out of this research live in their own repositories; this one keeps the
-findings, the rules analysis, and the skeleton they were built on.
+Larger tools that came out of this research live in their own repositories; this one keeps
+the findings, the rules analysis, the skeleton they were built on, and the small passive
+overlays.
+
+Panels drawn over the game are draggable and remember where you put them — the shared
+`PANEL KIT` block in the template is copied verbatim into each tool rather than pulled
+from anywhere at runtime, so every script stays a single file you can read end to end.
 
 ## Conduct
 
@@ -108,4 +121,3 @@ Politiko's published rules accurately, because it's a record of theirs, not ours
 passive core remains the default — anything that departs from it ships disarmed, arming is
 explicit and expiring, and each tool states in its own disclosure block exactly what it
 originates.
-</content>

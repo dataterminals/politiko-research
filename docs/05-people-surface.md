@@ -115,8 +115,11 @@ first suggested the backend emits exact times everywhere rather than pre-rounded
   other players, activity data could be accumulated with zero requests — which is the
   version of this tool that would have stayed inside the clause. `wss://politiko.io`
   remains completely uncharacterized.
-- What `alignment.social_axis` / `economic_axis` range over, and whether `*_count` is a
-  vote tally or a sample size.
+- ~~What `alignment.social_axis` / `economic_axis` range over, and whether `*_count` is a
+  vote tally or a sample size.~~ **Answered 2026-08-06** from the client bundles: the axes
+  are floats clamped to −3…+3 for display, and `*_count` is a per-axis **sample size** —
+  the client renders it as "N actions" and the wiki calls the axis a running average. See
+  [`07-alignment-surface.md`](07-alignment-surface.md).
 - Whether `/api/users/<name>` is rate-limited, and what it returns for a deleted or
   banned account. The crawler stops dead on the first non-2xx rather than finding out
   by pushing.

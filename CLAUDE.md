@@ -43,9 +43,11 @@ enforceable line, and it is the main design constraint on this whole project.
 ## Layout
 
 ```
-docs/     numbered findings + plan; 00 recon, 01 rules, 02 plan, 03 ideas, 04 stocks
+docs/     numbered findings + plan; 00 recon, 01 rules, 02 plan, 03 ideas,
+          04 stocks, 05 people, 06 time, 07 alignment
 tools/    recon helpers (PowerShell)
-userscripts/  _template.user.js — passive-tap skeleton; tools ship in their own repos
+userscripts/  _template.user.js — passive-tap skeleton + PANEL KIT;
+              time-watch, align-watch; larger tools ship in their own repos
 artifacts/    gitignored: downloaded bundles, HARs, captures
 ```
 
@@ -57,6 +59,12 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   reflects the real world state. Don't cite the landing page as data.
 - Chunk hashes change every deploy — never hardcode a hashed filename or a generated CSS
   class in anything meant to last.
+- **Any on-screen panel must be movable.** If a tool draws UI over the game, that UI is
+  draggable and remembers where it was put — including the floating toggle button, not
+  just the panel. Copy the `PANEL KIT v1` block from
+  [`userscripts/_template.user.js`](userscripts/_template.user.js) verbatim instead of
+  writing a new drag implementation; if the block changes, bump its version in every copy
+  so the copies can be diffed. It also has to survive a short window: a panel whose drag
+  handle ends up off-screen cannot be recovered, so `fit()` runs after every render.
 - Windows box: `git commit -F <file>` rather than `-m` (PowerShell mangles quoted `-m`).
   `.gitattributes` handles the CRLF situation.
-</content>
