@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Align Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.1
+// @version      0.2.0
 // @description  Mirrors your character's political-compass chart from the profile screen onto the home page: last measured social/economic axes, every change since you installed it, and the projected effect of alignment actions you have taken since that reading. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -243,20 +243,59 @@
     addReading(r);
   };
 
-  const remember = (path, body) => {
-    // protests the page already listed: id -> issue, so a join can name its axis
-    const list = Array.isArray(body) ? body : (Array.isArray(body?.protests) ? body.protests : null);
-    const rows = list ?? (body?.id != null && body?.issue_id ? [body] : []);
+  /**
+   * Protest id -> issue, so a join can be told which axis it moved.
+   *
+   * This walks whatever shape the payload happens to be rather than assuming a bare
+   * array of rows, because the first version assumed one and missed: joining a protest
+   * without the list endpoint having been in flight left the entry permanently
+   * unattributable. Anything with an id and an issue we recognise counts, wherever it
+   * is nested — a list, a single protest, or a join response that echoes it back.
+   */
+  const harvestProtests = (node, depth = 0) => {
+    if (!node || depth > 6) return false;
+    if (Array.isArray(node)) return node.map((n) => harvestProtests(n, depth + 1)).some(Boolean);
+    if (typeof node !== 'object') return false;
+
     let touched = false;
-    for (const p of rows) {
-      if (p?.id == null || typeof p.issue_id !== 'string') continue;
-      data.protests[String(p.id)] = { issue: p.issue_id, stance: Number(p.stance) };
-      touched = true;
+    const id = node.id ?? node.protest_id;
+    const issue = [node.issue_id, node.issue, node.issue_key, node.topic]
+      .find((v) => typeof v === 'string' && ISSUE[v]);
+    if (id != null && issue) {
+      const key = String(id);
+      if (data.protests[key]?.issue !== issue) {
+        data.protests[key] = { issue, stance: Number(node.stance) };
+        touched = true;
+      }
     }
-    if (!touched) return;
+    for (const v of Object.values(node)) if (v && typeof v === 'object') touched = harvestProtests(v, depth + 1) || touched;
+    return touched;
+  };
+
+  /**
+   * A protest's issue can arrive *after* you joined it — you open the protest page,
+   * or the list refreshes. Fill in what couldn't be named at the time rather than
+   * leaving the entry stranded outside the projection forever.
+   */
+  const backfill = () => {
+    let changed = false;
+    for (const a of data.pending) {
+      if (a.axis || !a.protestId) continue;
+      const meta = ISSUE[data.protests[a.protestId]?.issue];
+      if (!meta) continue;
+      a.issue = meta[0]; a.axis = meta[1]; changed = true;
+    }
+    return changed;
+  };
+
+  const remember = (path, body) => {
+    const touched = harvestProtests(body);
+    const filled = backfill();
+    if (!touched && !filled) return;
     const keys = Object.keys(data.protests);
     if (keys.length > 100) keys.slice(0, keys.length - 100).forEach((k) => delete data.protests[k]);
     save();
+    scheduleRender();
   };
 
   const noteAction = (path, rawBody) => {
@@ -267,19 +306,19 @@
       try { payload = typeof rawBody === 'string' ? JSON.parse(rawBody) : (rawBody ?? {}); } catch { /* not JSON */ }
 
       let issueId = spec.issue ? payload[spec.issue] : null;
-      let stance = payload[spec.dir];
-      if (spec.protestId != null) {
-        const known = data.protests[String(m[spec.protestId])];
-        if (known) {
-          issueId = known.issue;
-          // joining the "left" side of a protest is a left-leaning act regardless
-          // of which side the organiser took, so `side` stays the direction
-        }
+      const stance = payload[spec.dir];
+      // the protest id is kept even when its issue is unknown right now, so the entry
+      // can be filled in later by backfill() instead of being stranded
+      const protestId = spec.protestId != null ? String(m[spec.protestId]) : null;
+      if (protestId && data.protests[protestId]) {
+        // joining the "left" side of a protest is a left-leaning act regardless of
+        // which side the organiser took, so `side` stays the direction
+        issueId = data.protests[protestId].issue;
       }
       const meta = ISSUE[issueId] ?? null;
       const d = dirOf(stance);
       addPending({
-        t: Date.now(), kind: spec.kind, counts: spec.counts,
+        t: Date.now(), kind: spec.kind, counts: spec.counts, protestId,
         issue: meta ? meta[0] : (issueId ?? null),
         axis: meta ? meta[1] : null,
         sign: d.sign, mag: d.mag,
@@ -502,7 +541,24 @@
         const dir = a.sign === 0 ? '?' : (a.sign < 0 ? 'left' : 'right');
         const what = `${a.kind}${a.issue ? ` · ${a.issue}` : ''}`;
         li.append(el('span', a.counts && a.axis ? '' : 'pkaw-faint', what));
-        li.append(el('span', 'pkaw-faint', `${a.axis ?? 'axis?'} · ${dir} · ${clockOf(a.t)}`));
+
+        const right = document.createElement('span');
+        if (a.counts && !a.axis) {
+          // The game never told us which issue this was about, but you know — you
+          // were there. One click beats leaving it out of the projection.
+          right.append(el('span', 'pkaw-faint', `${dir} · which axis? `));
+          for (const axis of ['social', 'economic']) {
+            const b = el('button', 'pkaw-btn', axis);
+            b.style.marginLeft = '4px';
+            b.title = `count this as a ${axis} action at stance ${dir}`;
+            b.addEventListener('click', () => { a.axis = axis; save(); render(); });
+            right.append(b);
+          }
+        } else {
+          right.className = 'pkaw-faint';
+          right.textContent = `${a.axis ?? 'axis?'} · ${dir} · ${clockOf(a.t)}`;
+        }
+        li.append(right);
         list.append(li);
       }
       body.append(list);
@@ -515,11 +571,21 @@
           + `<div class="pkaw-row"><span class="pkaw-dim">projected economic†</span><span>${band(lo.e, hi.e)}</span></div>`;
         body.append(p);
       }
-      const missed = data.pending.filter((a) => !a.counts || !a.axis).length;
-      if (missed) {
-        body.append(el('p', 'pkaw-note',
-          `${missed} of these are not in the projection — graffiti is not named as an alignment source in the wiki, and a protest whose issue this script never saw can't be assigned an axis.`));
+      // say only what actually applies — a blanket sentence naming graffiti when
+      // nothing here is graffiti reads like the tool has lost track of its own state
+      const unnamed = data.pending.filter((a) => a.counts && !a.axis).length;
+      const uncounted = data.pending.filter((a) => !a.counts).length;
+      const why = [];
+      if (unnamed) {
+        why.push(`${unnamed} left out until you say which axis: the game only names a protest's `
+          + `issue in the list response, and it never arrived for this one. Pick it above, or open `
+          + `the protest and it fills itself in.`);
       }
+      if (uncounted) {
+        why.push(`${uncounted} left out on purpose: graffiti takes a side but the wiki names only `
+          + `protests and civil disobedience as alignment sources, so counting it would be a guess.`);
+      }
+      for (const line of why) body.append(el('p', 'pkaw-note', line));
     }
 
     // history
