@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-market-watch
-// @version      0.11.0
-// @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Optional order execution is a seam and ships disabled.
+// @version      1.0.0
+// @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Fully passive — it places no orders and originates no requests; a buy/sell rule hands you a sized shortcut to the stocks screen instead.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-market-watch
 // @supportURL   https://github.com/dataterminals/politiko-market-watch/issues
@@ -16,28 +16,31 @@
 /*
  * DISCLOSURE (Politiko rules, Scripting Abuse clause)
  *
- *   Reads:    JSON bodies of /api/* responses the app requested on its own, via a
+ *   Reads:    JSON bodies of GET /api/* responses the app requested on its own, via a
  *             passive fetch/XHR tap. No DOM scraping, no polling, no prefetch.
- *             Also records the method, path and request body of non-GET /api/*
- *             calls the app makes, so the shape of a real order can be read off
- *             an action you took yourself. Credential-shaped values are redacted,
- *             request headers are never touched, and these captures live in
- *             memory only — never localStorage, never the export.
- *   Requests: ZERO additional requests to politiko.io in the shipped configuration.
+ *             Request bodies are not read at all.
+ *   Requests: ZERO. This script does not originate network calls to politiko.io, and
+ *             has no code path that could.
  *   Sends:    nothing, to anyone, ever. No telemetry, no remote config.
  *   Storage:  localStorage keys prefixed `pkmw:` — observed price history, watch rules,
  *             and panel settings. All local. Clearable from the panel.
  *   Alerts:   in-page only, and only while the tab is visible. Alerts raised while
  *             hidden are queued and shown on return. No Notification API, no title
  *             flashing, no sound while backgrounded.
+ *   Acts:     a buy/sell rule produces an alert with a button. The button navigates to
+ *             the stocks screen — the same client-side route change as clicking Stocks
+ *             yourself — and then best-effort selects the ticker and fills in the size,
+ *             which is DOM interaction on the page you are now looking at. It stops
+ *             there. The game's own confirm is the only thing that places an order and
+ *             you press it. Nothing is automated, queued, or retried.
  *
- *   NOT SHIPPED, BUT SEAMED: `registerExecutor()` below is the attachment point for
- *   automatic order placement. It is empty, and AUTO_EXECUTE is false. If an executor
- *   is ever registered, this script BEGINS ORIGINATING WRITE REQUESTS to politiko.io
- *   and this disclosure block must be rewritten to say so before the file is shared
- *   with anyone. Politiko's scripting clause permits tools that only consume data the
- *   client already holds; originating game actions steps outside it, and the penalty
- *   is a game ban.
+ * HISTORY, stated plainly because the file used to say otherwise: versions up to 0.11.0
+ * carried an order-execution seam — `registerExecutor()`, an arming switch, a session
+ * cap, and a capture of the app's own write requests to learn the order shape from a
+ * trade you placed by hand. Wiring it would have made this script originate write
+ * requests to politiko.io, which the scripting clause prohibits under penalty of a game
+ * ban. It shipped disabled and was never armed. As of 1.0.0 it is deleted outright —
+ * the seam, the arming, the capture and the routes are gone, not switched off.
  */
 
 (() => {
@@ -50,14 +53,6 @@
   // Config
   // ===========================================================================
   const CFG = {
-    // Two switches stand between a rule firing and a real order. AUTO_EXECUTE
-    // arms the seam; DRY_RUN still holds the request back and only reports what
-    // would have been sent. Both must be changed deliberately, and an executor
-    // must be wired for the series on top of that.
-    AUTO_EXECUTE: false,
-    DRY_RUN: true,
-    MAX_ORDERS_PER_SESSION: 3,   // backstop against a rule loop; reset on reload
-
     MAX_POINTS_PER_SERIES: 300,   // ring buffer depth
     MAX_SERIES: 400,              // total tracked series::field pairs
     MIN_SAMPLE_GAP_MS: 60_000,    // re-record an unchanged value at most this often
@@ -130,7 +125,7 @@
   let rules = readJSON(K.rules, []);
   const ui = Object.assign(
     { open: false, sound: true, deltaWin: 3_600_000, filter: '', expanded: {}, hidden: {},
-      fab: null, size: null, sizeBar: false, arm: null },
+      fab: null, size: null, sizeBar: false },
     readJSON(K.ui, {}),
   );
 
@@ -303,79 +298,10 @@
       const ev = record(series, field, value);
       if (ev) events.push(ev);
     }
-    autoWire();
     if (events.length) {
       for (const ev of events) evaluate(ev);
       refresh();
     }
-  }
-
-  // ===========================================================================
-  // Write capture
-  //
-  // Records the shape of non-GET /api/* calls the app makes on its own. This is
-  // how the order endpoint gets learned: place one trade by hand and the request
-  // that carried it shows up here, ready to be turned into an executor. Still
-  // strictly passive — it reads what the app already sent.
-  //
-  // Deliberately narrow: method, path and request body only. Headers are never
-  // read, so no session token ever passes through this script, and captures are
-  // held in memory only — they are not persisted and not part of the export.
-  // ===========================================================================
-  const writes = [];
-  const MAX_WRITES = 25;
-  const SECRETISH = /pass|token|secret|auth|cookie|session|bearer|otp|csrf|api[-_]?key/i;
-
-  function redact(v, depth = 0) {
-    if (depth > 4 || v == null) return v;
-    if (Array.isArray(v)) return v.map((x) => redact(x, depth + 1));
-    if (typeof v !== 'object') return v;
-    const out = {};
-    for (const [k, val] of Object.entries(v)) {
-      out[k] = SECRETISH.test(k) ? '<redacted>' : redact(val, depth + 1);
-    }
-    return out;
-  }
-
-  function parseBody(body) {
-    if (body == null) return null;
-    if (typeof body === 'string') {
-      try { return redact(JSON.parse(body)); } catch { return body.slice(0, 300); }
-    }
-    if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
-      return redact(Object.fromEntries(body));
-    }
-    return `<${body.constructor ? body.constructor.name : typeof body}, not read>`;
-  }
-
-  // Order routes are only ever taken from requests the app itself made. Both were
-  // observed 2026-07-28 from real trades placed by hand — neither is a guess, and
-  // an unobserved route stays null rather than being inferred from its sibling.
-  const ORDER_ROUTES = { buy: '/api/stocks/buy', sell: '/api/stocks/sell' };
-
-  // Still live: paths move between deploys, so a route seen on the wire wins over
-  // the baked-in default. Matched loosely enough to survive versioning.
-  function learnRoute(method, pathname) {
-    if (method !== 'POST') return;
-    const m = /\/stocks\/(buy|sell)\b/.exec(pathname);
-    if (!m || ORDER_ROUTES[m[1]] === pathname) return;
-    ORDER_ROUTES[m[1]] = pathname;
-    log('learned order route', m[1], '->', pathname);
-  }
-
-  function captureWrite(method, url, body, status) {
-    try {
-      const u = new URL(url, location.origin);
-      if (!u.pathname.includes('/api/')) return;
-      learnRoute(method.toUpperCase(), u.pathname);
-      writes.unshift({
-        t: now(), method: method.toUpperCase(), path: u.pathname + u.search,
-        body: parseBody(body), status,
-      });
-      if (writes.length > MAX_WRITES) writes.length = MAX_WRITES;
-      log('write', method, u.pathname, writes[0].body);
-      refresh();
-    } catch (e) { log('capture error', e); }
   }
 
   // ===========================================================================
@@ -390,12 +316,6 @@
       const method = (init.method
         || (typeof args[0] === 'object' && args[0] && args[0].method)
         || 'GET').toUpperCase();
-
-      if (method !== 'GET' && method !== 'HEAD') {
-        // Only init.body is readable — consuming a Request's body would starve
-        // the app's own call, so a Request-carried body is noted, not read.
-        captureWrite(method, raw, init.body ?? '<body on Request object, not read>', res.status);
-      }
 
       if (raw.includes('/api/') && (res.headers.get('content-type') || '').includes('json')) {
         res.clone().json().then((d) => ingest(raw, d), () => {});
@@ -415,9 +335,6 @@
     this.addEventListener('load', () => {
       try {
         const url = this.__pkmwUrl || '';
-        if (this.__pkmwMethod && this.__pkmwMethod !== 'GET' && this.__pkmwMethod !== 'HEAD') {
-          captureWrite(this.__pkmwMethod, String(url), a[0] ?? null, this.status);
-        }
         if (!String(url).includes('/api/')) return;
         const ct = this.getResponseHeader('content-type') || '';
         if (!ct.includes('json')) return;
@@ -506,189 +423,88 @@
   }
 
   // ===========================================================================
-  // Execution seam
+  // Firing — a rule produces an alert, and at most a shortcut.
   //
-  // Empty by design. An executor is a function that places one order for a
-  // series and returns a promise. Registering one turns this script from a
-  // pure reader into something that ORIGINATES WRITE REQUESTS to politiko.io.
-  //
-  //   registerExecutor('stocks/instruments/PNRG',
-  //     async ({ side, shares, price, rule, ev }) => { ... })
-  //
-  // `shares` is already resolved and clamped — a sell can never exceed what the
-  // holdings series says you hold. The executor's only job is the request.
-  //
-  // Nothing can be written here yet: the order endpoint, its request shape, and
-  // the session auth scheme are all still unknown, and CLAUDE.md hard rule 4
-  // forbids probing endpoints to find out. The gap closes by observing a real
-  // order placed by hand, in DevTools.
-  //
-  // Until then a rule with action=buy/sell degrades to a loud notify that states
-  // exactly what it would have sent.
+  // Nothing here places an order. A buy/sell rule works out the size at the moment
+  // it fires (which is the point of resolving late — a sell is clamped to what the
+  // holdings series says you actually hold) and offers a button that takes you to
+  // the stocks screen with the instrument picked and the number filled in. The
+  // game's own confirm is the only thing that trades, and you press it.
   // ===========================================================================
-  const EXECUTORS = new Map();
-  function registerExecutor(series, fn) {
-    if (typeof fn !== 'function') throw new TypeError('executor must be a function');
-    EXECUTORS.set(series, fn);
-    log('executor registered for', series, '— this script can now place orders.');
-    refresh();
-  }
+  function fire(rule, ev, hit) {
+    const d = describe(rule, ev, hit);
+    if (rule.action === 'notify') { toast('alert', d.head, d.body); return; }
 
-  // ---------------------------------------------------------------------------
-  // Arming
-  //
-  // The CFG constants are the source-level default, but editing them in the
-  // Tampermonkey editor loses the change on the next auto-update — the two
-  // mechanisms fight. So arming is persisted state instead, and deliberately
-  // console-only: there is no button that turns on live trading by accident.
-  //
-  //   __pkmw.arm('dry')          rules build and report the exact request, send nothing
-  //   __pkmw.arm('live')         rules place real orders
-  //   __pkmw.arm('live', 2)      ...for the next 2 hours
-  //   __pkmw.disarm()
-  //
-  // Armed state expires (24h default). An auto-trader that stays armed because
-  // someone forgot is a worse failure than one that needs re-arming.
-  // ---------------------------------------------------------------------------
-  const armMode = () => {
-    const a = ui.arm;
-    if (!a || !a.mode) return null;
-    if (a.until && now() > a.until) return null;
-    return a.mode;
-  };
-  const canExecute = () => CFG.AUTO_EXECUTE || armMode() !== null;
-  const isDryRun = () => {
-    const m = armMode();
-    if (m === 'live') return false;
-    if (m === 'dry') return true;
-    return CFG.DRY_RUN;
-  };
+    const side = rule.action === 'sell' ? 'sell' : 'buy';
+    const sym = shortSeries(rule.series);
+    const price = priceFor(rule.series, ev.value);
+    const { shares, why } = resolveQty(rule, price);
 
-  function armState() {
-    const m = armMode();
-    return {
-      mode: m || (CFG.AUTO_EXECUTE ? (CFG.DRY_RUN ? 'dry' : 'live') : 'off'),
-      live: canExecute() && !isDryRun(),
-      expiresIn: ui.arm && ui.arm.until ? Math.max(0, ui.arm.until - now()) : null,
-      executors: EXECUTORS.size,
-    };
-  }
-
-  function arm(mode, hours = 24) {
-    if (mode !== 'dry' && mode !== 'live') {
-      throw new Error("arm('dry'|'live', hours?) — 'dry' reports orders, 'live' places them");
+    if (shares === null) {
+      toast('warn', `${side.toUpperCase()} SIGNAL — ${sym}`,
+        `${d.body}\nNo size worked out: ${why}.`);
+      return;
     }
-    ui.arm = { mode, until: hours > 0 ? now() + hours * 3_600_000 : null };
-    saveUI(); paintArmBar(); paintFabState(); refresh();
-    log(mode === 'live' ? 'ARMED LIVE — rules will place real orders' : 'armed dry — nothing will be sent');
-    return armState();
-  }
 
-  function disarm() {
-    ui.arm = null;
-    saveUI(); paintArmBar(); paintFabState(); refresh();
-    return armState();
+    toast('alert', `${side.toUpperCase()} SIGNAL — ${sym}`,
+      `${d.body}\n${side} ${fmtNum(shares)} sh — ${why}`, [{
+        label: `${side} ${fmtNum(shares)} sh →`,
+        title: `open the stocks screen with ${sym} selected and ${fmtNum(shares)} filled in. `
+          + 'This places no order — you confirm the trade in the game.',
+        run: () => jumpToTrade(rule.series, shares),
+      }]);
   }
-
-  let ordersThisSession = 0;
 
   /**
-   * Build an executor from an order request read off the capture list.
-   *
-   *   __pkmw.wireExecutor({
-   *     series: 'stocks/instruments/RCRD',
-   *     url:    '/api/stocks/order',            // copied from a captured write
-   *     method: 'POST',
-   *     body:   ({ symbol, side, shares }) => ({ symbol, side, quantity: shares }),
-   *   })
-   *
-   * Auth is never handled here: the request goes out with same-origin
-   * credentials, so a cookie session rides along on its own. If the app
-   * authenticates with a header instead, this returns 401 and says so rather
-   * than reaching for the token — reading it is not something this script does.
+   * The same client-side navigation as clicking Stocks yourself, followed by a
+   * best-effort attempt to save you the scrolling: select the ticker, fill the size.
+   * It sends nothing. Every part after the navigation is optional — if the markup
+   * has moved since this was written you are still on the right screen, and the
+   * number is still sitting in the alert.
    */
-  function wireExecutor({ series, url, method = 'POST', body }) {
-    if (!series || !url || typeof body !== 'function') {
-      throw new TypeError('wireExecutor needs { series, url, body(ctx) }');
-    }
-    registerExecutor(series, async ({ side, shares, price }) => {
-      const symbol = shortSeries(series);
-      const ctx = { symbol, side, shares, price };
-      const target = typeof url === 'function' ? url(ctx) : url;
-      if (!target) {
-        throw new Error(`no ${side} route known — none has been observed yet. `
-          + `Place one ${side} by hand and it will be picked up.`);
-      }
-      const payload = body(ctx);
-      const desc = `${method} ${target} ${JSON.stringify(payload)}`;
-
-      if (isDryRun()) return `DRY RUN — not sent: ${desc}`;
-      if (ordersThisSession >= CFG.MAX_ORDERS_PER_SESSION) {
-        throw new Error(`session cap reached (${CFG.MAX_ORDERS_PER_SESSION}); reload to reset`);
-      }
-      ordersThisSession++;
-
-      // origFetch, not the patched one — our own orders stay out of the capture
-      // list, which is meant to show only what the app did.
-      const res = await origFetch.call(window, target, {
-        method,
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (res.status === 401 || res.status === 403) {
-        throw new Error(`${res.status} — the session cookie did not carry this. `
-          + 'Auth is header-based; this script does not read or replay tokens.');
-      }
-      if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
-      return `${desc} → ${res.status}`;
-    });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Politiko stocks wiring, built from a real order observed 2026-07-28:
-  //   POST /api/stocks/buy  {instrument_id, shares, idempotency_key}
-  // Orders are addressed by instrument_id, not by ticker, and the key format is
-  // <epoch_ms>-<base36>. A fresh key per attempt is the point — it's what stops a
-  // retry from filling twice.
-  // ---------------------------------------------------------------------------
-  const idempotencyKey = () =>
-    `${Date.now()}-${Math.random().toString(36).slice(2).padEnd(11, '0').slice(0, 11)}`;
-
-  /** Only ever returns an id we're certain addresses the instrument. */
-  function instrumentIdFor(series) {
+  function jumpToTrade(series, shares) {
     const sym = shortSeries(series);
-    for (const [s, rec] of entityIds) {
-      if (rec.sure && shortSeries(s) === sym && /instrument/i.test(splitSeries(s)[0])) return rec.id;
+    if (location.pathname !== '/stocks') {
+      history.pushState({}, '', '/stocks');
+      window.dispatchEvent(new PopStateEvent('popstate'));
     }
-    for (const [s, rec] of entityIds) if (rec.sure && shortSeries(s) === sym) return rec.id;
-    return null;
+    let tries = 0;
+    const tick = () => {
+      if (++tries > 20) return;                       // ~3s, then give up quietly
+      let done = false;
+      try { done = selectSymbol(sym) && fillQty(shares); } catch { /* best effort */ }
+      if (!done) setTimeout(tick, 150);
+    };
+    setTimeout(tick, 150);
   }
 
-  function wireStocksExecutor(series) {
-    wireExecutor({
-      series,
-      method: 'POST',
-      url: ({ side }) => ORDER_ROUTES[side],
-      body: ({ shares }) => {
-        const id = instrumentIdFor(series);
-        if (id == null) {
-          throw new Error(`no confirmed instrument_id for ${shortSeries(series)} — `
-            + 'open the market list once so it can be read next to the ticker');
-        }
-        return { instrument_id: id, shares, idempotency_key: idempotencyKey() };
-      },
-    });
+  /**
+   * Click the ticker. Matches on the symbol's own text rather than any class name,
+   * because generated classes change every deploy — and only on a leaf whose entire
+   * text IS the symbol, so this can never land on a Buy or Sell button.
+   *
+   * The click goes on the leaf, not the row around it. A click bubbles up, so a
+   * handler on the row still sees it; going the other way does not, and a handler
+   * bound to the cell would be missed entirely.
+   */
+  function selectSymbol(sym) {
+    const leaf = [...document.querySelectorAll('span,div,td,b,strong,p,a,button')]
+      .find((n) => !n.children.length && n.textContent.trim() === sym && n.offsetParent !== null);
+    if (!leaf) return false;
+    leaf.click();
+    return true;
   }
 
-  /** Wire every stocks series whose instrument id is known. Idempotent. */
-  function autoWire() {
-    for (const s of seriesIndex().keys()) {
-      if (EXECUTORS.has(s)) continue;
-      if (!/^stocks\/(instruments|holdings)\//.test(s)) continue;
-      if (instrumentIdFor(s) == null) continue;
-      wireStocksExecutor(s);
-    }
+  /** React ignores a plain .value assignment, so go through the native setter. */
+  function fillQty(shares) {
+    if (!(shares > 0)) return true;
+    const input = [...document.querySelectorAll('input')].find((i) => i.offsetParent !== null
+      && (i.type === 'number' || /qty|quantity|share|amount/i.test(`${i.name}${i.id}${i.placeholder}`)));
+    if (!input) return false;
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(input, String(shares));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
   }
 
   /** Current price for sizing: the series' headline field, not whatever tripped the rule. */
@@ -699,56 +515,14 @@
     return l ? l[1] : fallback;
   }
 
-  async function tryExecute(rule, ev, hit) {
-    const side = rule.action === 'buy' ? 'buy' : 'sell';
-    const exec = EXECUTORS.get(rule.series);
-    const sym = shortSeries(rule.series);
-
-    // Size the order now, against holdings as they stand this second.
-    const price = priceFor(rule.series, ev.value);
-    const { shares, why } = resolveQty(rule, price);
-
-    if (shares === null) {
-      toast('err', `${side.toUpperCase()} SKIPPED — ${sym}`,
-        `${describe(rule, ev, hit).body}\nNo order sized: ${why}.`);
-      return;
-    }
-
-    const sizing = `${side} ${fmtNum(shares)} sh — ${why}`;
-
-    if (!canExecute() || !exec) {
-      const blocked = !canExecute()
-        ? "not armed — __pkmw.arm('dry') to build orders, __pkmw.arm('live') to place them"
-        : `no executor registered for ${rule.series}`;
-      toast('warn', `WOULD ${side.toUpperCase()} — ${sym}`,
-        `${describe(rule, ev, hit).body}\n${sizing}\nNot sent: ${blocked}.`);
-      return;
-    }
-
-    try {
-      const result = await exec({ side, shares, price, rule, ev, hit });
-      const dry = String(result).startsWith('DRY RUN');
-      toast(dry ? 'warn' : 'ok', `${side.toUpperCase()} ${dry ? 'DRY RUN' : 'SENT'} — ${sym}`,
-        `${sizing}\n${String(result ?? 'order placed')}`);
-    } catch (e) {
-      toast('err', `${side.toUpperCase()} FAILED — ${sym}`, `${sizing}\n${String((e && e.message) || e)}`);
-    }
-  }
-
-  function fire(rule, ev, hit) {
-    const d = describe(rule, ev, hit);
-    if (rule.action === 'notify') toast('alert', d.head, d.body);
-    else tryExecute(rule, ev, hit);
-  }
-
   // ===========================================================================
   // Alerts — in-page only, and only while visible.
   // ===========================================================================
   const pending = [];
 
-  function toast(kind, head, body) {
-    if (document.visibilityState !== 'visible') { pending.push([kind, head, body]); return; }
-    paintToast(kind, head, body);
+  function toast(kind, head, body, actions) {
+    if (document.visibilityState !== 'visible') { pending.push([kind, head, body, actions]); return; }
+    paintToast(kind, head, body, actions);
     if (ui.sound && kind !== 'ok') beep(kind === 'err' ? 220 : 880);
   }
 
@@ -1002,6 +776,9 @@
              box-shadow: 0 8px 24px rgba(0,0,0,.5); animation: in .18s ease-out; }
     .toast h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: .01em; }
     .toast p { margin: 0; color: #a1a1aa; white-space: pre-wrap; line-height: 1.45; }
+    .toast .tacts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .toast .tacts button { border-color: #52525b; color: #e4e4e7; }
+    .toast .tacts button:hover { border-color: #a1a1aa; background: #27272a; }
     .toast.alert { border-left-color: #22c55e; }
     .toast.warn  { border-left-color: #f59e0b; }
     .toast.err   { border-left-color: #ef4444; }
@@ -1136,14 +913,26 @@
     .qty .prev.no { color: #f59e0b; }
   `;
 
-  function paintToast(kind, head, body) {
+  function paintToast(kind, head, body, actions) {
     if (!$toasts) return;
     const t = el('div', `toast ${kind}`);
     const close = el('button', null, '×');
     close.onclick = () => t.remove();
     t.append(close, el('h4', null, head), el('p', null, body));
+    if (actions && actions.length) {
+      const row = el('div', 'tacts');
+      for (const a of actions) {
+        const b = el('button', 'mini', a.label);
+        if (a.title) b.title = a.title;
+        b.onclick = () => { t.remove(); a.run(); };
+        row.append(b);
+      }
+      t.append(row);
+    }
     $toasts.prepend(t);
-    setTimeout(() => t.remove(), kind === 'alert' ? 30_000 : 60_000);
+    // a card carrying an action sticks around: it is useless if it vanishes
+    // while you are still deciding
+    setTimeout(() => t.remove(), actions && actions.length ? 180_000 : kind === 'alert' ? 30_000 : 60_000);
     while ($toasts.children.length > 6) $toasts.lastElementChild.remove();
   }
 
@@ -1161,36 +950,6 @@
     snd.onclick = () => { ui.sound = !ui.sound; saveUI(); snd.textContent = ui.sound ? '🔊' : '🔇'; };
     snd.textContent = ui.sound ? '🔊' : '🔇';
     hdr.append(el('b', null, 'Market Watch'), el('span', 'sp'), cnt, szBtn, snd);
-
-    // Arm control. Off and dry apply on one click; live needs a second click to
-    // confirm. Turning it off is always one click — the asymmetry is the point.
-    const armBar = el('div', 'armbar');
-    const armSeg = el('div', 'seg');
-    const armSt = el('span', 'st');
-    const armHours = document.createElement('select');
-    for (const [label, h] of [['1h', 1], ['8h', 8], ['24h', 24], ['no expiry', 0]]) {
-      armHours.append(new Option(label, String(h)));
-    }
-    armHours.value = '24';
-    armHours.title = 'how long the arming lasts';
-    armHours.onchange = () => { if (armMode()) arm(armMode(), Number(armHours.value)); paintArmBar(); };
-
-    for (const [label, mode] of [['off', null], ['dry', 'dry'], ['live', 'live']]) {
-      const b = el('button', null, label);
-      b.onclick = () => {
-        if (mode === null) { livePending = false; disarm(); }
-        else if (mode === 'dry') { livePending = false; arm('dry', Number(armHours.value)); }
-        else if (livePending) { livePending = false; arm('live', Number(armHours.value)); }
-        else {
-          livePending = true;
-          clearTimeout(livePendingTimer);
-          livePendingTimer = setTimeout(() => { livePending = false; paintArmBar(); }, 5000);
-        }
-        paintArmBar();
-      };
-      armSeg.append(b);
-    }
-    armBar.append(el('span', 'lbl', 'orders'), armSeg, armHours, armSt);
 
     // Size presets, folded away behind the header button until wanted.
     const sizes = el('div', 'sizes');
@@ -1242,13 +1001,6 @@
     const ruleBody = el('div');
     ruleSec.append(el('h5', null, 'Rules'), ruleBody);
 
-    // Appears only once the app has actually made a write — placing one trade by
-    // hand is what fills this in, and it's what an executor gets built from.
-    const wrSec = el('section');
-    const wrBody = el('div');
-    wrSec.style.display = 'none';
-    wrSec.append(el('h5', null, 'Captured writes'), wrBody);
-
     const formSec = el('section');
     formSec.append(el('h5', null, 'New rule'));
     const formHost = el('div');
@@ -1269,12 +1021,10 @@
     note.style.cssText = 'margin-top:7px;line-height:1.5';
     ft.append(wipe, exp, note);
 
-    scroll.append(warnSec, obs, ruleSec, wrSec, formSec, ft);
-    $panel.append(hdr, armBar, sizes, bar, scroll);
+    scroll.append(warnSec, obs, ruleSec, formSec, ft);
+    $panel.append(hdr, sizes, bar, scroll);
 
-    sk = { cnt, warnSec, warn, obs, ruleBody, formHost, filter, sizes, dim, wrSec, wrBody,
-      armBar, armSeg, armSt, armHours };
-    paintArmBar();
+    sk = { cnt, warnSec, warn, obs, ruleBody, formHost, filter, sizes, dim };
     buildForm();
 
     // If a tick arrived while the user held a control open, apply it on release.
@@ -1315,58 +1065,21 @@
   }
 
   function paintWarn() {
-    const armed = rules.some((r) => r.action !== 'notify');
-    sk.warnSec.style.display = armed ? '' : 'none';
-    if (!armed) return;
-    const sells = rules.some((r) => r.enabled && r.action === 'sell');
-    const noSell = sells && !ORDER_ROUTES.sell ? ' No sell route observed, so sell rules cannot fire.' : '';
-    const st = armState();
-    const left = st.expiresIn ? ` Expires in ${Math.round(st.expiresIn / 3_600_000) || '<1'}h.` : '';
-
-    sk.warnSec.classList.toggle('live', st.live);
-    sk.warn.textContent = st.mode === 'off'
-      ? 'Not armed — rules report the order they would have sent and send nothing. '
-        + "Run __pkmw.arm('dry') in the console to build real requests, or arm('live') to place them."
-        + noSell
-      : st.live
-        ? `LIVE — ${st.executors} executor(s) wired. Rules will place real orders.${left}${noSell}`
-        : `DRY RUN — ${st.executors} executor(s) wired. Rules show the exact request and send nothing.${left}${noSell}`;
+    // Rules that carry a trade intent now produce a shortcut on the alert, not an
+    // order. Say what will happen, so nobody expects a fill.
+    const trading = rules.some((r) => r.enabled && r.action !== 'notify');
+    sk.warnSec.style.display = trading ? '' : 'none';
+    if (!trading) return;
+    sk.warnSec.classList.remove('live');
+    sk.warn.textContent = 'Buy/sell rules do not place orders — nothing here can. '
+      + 'When one fires, the alert offers a button that takes you to the stocks screen '
+      + 'with the size worked out, and you place the trade yourself.';
   }
 
-  let livePending = false, livePendingTimer = null;
-
-  function paintArmBar() {
-    if (!sk || !sk.armBar) return;
-    const st = armState();
-    const mode = armMode();
-    sk.armBar.classList.toggle('live', st.live);
-
-    const [offB, dryB, liveB] = sk.armSeg.children;
-    offB.classList.toggle('on', !mode);
-    dryB.classList.toggle('on', mode === 'dry');
-    liveB.classList.toggle('on', mode === 'live');
-    liveB.classList.toggle('live-on', mode === 'live');
-    liveB.classList.toggle('pending', livePending);
-    liveB.textContent = livePending ? 'sure?' : 'live';
-    liveB.title = livePending
-      ? 'click again to place real orders'
-      : 'arm live order placement (needs a second click)';
-
-    const hrs = st.expiresIn == null ? null : Math.max(1, Math.round(st.expiresIn / 3_600_000));
-    sk.armSt.textContent = livePending ? 'click live again to confirm'
-      : !mode ? 'nothing will be sent'
-        : mode === 'dry' ? `building orders · ${st.executors} wired`
-          : hrs ? `LIVE · ${hrs}h left` : 'LIVE · no expiry';
-  }
-
-  /** Make a live-armed session obvious from the button alone, panel open or not. */
   function paintFabState() {
     if (!$fab) return;
-    const live = armState().live;
-    $fab.classList.toggle('live', live);
-    $fab.title = live
-      ? 'Market Watch — ARMED LIVE. Rules can place real orders. __pkmw.disarm() to stop.'
-      : 'Market Watch (Alt+M) — drag to move, double-click to reset';
+    $fab.classList.remove('live');
+    $fab.title = 'Market Watch (Alt+M) — drag to move, double-click to reset';
   }
 
   // --- observed -------------------------------------------------------------
@@ -1533,28 +1246,6 @@
     }
   }
 
-  // --- captured writes ------------------------------------------------------
-  function paintWrites() {
-    if (!sk || !sk.wrBody) return;
-    sk.wrSec.style.display = writes.length ? '' : 'none';
-    if (!writes.length) return;
-
-    sk.wrBody.replaceChildren();
-    for (const w of writes.slice(0, 8)) {
-      const row = el('div', 'wr');
-      const p = el('span', 'p', w.path);
-      p.title = `${w.path} · ${fmtAgo(w.t)} ago`;
-      const copy = el('button', 'mini', 'copy');
-      copy.title = 'copy this request so it can be turned into an executor';
-      copy.onclick = () => navigator.clipboard?.writeText(
-        JSON.stringify({ method: w.method, path: w.path, body: w.body }, null, 2),
-      ).then(() => toast('ok', 'Copied', `${w.method} ${w.path}`), () => {});
-      row.append(el('span', 'm', w.method), p, el('span', 'st', String(w.status)), copy);
-      sk.wrBody.append(row, el('pre', 'wb',
-        w.body == null ? '(no body)' : JSON.stringify(w.body, null, 1)));
-    }
-  }
-
   // --- form (built once, never replaced) ------------------------------------
   let form = null;
   function buildForm() {
@@ -1616,13 +1307,10 @@
         ? { mode: selQty.value, value: mode.needsValue ? qtyVal : null, field: selQtyField.value || null }
         : null;
 
-      if (trading && !canExecute()) {
-        toast('warn', 'Rule added — but nothing is armed',
-          "It will report the order it would have sent and send nothing. "
-          + "__pkmw.arm('dry') to build real requests, arm('live') to place them.");
-      } else if (trading && !EXECUTORS.has(selSeries.value)) {
-        toast('warn', 'Rule added — but this series has no executor',
-          'Only stock series with a confirmed instrument_id get wired. Open the market list once so the id can be read next to the ticker.');
+      if (trading) {
+        toast('ok', 'Rule added',
+          'When it fires you get an alert with the size worked out and a button to the '
+          + 'stocks screen. It will not place the order — nothing in this script can.');
       }
       rules.push({
         id: `r${now().toString(36)}${rules.length + 1}`,
@@ -1973,12 +1661,11 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
 
-  // Disclosed debug handle. Read-only helpers plus the executor registration
-  // point — nothing here phones home.
+  // Disclosed debug handle. Read-only helpers — nothing here writes to the game
+  // and nothing phones home.
   window.__pkmw = {
-    hist, get rules() { return rules; }, CFG, EXECUTORS, registerExecutor, wireExecutor, refresh,
-    arm, disarm, armState, ORDER_ROUTES, get ids() { return entityIds; },
-    get writes() { return writes; },   // in memory only; deliberately not in export()
+    hist, get rules() { return rules; }, CFG, refresh,
+    get ids() { return entityIds; },
     series: () => [...seriesIndex()].map(([s, f]) => ({ series: s, fields: f })),
     export: () => JSON.stringify({ hist, rules }, null, 2),
   };
