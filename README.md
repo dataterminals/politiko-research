@@ -93,6 +93,8 @@ userscripts/          _template.user.js — passive-tap skeleton, SPA-aware, PAN
                       time-watch.user.js  — game-clock calibrator
                       align-watch.user.js — your political compass on the home page
                       comms-move.user.js  — makes the game's Comms dock draggable
+                      time-bridge.user.js — hands the clock anchor to the Time Wire planner
+              tools/  node test suites for the above
 artifacts/            gitignored: downloaded bundles, HARs, captures
 CLAUDE.md             working rules for agent sessions
 ```

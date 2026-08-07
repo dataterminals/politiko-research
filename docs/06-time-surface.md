@@ -228,6 +228,23 @@ emits, so a single in-game capture re-anchors every copy the group is running. I
 Politiko not at all — it is arithmetic over a clock reading, so it sits outside the
 scripting clause entirely.
 
+**Auto-calibration, 2026-08-07.** The exact anchor was rarely the one actually in use,
+because getting it there meant going to fetch it: open the game, copy a code, come back,
+paste. `time-bridge.user.js` closes that loop. Time Watch and the planner are different
+origins, so neither can read the other's storage; the bridge runs on both and moves the
+newest `PKT1|…` string between them through the manager's own script storage. The planner
+also accepts `?pkt1=` / `#pkt1=` on load, which makes an anchor shareable as a link, and
+strips the parameter afterwards so a stale anchor cannot get bookmarked. Any route only
+takes an anchor strictly newer than the one already held.
+
+Note what this does *not* do. The obvious-looking alternative — having the planner poll
+`/api/public/stats` itself — is worse on three counts, and the reasoning is worth keeping:
+it would make a page that currently sits outside the scripting clause start originating
+automated requests to politiko.io; it is cross-origin from `github.io` and would need CORS
+the endpoint has no reason to send; and `stats` carries only `game_day`, so it would anchor
+to ±27.6 min where `/api/time` carries game minutes. The passive reading the client already
+makes is both safer and strictly more precise than anything the planner could fetch itself.
+
 ## Still unknown
 
 - Exact `acceleration` value the server sends (52.14 vs 365/7 vs something else).

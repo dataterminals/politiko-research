@@ -52,6 +52,14 @@ plotted, and — since alignment is a running average — what one more ±3 acti
 Alignment-affecting actions submitted since the last reading are logged and projected as a
 range. Zero added requests. Findings: [`07-alignment-surface.md`](07-alignment-surface.md).
 
+### Time bridge — **shipped 2026-08-07** as `time-bridge.user.js`
+Time Watch reads the clock; the [Time Wire](https://dataterminals.github.io/PolitikoTimeWire/)
+planner wants that reading; they are different origins, so neither can reach the other's
+storage. This runs on both and moves one string between them through the manager's own
+script storage. No network code at all. It is also the reason `@grant none` is worth
+guarding elsewhere: this script takes the grants it needs precisely *because* it taps
+nothing, and keeping the two jobs in separate files is what lets each have what it needs.
+
 ### Comms mover — **shipped 2026-08-07** as `comms-move.user.js`
 The game's Comms dock is fixed to the bottom-right (`.ch-overlay`, 320×420, z-index 9999)
 and owns that corner outright, which is what every other panel has to plan around. This
