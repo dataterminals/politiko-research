@@ -93,4 +93,3 @@ Write-Host '  rg -o "/api/[A-Za-z0-9_\-/{}$.:]+"  <outdir> | sort -u'
 Write-Host '  rg -n "wss?://|new WebSocket|readyState"  <outdir>'
 Write-Host '  rg -n "queryKey|useQuery\(|staleTime"  <outdir>'
 Write-Host '  rg -n "Bearer|Authorization|api[_-]?key|token"  <outdir>'
-</content>

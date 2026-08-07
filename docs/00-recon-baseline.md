@@ -112,5 +112,3 @@ through multiple screens.
   Session storage only holds attribution dedupe flags (`pk_visit_sent`, `pk_evt_landing_view`).
 - Whether an *official* player-facing API (the one the rules sanction) exists separately
   from the internal `/api/*` the SPA calls. **This is the key unknown.**
-</content>
-</invoke>

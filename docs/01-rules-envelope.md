@@ -105,4 +105,3 @@ manual browsing. That constraint is the interesting part of the design problem.
   from personal use, and clause 6 governs it.
 - Best-effort answer path: ask staff via `/contact` or the Discord before building
   anything that depends on the answer.
-</content>

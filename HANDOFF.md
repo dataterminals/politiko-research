@@ -98,4 +98,3 @@ holds open is the purest possible data source under the rules.
 > start Phase 0: run tools/fetch-bundles.ps1 and grep the client chunks to determine
 > whether Politiko has a sanctioned player API, plus map the WebSocket and the internal
 > API surface. Read-only, no account, no requests to game routes.
-</content>

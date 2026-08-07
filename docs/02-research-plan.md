@@ -81,4 +81,3 @@ Pick 2–3. Resist building a suite.
   tools that improve *your own* legibility over ones that surveil others.
 - **Exploit discovery.** If recon surfaces a real vulnerability: stop, don't test it
   against live state, report it through the bug bounty. Write nothing public first.
-</content>
