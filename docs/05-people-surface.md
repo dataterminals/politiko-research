@@ -116,7 +116,7 @@ first suggested the backend emits exact times everywhere rather than pre-rounded
   version of this tool that would have stayed inside the clause. `wss://politiko.io`
   remains completely uncharacterized.
 - ~~What `alignment.social_axis` / `economic_axis` range over, and whether `*_count` is a
-  vote tally or a sample size.~~ **Answered 2026-08-06** from the client bundles: the axes
+  vote tally or a sample size.~~ **Answered 2026-08-07** from the client bundles: the axes
   are floats clamped to −3…+3 for display, and `*_count` is a per-axis **sample size** —
   the client renders it as "N actions" and the wiki calls the axis a running average. See
   [`07-alignment-surface.md`](07-alignment-surface.md).

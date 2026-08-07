@@ -44,7 +44,7 @@ acceleration against its own baseline, and renders the month schedule / next-Sep
 countdown in local time. Zero added requests. Findings that motivated it:
 [`06-time-surface.md`](06-time-surface.md).
 
-### Alignment mirror — **shipped 2026-08-06** as `align-watch.user.js`
+### Alignment mirror — **shipped 2026-08-07** as `align-watch.user.js`
 The political compass only exists on `ProfilePage`, and the home page never fetches it, so
 the panel mirrors the last `/api/users/<you>` response the app pulled when you opened your
 own profile: the chart redrawn from the client's own constants, a change log with the trail

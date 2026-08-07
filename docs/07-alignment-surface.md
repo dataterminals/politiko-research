@@ -1,6 +1,6 @@
 # Alignment surface — the compass, and what moves it
 
-Measured **2026-08-06**, entirely from the client bundles already on disk from the
+Measured **2026-08-07**, entirely from the client bundles already on disk from the
 2026-08-03 `tools/fetch-bundles.ps1` run, plus the authenticated capture recorded in
 [`05-people-surface.md`](05-people-surface.md). **Zero requests were made to politiko.io
 in the course of writing this** — no endpoint was called, probed, or re-fetched. The
