@@ -63,6 +63,25 @@ rank_key           string = "punchbag"
 rank_title         string
 ```
 
+**The payload grew after this capture.** Read off `ProfilePage` in the 2026-08-03 bundle
+on **2026-08-07**, the same response also carries membership and place:
+
+```
+faction_id         number | null      faction_rank  string   ("member", …)
+faction_name       string | null      corp_role     string
+corp_id            number | null      location      string
+corp_name          string | null
+```
+
+`ProfilePage` renders each as a stat box linking to `/factions/{id}` and
+`/corporations/{id}`. None of it appears in the July capture above, so either the fields
+were added or they were null for both sampled players and dropped from the recording —
+the bundle proves the client expects them, not that the server always sends them.
+
+This is the second drift found in this file (see the endpoint note below), and the reason
+matters more than the fields: a payload recorded once is a snapshot, and anything built on
+it should re-read the client rather than trust the transcript.
+
 **`last_online` is an exact ISO timestamp with microsecond precision.** The "N days" the
 UI shows is client-side rounding, not the limit of what the server sends. Anything built
 on this can be strictly more precise than the game's own display.
