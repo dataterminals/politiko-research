@@ -13,6 +13,36 @@ This closes the "completely uncharacterized" status that
 **Byte offsets are locators into the 2026-08-03 snapshot only.** Chunk hashes change every
 deploy; so does everything in this file. Re-read the client before trusting any of it.
 
+## What the live capture settled — 2026-08-07
+
+A first `ws-watch` run during normal play: **103 frames, 7 connections, ~6 minutes
+observed.** Zero requests added; every frame below had already arrived for the game's own
+use. This is the section the rest of the document was written to make possible.
+
+| question | answer |
+|---|---|
+| Does the server seed presence at connect? | **Yes — SEEDED.** 3 `presence` frames within 10 s of a connect |
+| Does `presence` carry more than `username` + `online`? | **No.** Exactly `type, username, online` |
+| Does presence include your own username? | **Yes** — the game's `● N` is off by one |
+| Frame types the client silently discards? | **Yes — `market/subscribed` ×14, `market/unsubscribed` ×11** |
+| Does `quote` carry more than `price`/`bid`/`ask`? | **Yes — `game_time`** |
+
+Three of these change what is worth building. They are worked into the sections below;
+the short version:
+
+1. **Presence is seeded, so a passive observer gets the roster, not just the edges.**
+   This is the version of a presence tool that stays inside the clause, and it now has
+   evidence rather than hope behind it.
+2. **The market socket acknowledges subscriptions, and the client throws the acks away.**
+   25 frames in six minutes, invisible to every reader of the bundle. Exactly the class
+   of thing the no-`default`-branch argument predicted.
+3. **`quote` is stamped in game time.** The client never reads the field.
+
+**The sample is small and its negatives are weak.** Six minutes and ~58 chat frames is
+nowhere near enough to conclude there are no unrecognised *chat* types — both discoveries
+were on the market socket. No `error` frame arrived, so `scope` values remain unknown, and
+no `dnd_updated` arrived because DND was never toggled.
+
 ## The correction to carry forward
 
 `00-recon-baseline.md` describes **one** socket of unknown purpose. There are **two**, and
@@ -79,6 +109,35 @@ renders disabled when the id is null.
 `history` carries no `has_more` that the client reads; it synthesises
 `hasMore = messages.length >= 50`, which pins the server page size at 50.
 
+#### On the wire — measured 2026-08-07
+
+```
+room_joined    room_id  kind  label  dm_target  dm_target_role  dm_target_is_insider
+history        room_id  messages
+presence       username  online
+message        client_msg_id  room_id  message{ id, room_id, sender,
+message_ack                             sender_role, sender_is_insider, body, sent_at }
+```
+
+Three things this settles:
+
+- **`history` really does omit `has_more`.** The doc previously carried this as *inferred*
+  — a client non-read cannot prove a server absence. Now measured: the frame carries
+  `room_id` and `messages`, nothing else. The `>= 50` heuristic is the only signal there is.
+- **`message` and `message_ack` carry a top-level `room_id` the client ignores**, reading
+  `message.room_id` instead. Harmless duplication, but it is a second confirmed instance
+  of the wire being wider than the reader.
+- **`room_joined` and `presence` match the bundle exactly.** No hidden fields.
+
+`sender_role` / `sender_is_insider` on the message object pair with the same
+admin/moderator/insider classifier `ProfilePage` uses, so chat and profiles share one role
+vocabulary.
+
+**No `error` frame and no `dnd_updated` arrived** in this sample, so the `scope` vocabulary
+is still unknown. No typing indicator, no read receipt, no other-user join/leave event
+appeared either — consistent with the bundle, but six minutes is weak evidence for a
+negative.
+
 ### Outbound: three types, six send sites
 
 **Measured.** Six `.send(` call sites in the entry bundle, constructing eight frames of
@@ -142,6 +201,38 @@ invisible to static analysis.
 Properties actually read off a quote anywhere in the bundle: **`price`, `bid`, `ask`** —
 `bid`/`ask` only at the selected-instrument detail panel.
 
+### On the wire — measured 2026-08-07
+
+The client's two cases are not the protocol. Live capture:
+
+```
+quote           instrument_id  price  bid  ask  game_time
+candle_update   instrument_id  timeframe  bucket_start  open  high  low  close  volume
+subscribed      instrument_id                    ← client has no case; discarded
+unsubscribed    instrument_id                    ← client has no case; discarded
+```
+
+**`subscribed` / `unsubscribed` are acknowledgements** the server returns for the client's
+own `subscribe`/`unsubscribe` frames — 25 of them in six minutes, every one dropped in
+silence by a switch with no `default`. Nothing in any bundle could have revealed them.
+They are the concrete proof of the argument in
+[What the bundles structurally cannot tell us](#what-the-bundles-structurally-cannot-tell-us),
+and they show the market socket is request/response as well as broadcast.
+
+**`quote` carries `game_time`, which the client never reads.** That is the more useful
+find. Every quote is stamped in *game* time, which makes the market socket a free clock
+source for anything in the [time surface](06-time-surface.md) — a second, independent
+anchor alongside the `/api/time` responses `time-watch` already taps, arriving far more
+often and costing nothing extra. Its precision and whether it agrees with `/api/time` are
+unmeasured; that is the obvious next thing to look at.
+
+**`candle_update` is a full OHLCV bar** with `bucket_start`, not the thin thing the
+client's usage suggested. Worth knowing that the socket is the *only* source of live
+candles: `stocks-candles` has no `refetchInterval` and the REST `/quote` payload carries
+no OHLC, so with the socket down the chart's last bar simply stops advancing.
+
+Note `quote` carries **no volume** — volume appears only on `candle_update`.
+
 Outbound: four `.send(` sites (794, 927, 1634, 1800), three types — `ping` (30 s
 interval), `subscribe`, `unsubscribe`. There is no bulk-subscribe form; `onopen` replays
 the pending set one frame at a time.
@@ -183,29 +274,44 @@ case`presence`:{ let e=t.username, n=t.online;
 
 ### Three consequences worth stating plainly
 
-**1. It is delta-only on the client.** The client accumulates transitions from connect
-time forward. Whether the *server* replays a burst of `presence` frames on join — which
-would make it a de-facto roster — is **not determinable from the bundles**.
+**1. The client is delta-only, but the server seeds it.** ~~Whether the *server* replays a
+burst of `presence` frames on join is not determinable from the bundles.~~ **Measured
+2026-08-07: it does.** Three `presence` frames arrived within 10 s of a connect, before
+any human activity.
 
-**2. The obvious free test is weaker than it looks, and asymmetric.** I initially thought
-the operator could just watch the badge on a fresh load. That works in one direction only:
+This is the finding that makes a presence tool worth building. Because the server seeds,
+**a passive observer gets the online roster at connect time, not merely the edges after
+it** — which is precisely the shape `01-rules-envelope.md` called the cheap unlock worth
+wanting, and it needs no request to obtain.
 
-- badge appears within seconds showing **N > 1**, before any human activity → **strong
-  evidence of a burst seed**.
-- badge **absent or creeping up one at a time** → **ambiguous**. It is indistinguishable
-  from a genuinely quiet server, because zero hides the badge and an unseeded DM row
-  renders the *same grey dot* as a genuinely-offline partner. Both failure modes are
-  silent.
+Two limits to keep attached to it. The seed observed was **three users**, consistent with
+a small world (291 citizens, `online_now` frequently 0–few), so the roster is real but
+short. And "online" here means *holding a `/ws/chat` connection*, which is closer to
+"has the game open" than to "is playing" — better than a decaying `is_online`, but not
+the same as activity.
 
-So the observation is free and worth making, but it can only confirm seeding, never rule
-it out.
+**2. A `presence` frame carries nothing else.** Measured: exactly `type`, `username`,
+`online`. No room id, no timestamp, no role, no DND flag.
 
-**3. The count drifts upward and never self-corrects.** Nothing clears the Set — not a
-close, not a reconnect. Anyone who goes offline during a backoff gap is never removed, and
-the entry persists for the life of the component mount. **The game's own `● N` badge
-over-counts over a long session.** That is a bug in the client, not in our reading of it,
-and any tool that reports a population number inherits it unless it tracks connection
-epochs itself.
+The absence of `room_id` matters for a specific reason. The scope inference below was
+written with the caveat that *"a `room_id` on the frame would immediately downgrade this
+to the union of my rooms."* **That trigger did not fire.** It does not upgrade the
+inference to proof — the server could still fan out per-room without labelling frames —
+but the one thing that would have refuted it is now measured absent.
+
+No timestamp also confirms a tap yields `(local_receive_time, username, bool)`. The
+receive instant is the client's, not the server's.
+
+**3. The count drifts upward and never self-corrects — and seeding does not fix it.**
+Nothing clears the Set: not a close, not a reconnect. Re-seeding on each connect *adds*
+entries but never removes them, so anyone who went offline during a backoff gap and did
+not return stays in the set for the life of the component mount. **The game's own `● N`
+badge over-counts over a long session.**
+
+Measured 2026-08-07, it is also **off by one from the start**: the server sends your own
+username in the presence stream, and the client applies no self-filter. Any tool reporting
+a population number inherits both errors unless it tracks connection epochs itself and
+drops self.
 
 ### Inferred, and how strongly
 
@@ -264,6 +370,12 @@ That is the actual argument for the tap. Not "presence would be nice" — presen
 already half-visible in polled REST. It is that **the socket is the only surface where
 what we can see and what exists differ, and a passive read is the only instrument that
 measures the difference.**
+
+> **Confirmed 2026-08-07, on the first run.** Six minutes of normal play turned up two
+> whole message types (`market/subscribed`, `market/unsubscribed` — 25 frames) and two
+> unread fields (`quote.game_time`, a top-level `room_id` on `message`). None of it was
+> reachable by any amount of further bundle reading. The gap was real and it was larger
+> than the argument assumed.
 
 ## The read-only tap — verdict and conditions
 
@@ -380,35 +492,35 @@ object this design refuses to hold. Wait for the next reconnect instead.
 
 ## Open questions
 
-Ordered by what they would unlock. The first four are answered by a read-only tap logging
-frames during normal play, and by nothing else available to us.
+Ordered by what they would unlock.
 
-**1–6 are tracked by `ws-watch`.** It reports each in its panel and prints "nothing left
-to learn" once the four **blocking** ones (1, 2, 3, 6) are settled. 4 and 5 are marked
-*bonus* and do not hold retirement up: 4 needs an `error` frame and 5 needs you to have
-sent a chat message, and neither is guaranteed to happen in a given session.
-**7–9 are not tracked, and won't be:** 7 needs long observation and judgement, 8 should be
-asked rather than tested, and 9 needs a file we never downloaded.
+**A first `ws-watch` run on 2026-08-07 settled five of these.** They are struck through
+below rather than deleted, so the next reader can see what was asked and what it cost to
+answer. What is left is either rare (4), slow (7), or not ours to test (8, 9).
 
-1. **Does the server burst-seed `presence` on connect?** *(blocking)* Decides whether an
-   observer gets the online roster or only edges. Count `presence` frames in the first
-   ~10 s after `/ws/chat` opens, before any human activity. Needs **several reloads** —
-   one quiet connect proves nothing, per the asymmetry noted above.
-2. **Does the `presence` frame carry fields the client discards** — `room_id`, timestamp,
-   role, DND? *(blocking)* A `room_id` would downgrade the scope answer immediately.
-3. **Does either socket emit types the client has no case for?** *(blocking)* Zero hits
-   across all 123 chunks for `typing`, `pong`, `room_left`, `kicked`, `system_message`,
-   `rate_limit`, `slow_mode` — but the client couldn't show them even if they existed.
-4. **What `scope` values can an `error` frame carry?** *(bonus)* Only `join` appears in
-   the bundle.
-5. **Does presence include your own username?** *(bonus)* The client applies no
-   self-filter, so if the server echoes you the header count is off by one. ws-watch
-   learns your name from a `message_ack` — the receipt for a message you sent — so this
-   one needs you to say something in chat.
-6. **Does a market `quote` carry more than `price` / `bid` / `ask`?** *(blocking)* The
-   reducer stores the whole message object, so unread fields leave no trace in the
-   bundle. Same question for `candle_update`. Needs **one visit to the stocks screen**.
-7. **How long does the server hold someone "online" after an ungraceful disconnect?**
+1. ~~**Does the server burst-seed `presence` on connect?**~~ **Answered: yes.** Three
+   frames within 10 s of a connect. An observer gets the roster, not just the edges.
+2. ~~**Does the `presence` frame carry fields the client discards?**~~ **Answered: no** —
+   exactly `type`, `username`, `online`. Notably no `room_id`, which was the one field
+   that would have refuted the app-wide scope reading.
+3. ~~**Does either socket emit types the client has no case for?**~~ **Answered: yes** —
+   `market/subscribed` and `market/unsubscribed`, 25 frames in six minutes, all discarded.
+   **Still open for `/ws/chat` specifically**: both discoveries were on the market socket,
+   and ~58 chat frames is far too few to conclude anything negative.
+4. **What `scope` values can an `error` frame carry?** *(still open)* Only `join` appears
+   in the bundle, and no `error` frame arrived in the sample. Needs a failed action — a DM
+   to a nonexistent user is the obvious one, and costs nothing.
+5. ~~**Does presence include your own username?**~~ **Answered: yes.** The client applies
+   no self-filter, so the header count is off by one.
+6. ~~**Does a market `quote` carry more than `price`/`bid`/`ask`?**~~ **Answered: yes —
+   `game_time`**, never read by the client. `candle_update` is a full OHLCV bar with
+   `bucket_start`.
+7. **Does `quote.game_time` agree with `/api/time`?** *(new, from the above)* If it does,
+   the market socket is a second clock anchor arriving far more often than the ~60 s
+   `/api/time` poll `time-watch` already reads, for zero extra cost. If it drifts, that is
+   more interesting still. Cross-check against
+   [`06-time-surface.md`](06-time-surface.md); needs only the stocks screen open.
+8. **How long does the server hold someone "online" after an ungraceful disconnect?**
    Bounds how far a presence-derived "active now" can be trusted. Answerable only by long
    passive observation.
 8. **Is presence suppressed for DND users** — does DND double as invisibility? **Do not

@@ -300,7 +300,7 @@ const buildCensus = () => {
   let record = null;
   const api = new Function(
     'load', 'save', 'K', 'KNOWN', 'log', 'fmtDur', 'onSocketFrame', 'setInterval', 'window',
-    `${CENSUS}\nreturn { answers, retired, get census() { return census; } };`,
+    `${CENSUS}\nreturn { answers, retired, report, get census() { return census; } };`,
   )(
     () => null, () => {}, { census: 'c', ui: 'u' },
     { chat: ['room_joined', 'history', 'message_ack', 'message', 'error', 'presence', 'dnd_updated'],
@@ -415,6 +415,37 @@ console.log('\n— knowing when to stop —');
   check('so the tool reports itself retired', api.retired(), true);
   check('a rare bonus question staying open does not block that',
     answerOf(api, 'escope').state, 'open');
+}
+
+console.log('\n— the findings report —');
+{
+  const { api, feed } = buildCensus();
+  feed(open(1, 'chat', T0));
+  feed(frame(1, 'chat', 'presence', { username: 'zed', online: true }, T0 + 10));
+  feed(frame(1, 'chat', 'typing', { username: 'zed' }, T0 + 20));
+  const r = api.report();
+  ok('leads with a timestamp', /^# ws-watch findings — \d{4}-\d{2}-\d{2}T/.test(r));
+  ok('states the sample size', r.includes('2 frames · 1 connections'));
+  ok('marks settled questions with [x]', r.includes('[x] Does a presence frame carry'));
+  ok('marks open questions with [ ]', /\[ \] Does the server seed presence/.test(r));
+  ok('flags bonus questions as non-blocking', r.includes('(bonus)'));
+  ok('reports unrecognised types with their sample', r.includes('chat/typing ×1') && r.includes('"type":"typing"'));
+  ok('lists frame shapes by key name', r.includes('chat/presence ×1 — online username'));
+  ok('embeds the raw census as fenced json', r.includes('```json') && r.includes('"presenceTotal": 1'));
+  ok('the raw block is parseable', (() => {
+    const m = r.match(/```json\n([\s\S]*?)\n```/);
+    try { return JSON.parse(m[1]).v === 1; } catch { return false; }
+  })());
+}
+{
+  // The report must not become a second way to leak what the census refuses to store.
+  const { api, feed } = buildCensus();
+  feed(open(1, 'chat', T0));
+  feed(frame(1, 'chat', 'message', { message: { sender: 'someone', body: 'a private thing' } }, T0 + 10));
+  const r = api.report();
+  ok('no chat body reaches the report', !r.includes('a private thing'));
+  ok('no other player name reaches the report', !r.includes('someone'));
+  ok('...but the shape does', r.includes('message.sender') && r.includes('message.body'));
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

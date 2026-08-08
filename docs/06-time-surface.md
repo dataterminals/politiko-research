@@ -84,6 +84,25 @@ T5 also recorded response headers: `CF-Cache-Status: DYNAMIC` — the endpoint i
 edge-cached, so none of these brackets are skewed by CDN staleness — and a server
 `Date` 4.4–5.4 s ahead of the local clock, matching the local-offset measurement below.
 
+### A second, denser anchor source — found 2026-08-07, unverified
+
+Live socket capture shows every `/ws/market` **`quote` frame carries a `game_time`
+field**, which the game client never reads. See
+[`09-socket-surface.md`](09-socket-surface.md).
+
+If it agrees with `/api/time`, it is a strictly better anchor source than what
+`time-watch` taps today: quotes arrive continuously while the stocks screen is open,
+against a ~60 s poll, and it costs nothing extra — the frames have already arrived.
+Denser anchors mean a tighter measured acceleration and a sharper phase estimate, which
+is exactly what [`Closing the gaps`](#closing-the-gaps) is short of.
+
+**Nothing has been checked yet.** Unknown: its unit (game-seconds, like the `/api/time`
+payload, or a formatted date), its precision, and whether it agrees with `/api/time` at
+all. If it *disagrees*, that is the more interesting result — two clocks on one server
+is worth understanding before either is trusted. Cheapest test: have `ws-watch` (or any
+`WS TAP v1` consumer) open on the stocks screen while `time-watch` records a normal
+`/api/time` sample, and compare.
+
 Cross-checks:
 
 - **A1→A2 span:** (365−298) + 251 = 318 game days. At 52.14× that is 6 d 2 h 22 m;

@@ -130,14 +130,26 @@ first suggested the backend emits exact times everywhere rather than pre-rounded
 
 - **Whether the roster supports sort or filter parameters.** The UI may expose controls
   that would make the whole build unnecessary. Worth looking at before anything else.
-- ~~**Whether the WebSocket carries presence.**~~ **Answered 2026-08-07 — it does.**
-  `/ws/chat` pushes `{type:"presence", username, online}` transitions, and the Comms dock
-  keeps a flat Set of online usernames off them. So activity *can* be accumulated with
-  zero requests. Three caveats before building on it: the client's set is **delta-only**
-  (starts empty, never seeded, never cleared — the game's own `● N` badge over-counts over
-  a long session); whether the server burst-seeds on connect is **unknown**; and for
-  faction-scoped presence the *public* `/factions/{id}/public`, polled at 5 s with
-  `members[].is_online`, is simply better. See
+- ~~**Whether the WebSocket carries presence.**~~ **Answered 2026-08-07 — it does, and
+  the server seeds it.** `/ws/chat` pushes `{type:"presence", username, online}`, and
+  **measured on the wire**, the server sends a burst at connect — so a passive observer
+  gets the **online roster**, not merely the edges after it. That is the version of this
+  tool that stays inside the clause, and it now has evidence behind it.
+
+  Four things to carry into any build:
+  - The frame carries **exactly** `username` and `online`. No timestamp — so a tap yields
+    the *client's* receive instant, not a server one. No `room_id` either, which was the
+    one field that would have refuted the app-wide scope reading.
+  - **It includes your own username**, and the client applies no self-filter, so the
+    game's `● N` is off by one.
+  - The client's set is **never cleared**, and re-seeding on reconnect adds without
+    removing, so the badge over-counts across a long session. A tool must track
+    connection epochs itself.
+  - **"Online" means holding a `/ws/chat` connection** — closer to "has the game open"
+    than to "is playing". Still far better than a decaying `is_online`.
+
+  For *faction-scoped* presence the public `/factions/{id}/public`, polled at 5 s with
+  `members[].is_online`, remains simply better. See
   [`09-socket-surface.md`](09-socket-surface.md).
 - ~~What `alignment.social_axis` / `economic_axis` range over, and whether `*_count` is a
   vote tally or a sample size.~~ **Answered 2026-08-07** from the client bundles: the axes

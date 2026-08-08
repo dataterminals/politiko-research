@@ -122,13 +122,22 @@ the file back afterwards.
    [`tools/test-passive.js`](userscripts/tools/test-passive.js).
    **What is left is running it.** ws-watch is a *temporary instrument*, not a feature —
    see the next item.
-2. **Run ws-watch, then delete it.** It is a measuring instrument with an expiry date. It
-   tracks the six questions at the bottom of [`docs/09`](docs/09-socket-surface.md) and
-   prints **"Nothing left to learn"** when every blocking one is settled — at which point
-   fold the answers into `docs/09` and uninstall it. The two that need the operator to do
-   anything: reload the game a few times (the seeding question needs several connects),
-   and open the stocks screen once. Everything else accumulates during normal play.
-   Keep `WS TAP v1`; retire the panel around it.
+2. ~~**Run ws-watch, then delete it.**~~ **Run 2026-08-07** — 103 frames, 7 connections,
+   ~6 minutes. Five of the six questions settled and folded into
+   [`docs/09`](docs/09-socket-surface.md). Headlines: **presence is server-seeded** (so a
+   passive observer gets the roster, not just edges), **`quote` carries `game_time`** that
+   the client never reads, and **`market/subscribed`/`unsubscribed` exist and are silently
+   discarded** — 25 frames no bundle read could have revealed.
+
+   **ws-watch is still installed and has not been deleted.** Two cheap reasons to keep it
+   a little longer, both in `docs/09`'s open list: the `error.scope` vocabulary needs one
+   failed action (a DM to a nonexistent user), and the chat socket has had far too few
+   frames to say anything about unrecognised *chat* types — both discoveries were on the
+   market side. When those are done: fold in, uninstall, keep `WS TAP v1`.
+
+   It also has **no export button** — the findings came out via
+   `copy(localStorage.getItem('pkws:census'))` in the console. Worth adding if any future
+   tool reuses the pattern.
 
 3. **Does a sanctioned player API exist?** Phase 0, still unanswered, still branches the
    whole project.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — WS Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.0
+// @version      0.1.1
 // @description  Read-only observer for the two WebSockets the game itself opens (/ws/chat, /ws/market). Records which frame types arrive and what keys they carry, so the parts of the protocol the client silently ignores become visible. Opens no connection, transmits nothing, adds zero requests. Temporary measuring instrument — it tells you when it has nothing left to learn.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -26,6 +26,8 @@
  *             position. See "what is not stored" below.
  *   Alerts:   none. No desktop or tab alerts, no sound, no title changes. The panel
  *             redraws only while the tab is visible.
+ *   Clipboard: written ONLY when you click "copy findings", and only with the report
+ *             shown in the panel plus the stored census. Nothing is copied on its own.
  *
  * HOW IT OBSERVES, precisely
  *
@@ -438,6 +440,48 @@
   const answers = () => QUESTIONS.map((q) => ({ ...q, ...q.probe() }));
   const retired = () => answers().every((a) => !a.blocking || a.state === 'done');
 
+  // A findings report, ready to paste into docs/09-socket-surface.md. The whole point of
+  // this tool is the handover at the end of its life, so that step should not need a
+  // console incantation.
+  const report = () => {
+    const L = [];
+    L.push(`# ws-watch findings — ${new Date().toISOString()}`);
+    L.push('');
+    L.push(`${census.frames} frames · ${census.connects} connections · observed ${fmtDur(census.observedMs)}`);
+    L.push(retired() ? 'Every blocking question is settled.' : 'Still accumulating.');
+    L.push('');
+    L.push('## Questions');
+    for (const a of answers()) {
+      L.push(`- [${a.state === 'done' ? 'x' : ' '}] ${a.q}${a.blocking ? '' : '  (bonus)'}`);
+      L.push(`      ${a.text}`);
+    }
+
+    const unk = unknownList();
+    L.push('');
+    L.push('## Frame types the client has no case for');
+    if (!unk.length) L.push('(none seen)');
+    for (const u of unk) {
+      L.push(`### ${u.kind}/${u.type} ×${u.n}`);
+      for (const s of u.samples) L.push(`    ${s}`);
+    }
+
+    L.push('');
+    L.push('## Frame shapes seen (key names only)');
+    for (const kind of Object.keys(census.types)) {
+      for (const [type, e] of Object.entries(census.types[kind]).sort((a, b) => b[1].n - a[1].n)) {
+        const keys = Object.keys(e.keys).filter((k) => k !== 'type').sort();
+        L.push(`- ${kind}/${type} ×${e.n} — ${keys.join(' ')}`);
+      }
+    }
+
+    L.push('');
+    L.push('## Raw census');
+    L.push('```json');
+    L.push(JSON.stringify(census, null, 1));
+    L.push('```');
+    return L.join('\n');
+  };
+
   // ---------------------------------------------------------------------------
   // 4. Panel
   // ---------------------------------------------------------------------------
@@ -726,9 +770,32 @@
     const head = el('div', 'pkws-head');
     head.append(el('span', null, 'ws-watch'));
     const btns = el('span');
+
+    const copy = el('button', 'pkws-btn', 'copy findings');
+    copy.title = 'copy a pasteable report of everything recorded so far';
+    copy.addEventListener('click', () => {
+      const text = report();
+      const done = () => { copy.textContent = 'copied'; setTimeout(() => { copy.textContent = 'copy findings'; }, 1500); };
+      const failed = () => { copy.textContent = 'copy failed'; setTimeout(() => { copy.textContent = 'copy findings'; }, 1500); };
+      try {
+        navigator.clipboard.writeText(text).then(done, failed);
+      } catch { failed(); }
+    });
+
     const forget = el('button', 'pkws-btn', 'forget');
+    forget.style.marginLeft = '5px';
+    // Destructive and adjacent to the copy button, so make it a two-step.
+    let armed = false;
     forget.title = 'discard everything recorded and start the census over';
     forget.addEventListener('click', () => {
+      if (!armed) {
+        armed = true;
+        forget.textContent = 'sure?';
+        setTimeout(() => { armed = false; forget.textContent = 'forget'; }, 3000);
+        return;
+      }
+      armed = false;
+      forget.textContent = 'forget';
       census = blank();
       save(K.census, census);
       render();
@@ -736,7 +803,7 @@
     const hide = el('button', 'pkws-btn', '×');
     hide.style.marginLeft = '5px';
     hide.addEventListener('click', () => setOpen(false));
-    btns.append(forget, hide);
+    btns.append(copy, forget, hide);
     head.append(btns);
 
     body = el('div', 'pkws-body');
