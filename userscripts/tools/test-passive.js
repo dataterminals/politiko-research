@@ -296,13 +296,13 @@ console.log('\n— two sockets, reconnects, and double-install —');
 // ---------------------------------------------------------------------------
 const CENSUS = cut('  const SEED_WINDOW_MS = 10_000;', '  // ---------------------------------------------------------------------------\n  // 4. Panel');
 
-const buildCensus = () => {
+const buildCensus = (stored) => {
   let record = null;
   const api = new Function(
     'load', 'save', 'K', 'KNOWN', 'log', 'fmtDur', 'onSocketFrame', 'setInterval', 'window',
-    `${CENSUS}\nreturn { answers, retired, report, get census() { return census; } };`,
+    `${CENSUS}\nreturn { answers, retired, report, seedVerdict, clockRate, get census() { return census; } };`,
   )(
-    () => null, () => {}, { census: 'c', ui: 'u' },
+    () => stored ?? null, () => {}, { census: 'c', ui: 'u' },
     { chat: ['room_joined', 'history', 'message_ack', 'message', 'error', 'presence', 'dnd_updated'],
       market: ['quote', 'candle_update'] },
     () => {}, (ms) => `${Math.round(ms / 1000)}s`,
@@ -336,35 +336,191 @@ console.log('\n— the census reads frame shapes, not contents —');
   check('an extra field on presence is reported', a.text, 'YES — also carries: room_id, at');
 }
 
-console.log('\n— the seeding question —');
+console.log('\n— the value allowlist is closed, not merely careful —');
 {
+  // The single most important property of 0.2.0. If a username, a chat body or any
+  // other unlisted value can reach storage, the disclosure is a lie.
   const { api, feed } = buildCensus();
   feed(open(1, 'chat', T0));
-  for (let i = 0; i < 3; i++) feed(frame(1, 'chat', 'presence', { username: `u${i}`, online: true }, T0 + 500 * i));
+  feed(frame(1, 'chat', 'presence', { username: 'someone_else', online: true }, T0 + 10));
+  feed(frame(1, 'chat', 'message', {
+    client_msg_id: 'x', room_id: 3,
+    message: { id: 1, sender: 'a_third_party', body: 'a private thing', sent_at: 'ts' },
+  }, T0 + 20));
+  feed(frame(1, 'chat', 'room_joined', { room_id: 3, kind: 'direct', label: 'Chat with Bob', dm_target: 'bob' }, T0 + 30));
+  feed(open(2, 'market', T0 + 40));
+  feed(frame(2, 'market', 'quote', { instrument_id: 8, price: 1, bid: 1, ask: 2, game_time: 5000 }, T0 + 50));
+
+  const dump = JSON.stringify(api.census);
+  ok('no other player username stored', !dump.includes('someone_else') && !dump.includes('a_third_party'));
+  ok('no chat body stored', !dump.includes('a private thing'));
+  ok('no room label or dm_target stored', !dump.includes('Chat with Bob') && !dump.includes('bob'));
+  ok('no instrument_id value stored', !/"instrument_id":\s*8/.test(dump));
+  ok('...but the allowlisted game_time IS stored', dump.includes('5000'));
+  ok('...and the key NAMES still survive', dump.includes('username') && dump.includes('dm_target'));
+}
+{
+  // The one path that stores values wholesale. Caught leaking a real username in
+  // browser testing: a `typing` frame the game has no case for carried one.
+  const { api, feed } = buildCensus();
+  feed(open(1, 'chat', T0));
+  feed(frame(1, 'chat', 'typing', { username: 'alice', room_id: 1 }, T0 + 10));
+  feed(frame(1, 'chat', 'sys_note', { level: 'warn', text: 'slow mode', ttl_ms: 30_000 }, T0 + 20));
+  feed(frame(1, 'market', 'subscribed', { instrument_id: 8 }, T0 + 30));
+  const dump = JSON.stringify(api.census.unknown);
+  ok('an unknown frame does not retain a username', !dump.includes('alice'));
+  ok('...but still reports that it HAS a username field', dump.includes('username') && dump.includes('<string>'));
+  ok('free-text is scrubbed too', !dump.includes('slow mode'));
+  // The scrub must not swallow the values that make a sample worth keeping.
+  const sample = (kind, type) => api.census.unknown[kind][type].samples[0];
+  ok('non-person values survive', sample('chat', 'sys_note').includes('"ttl_ms":30000'));
+  ok('instrument ids survive intact', sample('market', 'subscribed').includes('"instrument_id":8'));
+  ok('room ids survive intact', sample('chat', 'typing').includes('"room_id":1'));
+}
+{
+  // presence.online must reach storage as counts and never beside a name.
+  const { api, feed } = buildCensus();
+  feed(open(1, 'chat', T0));
+  feed(frame(1, 'chat', 'presence', { username: 'p', online: true }, T0 + 10));
+  feed(frame(1, 'chat', 'presence', { username: 'q', online: true }, T0 + 20));
+  feed(frame(1, 'chat', 'presence', { username: 'r', online: false }, T0 + 30));
+  check('online edges counted', api.census.presenceOn, 2);
+  check('offline edges counted', api.census.presenceOff, 1);
+  ok('no per-user structure exists', !JSON.stringify(api.census).match(/"[pqr]"/));
+}
+
+console.log('\n— the seeding question, rebuilt around composition —');
+{
+  const { api, feed } = buildCensus();
+  // Two connects that each open with an all-online burst = a roster seed.
+  for (const c of [1, 2]) {
+    feed(open(c, 'chat', T0));
+    for (let i = 0; i < 3; i++) feed(frame(c, 'chat', 'presence', { username: `u${i}`, online: true }, T0 + 500 * i));
+    feed(close(c, 'chat', T0 + 9000));
+  }
   const a = answerOf(api, 'seed');
-  check('a burst at connect settles it as SEEDED', a.state, 'done');
-  ok('...with the evidence attached', a.text.startsWith('SEEDED'));
+  check('two all-online bursts settle it as SEEDED', a.state, 'done');
+  ok('...and say so', a.text.startsWith('SEEDED'));
+  ok('...reporting the burst sizes', a.text.includes('3, 3'));
 }
 {
   const { api, feed } = buildCensus();
-  // Presence works on this deploy, but never arrives at connect time.
+  // THE CASE 0.1.x GOT WRONG: three frames near a connect, but a mix of on and off.
+  // That is churn from reloading players, not a roster.
+  for (const c of [1, 2, 3]) {
+    feed(open(c, 'chat', T0));
+    feed(frame(c, 'chat', 'presence', { username: 'a', online: true }, T0 + 100));
+    feed(frame(c, 'chat', 'presence', { username: 'b', online: false }, T0 + 200));
+    feed(frame(c, 'chat', 'presence', { username: 'a', online: true }, T0 + 300));
+    feed(close(c, 'chat', T0 + 9000));
+  }
+  const a = answerOf(api, 'seed');
+  check('a mixed burst is NOT read as a seed', a.state, 'open');
+  ok('...and is named as churn', a.text.includes('mixed'));
+}
+{
+  const { api, feed } = buildCensus();
   for (let c = 1; c <= 3; c++) {
     feed(open(c, 'chat', T0));
-    feed(frame(c, 'chat', 'presence', { username: 'u', online: true }, T0 + 60_000)); // well past the window
+    feed(frame(c, 'chat', 'presence', { username: 'u', online: true }, T0 + 60_000)); // past the window
     feed(close(c, 'chat', T0 + 90_000));
   }
   const a = answerOf(api, 'seed');
-  check('three quiet connects settle it as DELTA-ONLY', a.state, 'done');
-  ok('...with the evidence attached', a.text.startsWith('DELTA-ONLY'));
+  check('three silent connects settle it as NOT SEEDED', a.state, 'done');
+  ok('...and say so', a.text.startsWith('NOT SEEDED'));
 }
 {
   const { api, feed } = buildCensus();
-  // A quiet connect with no presence ANYWHERE proves nothing — it is indistinguishable
-  // from a server where simply nobody changed state. This is the trap the doc calls out.
   for (let c = 1; c <= 5; c++) { feed(open(c, 'chat', T0)); feed(close(c, 'chat', T0 + 90_000)); }
   const a = answerOf(api, 'seed');
-  check('quiet connects with no presence at all stay open', a.state, 'open');
-  check('...and say why', a.text, 'no presence frame seen yet');
+  check('silence with no presence anywhere proves nothing', a.state, 'open');
+}
+{
+  const { api, feed } = buildCensus();
+  // A single all-online burst is suggestive but not enough — one clean window can
+  // still be coincidence, so the bar is two.
+  feed(open(1, 'chat', T0));
+  for (let i = 0; i < 4; i++) feed(frame(1, 'chat', 'presence', { username: `u${i}`, online: true }, T0 + 100 * i));
+  feed(close(1, 'chat', T0 + 9000));
+  const a = answerOf(api, 'seed');
+  check('one all-online burst is not yet enough', a.state, 'open');
+  ok('...and says how far off it is', a.text.includes('need 2'));
+}
+
+console.log('\n— quote.game_time —');
+{
+  const { api, feed } = buildCensus();
+  feed(open(1, 'market', T0));
+  // 52.14 game-seconds per real second over 60 real seconds = 3128.4 game-seconds.
+  feed(frame(1, 'market', 'quote', { instrument_id: 1, game_time: 1_000_000 }, T0));
+  feed(frame(1, 'market', 'quote', { instrument_id: 1, game_time: 1_003_128 }, T0 + 60_000));
+  const r = api.clockRate();
+  ok('a rate is derivable from two samples', !!r);
+  ok('...and lands on the documented ~52.14', Math.abs(r.rate - 52.14) < 0.1);
+  const a = answerOf(api, 'clock');
+  check('the question settles', a.state, 'done');
+  ok('...and cross-checks against docs/06', a.text.includes('matches'));
+}
+{
+  const { api, feed } = buildCensus();
+  feed(open(1, 'market', T0));
+  feed(frame(1, 'market', 'quote', { instrument_id: 1, game_time: 1000 }, T0));
+  feed(frame(1, 'market', 'quote', { instrument_id: 1, game_time: 1010 }, T0 + 5000));
+  check('too short a baseline yields no rate', api.clockRate(), null);
+  check('...and the question stays open', answerOf(api, 'clock').state, 'open');
+}
+{
+  const { api, feed } = buildCensus();
+  feed(open(1, 'market', T0));
+  feed(frame(1, 'market', 'quote', { instrument_id: 1, game_time: '2026-08-08T00:00:00Z' }, T0));
+  const a = answerOf(api, 'clock');
+  check('a non-numeric game_time settles differently', a.state, 'done');
+  ok('...naming the type', a.text.includes('string'));
+}
+{
+  const { api, feed } = buildCensus();
+  feed(open(1, 'market', T0));
+  for (const [tf, bs] of [['1m', 100], ['1m', 100], ['1m', 160], ['5m', 100]]) {
+    feed(frame(1, 'market', 'candle_update', { instrument_id: 1, timeframe: tf, bucket_start: bs }, T0));
+  }
+  check('timeframes tallied', api.census.timeframes, { '1m': 3, '5m': 1 });
+  check('bucket_start deduped per timeframe', api.census.buckets, { '1m': [100, 160], '5m': [100] });
+}
+
+console.log('\n— inter-arrival histogram —');
+{
+  const { api, feed } = buildCensus();
+  feed(open(1, 'chat', T0));
+  feed(frame(1, 'chat', 'presence', { online: true }, T0));
+  feed(frame(1, 'chat', 'presence', { online: true }, T0 + 500));      // <1s
+  feed(frame(1, 'chat', 'presence', { online: true }, T0 + 3000));     // 1-5s
+  feed(frame(1, 'chat', 'presence', { online: true }, T0 + 100_000));  // 1-5m
+  const a = api.census.arrivals['chat/presence'];
+  check('frames counted', a.n, 4);
+  check('gaps bucketed', a.buckets, { '<1s': 1, '1-5s': 1, '1-5m': 1 });
+}
+
+console.log('\n— migrating a v1 census —');
+{
+  const v1 = {
+    v: 1, startedAt: T0, observedMs: 1_240_008, frames: 125, connects: 8,
+    types: { chat: { presence: { n: 27, keys: { online: 27 }, firstAt: T0, lastAt: T0 } } },
+    unknown: { market: { subscribed: { n: 14, firstAt: T0, samples: ['{"type":"subscribed"}'] } } },
+    seeded: true, seedEvidence: '3 presence frames within 10s of a connect',
+    quietRuns: 0, presenceTotal: 27, selfName: 'dataterminals', selfInPresence: true, errorScopes: {},
+  };
+  const { api } = buildCensus(v1);
+  const c = api.census;
+  check('version bumped', c.v, 2);
+  check('frame counts preserved', c.frames, 125);
+  check('hard-won unknown samples preserved', c.unknown.market.subscribed.n, 14);
+  check('presence total preserved', c.presenceTotal, 27);
+  check('self identity preserved', c.selfName, 'dataterminals');
+  check('startedAt preserved', c.startedAt, T0);
+  check('provenance recorded', c.migratedFrom, 1);
+  ok('the v1 seed verdict is NOT carried over', c.seeded === undefined && c.seedEvidence === undefined);
+  check('...so the seeding question starts over', answerOf(api, 'seed').state, 'open');
+  check('value counters start empty', [c.presenceOn, c.presenceOff, c.clock.length], [0, 0, 0]);
 }
 
 console.log('\n— unrecognised frame types —');
@@ -404,11 +560,17 @@ console.log('\n— knowing when to stop —');
   const { api, feed } = buildCensus();
   check('a fresh install is not retired', api.retired(), false);
 
-  feed(open(1, 'chat', T0));
-  for (let i = 0; i < 3; i++) feed(frame(1, 'chat', 'presence', { username: `u${i}`, online: true }, T0 + i));
+  // Two all-online connect windows settle `seed`; a stray type settles `unknown`;
+  // a quote settles `mfields`; two spaced game_time samples settle `clock`.
+  for (const c of [1, 2]) {
+    feed(open(c, 'chat', T0));
+    for (let i = 0; i < 3; i++) feed(frame(c, 'chat', 'presence', { username: `u${i}`, online: true }, T0 + i));
+    feed(close(c, 'chat', T0 + 9000));
+  }
   feed(frame(1, 'chat', 'typing', {}, T0 + 10));            // settles `unknown`
-  feed(open(2, 'market', T0));
-  feed(frame(2, 'market', 'quote', { instrument_id: 1, price: 5 }, T0 + 20));
+  feed(open(3, 'market', T0));
+  feed(frame(3, 'market', 'quote', { instrument_id: 1, price: 5, game_time: 1_000_000 }, T0));
+  feed(frame(3, 'market', 'quote', { instrument_id: 1, price: 6, game_time: 1_003_128 }, T0 + 60_000));
 
   const open_ = api.answers().filter((a) => a.blocking && a.state !== 'done').map((a) => a.id);
   check('every blocking question is settled', open_, []);
@@ -430,11 +592,12 @@ console.log('\n— the findings report —');
   ok('marks open questions with [ ]', /\[ \] Does the server seed presence/.test(r));
   ok('flags bonus questions as non-blocking', r.includes('(bonus)'));
   ok('reports unrecognised types with their sample', r.includes('chat/typing ×1') && r.includes('"type":"typing"'));
+  ok('...with the person scrubbed out of it', r.includes('"username":"<string>"') && !r.includes('"zed"'));
   ok('lists frame shapes by key name', r.includes('chat/presence ×1 — online username'));
   ok('embeds the raw census as fenced json', r.includes('```json') && r.includes('"presenceTotal": 1'));
   ok('the raw block is parseable', (() => {
     const m = r.match(/```json\n([\s\S]*?)\n```/);
-    try { return JSON.parse(m[1]).v === 1; } catch { return false; }
+    try { return JSON.parse(m[1]).v === 2; } catch { return false; }
   })());
 }
 {

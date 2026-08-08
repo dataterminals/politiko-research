@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — WS Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.1
-// @description  Read-only observer for the two WebSockets the game itself opens (/ws/chat, /ws/market). Records which frame types arrive and what keys they carry, so the parts of the protocol the client silently ignores become visible. Opens no connection, transmits nothing, adds zero requests. Temporary measuring instrument — it tells you when it has nothing left to learn.
+// @version      0.2.0
+// @description  Read-only observer for the two WebSockets the game itself opens (/ws/chat, /ws/market). Records which frame types arrive, what keys they carry, how often they arrive, and the values of four named server fields (a closed allowlist — no usernames, no message bodies). Opens no connection, transmits nothing, adds zero requests. Temporary measuring instrument — it tells you when it has nothing left to learn.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -22,8 +22,33 @@
  *             transmits a frame, and never closes or reopens one the game owns.
  *   Requests: ZERO additional requests to politiko.io.
  *   Storage:  localStorage keys prefixed `pkws:` — the frame census (type names, key
- *             names, counts, timings), samples of UNRECOGNISED frames, and panel
- *             position. See "what is not stored" below.
+ *             names, counts, timings, inter-arrival histogram), samples of UNRECOGNISED
+ *             frames, the four allowlisted values below, and panel position.
+ *             See "what is not stored" below.
+ *
+ * VALUES RECORDED — a closed allowlist of four, added in 0.2.0
+ *
+ *   quote.game_time              server game-clock stamp (number or string)
+ *   candle_update.bucket_start   OHLCV bar boundary
+ *   candle_update.timeframe      which bar ("1m", "5m", …)
+ *   presence.online              the boolean only, as a COUNT of true vs false
+ *
+ *   Everything else stays key-names-only, exactly as in 0.1.x. The allowlist is
+ *   enforced structurally: a single table maps (frame type -> field name -> how to
+ *   record it), and a field absent from that table has no code path that can store
+ *   its value. It is not a filter applied by discipline at each call site.
+ *
+ *   Why these four, and why now. 0.1.x recorded shapes only, which was right for
+ *   "what types and fields exist" and useless for three questions it raised:
+ *   whether the server seeds presence at connect (needs true-vs-false), whether
+ *   quote.game_time agrees with the game clock (needs the number), and what
+ *   bucket_start actually is. See docs/09-socket-surface.md.
+ *
+ *   presence.online is the one that touches another person. It is stored as two
+ *   integers per connection window — how many online:true and how many online:false —
+ *   and never alongside a username. The tool therefore cannot say WHO is online,
+ *   only HOW MANY edges of each kind arrived. That is enough to tell a roster seed
+ *   from ordinary churn, which is the whole reason it is here.
  *   Alerts:   none. No desktop or tab alerts, no sound, no title changes. The panel
  *             redraws only while the tab is visible.
  *   Clipboard: written ONLY when you click "copy findings", and only with the report
@@ -52,11 +77,18 @@
  *     origin + pathname and discards query and fragment whole, at the point of
  *     construction, before anything else in the file can observe it. Allowlist, not
  *     denylist: a future credential-bearing parameter is dropped automatically.
- *   - No other player's name is written to storage. Chat bodies are never stored, and
- *     presence is recorded as counts, not as a list of who. The one exception is the
- *     sample kept for an UNRECOGNISED frame type — that is the entire point of the
- *     tool — which is credential-scrubbed and length-capped, and which you can clear
- *     with the "forget" button.
+ *   - No other player's name is written to storage. Chat bodies are never stored.
+ *     Presence is counts, never a list of who. `username` is not on the allowlist and
+ *     there is no code path that records it.
+ *   - UNRECOGNISED frame types are sampled whole, because "what does this carry?" is
+ *     the entire point of the tool. Those samples are credential-scrubbed, length-
+ *     capped, and — new in 0.2.0 — person-scrubbed: a key like `username` or `body`
+ *     keeps its NAME but its value becomes a type marker such as `<string>`. So the
+ *     sample still tells you an unknown frame carries a username; it does not tell
+ *     you, or anyone you show it to, whose. Clear them any time with "forget".
+ *   - Your OWN username is held in memory and written to storage under `selfName`,
+ *     learned from a message_ack (the server's receipt for a message you sent). It is
+ *     used to tell your own presence echo apart from other players'.
  *
  * WHY THIS EXISTS (and when to uninstall it)
  *
@@ -202,32 +234,87 @@
   // 2. The census — what has been seen, and what is still unknown.
   // ---------------------------------------------------------------------------
   const SEED_WINDOW_MS = 10_000;  // "at connect" means within this of the open
-  const SEED_BURST = 3;           // this many presence frames in the window = seeded
-  const SEED_QUIET_RUNS = 3;      // this many quiet connects (with presence later) = not seeded
   const SWEEP_MS = 2 * 60 * 60 * 1000;  // observation before "no unknown types" means much
   const SWEEP_FRAMES = 500;
   const MAX_UNKNOWN_SAMPLES = 5;
   const SAMPLE_CHARS = 400;
+  const MAX_WINDOWS = 40;         // connection windows retained
+  const MAX_CLOCK = 60;           // (localMs, game_time) pairs retained
+  const MAX_BUCKETS = 12;         // distinct bucket_start values kept per timeframe
+
+  // -------------------------------------------------------------------------
+  // THE VALUE ALLOWLIST.
+  //
+  // 0.1.x recorded key names and never values, which kept chat bodies and other
+  // players' names out of storage by construction. 0.2.0 needs four specific
+  // values to answer questions that shapes alone cannot (docs/09). This table is
+  // how that stays honest: it is the ONLY place a value can be recorded, and a
+  // field that is not in it has no code path that stores it.
+  //
+  //   'clock'   keep the value with a local receive time, for rate arithmetic
+  //   'tally'   count distinct values, never associate them with anything
+  //   'bucket'  keep a bounded set of distinct values, to test quantization
+  //   'edge'    count true vs false ONLY — never store what it was about
+  //
+  // Deliberately absent, and must stay absent: username, sender, body, label,
+  // dm_target, room_id, instrument_id, kind, error. If you add to this table,
+  // update the disclosure header in the same edit — clause 6 is not optional.
+  // -------------------------------------------------------------------------
+  const VALUES = {
+    quote: { game_time: 'clock' },
+    candle_update: { bucket_start: 'bucket', timeframe: 'tally' },
+    presence: { online: 'edge' },
+  };
 
   const blank = () => ({
-    v: 1,
+    v: 2,
     startedAt: Date.now(),
     observedMs: 0,
     frames: 0,
     connects: 0,
     types: {},       // kind -> type -> { n, keys: {name: count}, firstAt, lastAt }
     unknown: {},     // kind -> type -> { n, firstAt, samples: [string] }
-    quietRuns: 0,    // consecutive connects with no presence in the seed window
-    seeded: null,    // true | false | null(undecided)
-    seedEvidence: null,
+    arrivals: {},    // "kind/type" -> { n, lastAt, buckets: {label: count} }
+    windows: [],     // per connection: { kind, at, ms, frames, on, off, self, closed }
+    clock: [],       // quote.game_time: { t: localMs, g: value }
+    clockType: null, // typeof the first game_time seen
+    buckets: {},     // timeframe -> [distinct bucket_start values]
+    timeframes: {},  // timeframe -> count
     presenceTotal: 0,
+    presenceOn: 0,   // online:true  edges, all-time
+    presenceOff: 0,  // online:false edges, all-time
     selfName: null,  // learned from message_ack (a receipt for your own message)
     selfInPresence: null,
     errorScopes: {},
+    valuesFrom: Date.now(), // when value recording began — earlier counts predate it
   });
 
+  // v1 -> v2. The counts and unrecognised-frame samples from a v1 census are the
+  // expensive part; throwing them away to add fields would be silly. Everything
+  // new starts empty, and `valuesFrom` marks the boundary so nobody reads a value
+  // series as covering the whole of `frames`.
+  const migrate = (old) => {
+    const c = blank();
+    c.startedAt = old.startedAt ?? c.startedAt;
+    c.observedMs = old.observedMs ?? 0;
+    c.frames = old.frames ?? 0;
+    c.connects = old.connects ?? 0;
+    c.types = old.types ?? {};
+    c.unknown = old.unknown ?? {};
+    c.presenceTotal = old.presenceTotal ?? 0;
+    c.selfName = old.selfName ?? null;
+    c.selfInPresence = old.selfInPresence ?? null;
+    c.errorScopes = old.errorScopes ?? {};
+    c.migratedFrom = old.v ?? 1;
+    // NOT carried: `seeded` / `seedEvidence`. The v1 detector could not tell a
+    // server seed from transitions landing near a connect, so its verdict was not
+    // evidence. Starting that question over is the point of this version.
+    return c;
+  };
+
   let census = load(K.census, null);
-  if (!census || census.v !== 1) census = blank();
+  if (census && census.v === 1) census = migrate(census);
+  if (!census || census.v !== 2) census = blank();
 
   let dirty = false;
   const touch = () => { dirty = true; };
@@ -239,20 +326,107 @@
   //
   // Named `conns`, not `live`: PANEL KIT v1 declares its own `live` and the kit is
   // copied verbatim by repo convention, so the name belongs to it.
-  const conns = new Map();  // id -> { kind, openedAt, presenceInWindow, frames }
+  const conns = new Map();  // id -> { kind, openedAt, frames, w: <window> }
 
   const bump = (obj, key) => { obj[key] = (obj[key] || 0) + 1; };
+
+  // Person-identifying keys. An UNRECOGNISED frame is stored whole, because its whole
+  // point is "what does this carry?" — but that is also the one path where another
+  // player's name could reach storage, and it did in testing (a `typing` frame the
+  // game has no case for carried a username).
+  //
+  // The fix keeps the discovery and drops the person: the key survives and the value
+  // becomes a type marker, so the sample still answers "typing carries username and
+  // room_id" without recording who was typing. Values that are not person-shaped —
+  // instrument_id, ttl_ms, level — are untouched, and those are the ones worth reading.
+  const PERSONAL = /^(username|user|sender|recipient|target|dm_target|name|display_name|nick|body|text|message|content|label|title|email|avatar|quip)$/i;
+  const personScrub = (v, d = 0) => {
+    if (d > 6 || v === null || typeof v !== 'object') return v;
+    if (Array.isArray(v)) return v.slice(0, 50).map((x) => personScrub(x, d + 1));
+    const o = {};
+    for (const [k, val] of Object.entries(v)) {
+      o[k] = PERSONAL.test(k) && val !== null && typeof val !== 'object'
+        ? `<${typeof val}>`
+        : personScrub(val, d + 1);
+    }
+    return o;
+  };
+
+  // Inter-arrival histogram. 0.1.x kept only firstAt/lastAt per type, which is why
+  // the first capture's rates had to be reconstructed by hand — badly, as it turned
+  // out. Buckets rather than raw timestamps keeps the census bounded.
+  const GAPS = [
+    [1000, '<1s'], [5000, '1-5s'], [15_000, '5-15s'],
+    [60_000, '15-60s'], [300_000, '1-5m'], [Infinity, '>5m'],
+  ];
+  const noteArrival = (key, at) => {
+    const a = census.arrivals[key] = census.arrivals[key] || { n: 0, lastAt: null, buckets: {} };
+    if (a.lastAt !== null) {
+      const gap = at - a.lastAt;
+      for (const [lim, label] of GAPS) { if (gap < lim) { bump(a.buckets, label); break; } }
+    }
+    a.lastAt = at;
+    a.n++;
+  };
+
+  // The ONLY function that writes a server value into the census. Everything it can
+  // do is named in VALUES; a field absent from that table returns before touching
+  // anything. `username` is not in the table and there is no branch that could take
+  // one — the 'edge' mode deliberately receives the boolean alone.
+  const recordValue = (type, field, value, at) => {
+    const mode = VALUES[type]?.[field];
+    if (!mode) return;
+    if (mode === 'clock') {
+      if (census.clockType === null) census.clockType = typeof value;
+      if (typeof value !== 'number' && typeof value !== 'string') return;
+      // The frame's arrival time, not "whenever this reducer ran" — the two can
+      // differ by a render, and this pairing is the whole basis of the rate.
+      census.clock.push({ t: at, g: value });
+      if (census.clock.length > MAX_CLOCK) census.clock.shift();
+      return;
+    }
+    if (mode === 'tally') {
+      if (typeof value === 'string' || typeof value === 'number') bump(census.timeframes, String(value));
+      return;
+    }
+    if (mode === 'bucket') {
+      return; // handled by recordBucket, which needs the paired timeframe
+    }
+    if (mode === 'edge') {
+      if (value === true) census.presenceOn++;
+      else if (value === false) census.presenceOff++;
+    }
+  };
+
+  // bucket_start is only meaningful next to its timeframe, so it is the one
+  // allowlisted field written from a pair rather than alone.
+  const recordBucket = (tf, start) => {
+    if (VALUES.candle_update?.bucket_start !== 'bucket') return;
+    if (typeof start !== 'number' && typeof start !== 'string') return;
+    const key = String(tf ?? '?');
+    const arr = census.buckets[key] = census.buckets[key] || [];
+    if (!arr.includes(start)) {
+      arr.push(start);
+      if (arr.length > MAX_BUCKETS) arr.shift();
+    }
+  };
 
   const record = (rec) => {
     if (rec.ev === 'open') {
       census.connects++;
-      conns.set(rec.id, { kind: rec.kind, openedAt: rec.at, presenceInWindow: 0, frames: 0 });
+      conns.set(rec.id, { kind: rec.kind, openedAt: rec.at, frames: 0, w: null });
+      // One window per connection, so a seed burst can be told from ordinary churn
+      // by its true/false composition rather than by its size alone.
+      const w = { kind: rec.kind, at: rec.at, ms: 0, frames: 0, on: 0, off: 0, self: false, closed: false };
+      census.windows.push(w);
+      if (census.windows.length > MAX_WINDOWS) census.windows.shift();
+      conns.get(rec.id).w = w;
       touch();
       return;
     }
     if (rec.ev === 'close') {
       const c = conns.get(rec.id);
-      if (c && c.kind === 'chat') settleSeed(c);
+      if (c?.w) { c.w.closed = true; c.w.ms = rec.at - c.openedAt; }
       conns.delete(rec.id);
       touch();
       return;
@@ -262,6 +436,7 @@
     const conn = conns.get(rec.id);
     if (conn) conn.frames++;
     census.frames++;
+    noteArrival(`${rec.kind}/${rec.type ?? '(untyped)'}`, rec.at);
 
     const kind = rec.kind;
     const type = rec.type ?? '(untyped)';
@@ -286,17 +461,39 @@
         }
       }
     } else if (entry.samples.length < MAX_UNKNOWN_SAMPLES) {
-      // The whole reason the tool exists. Already credential-scrubbed by the tap.
-      try { entry.samples.push(JSON.stringify(rec.data).slice(0, SAMPLE_CHARS)); } catch { /* unserialisable */ }
+      // The whole reason the tool exists: an unrecognised type's sample is the only
+      // way to learn what it carries. Already credential-scrubbed by the tap, and
+      // person-scrubbed here — see personScrub for why the value is dropped but the
+      // key and its type are kept.
+      try {
+        entry.samples.push(JSON.stringify(personScrub(rec.data)).slice(0, SAMPLE_CHARS));
+      } catch { /* unserialisable */ }
+    }
+
+    // Allowlisted values. Everything below routes through recordValue/recordBucket.
+    if (type === 'quote') recordValue('quote', 'game_time', rec.data?.game_time, rec.at);
+    if (type === 'candle_update') {
+      recordValue('candle_update', 'timeframe', rec.data?.timeframe, rec.at);
+      recordBucket(rec.data?.timeframe, rec.data?.bucket_start);
     }
 
     if (kind === 'chat') {
       if (type === 'presence') {
         census.presenceTotal++;
-        if (conn && rec.at - conn.openedAt <= SEED_WINDOW_MS) conn.presenceInWindow++;
+        const on = rec.data?.online;
+        recordValue('presence', 'online', on, rec.at);
+        // `who` is compared and then discarded. It is never stored, never counted
+        // per-user, and never leaves this block — the only thing that survives is
+        // the boolean `self` on the window.
         const who = rec.data?.username;
-        if (census.selfName && who === census.selfName) census.selfInPresence = true;
-        if (conn) checkSeed(conn);
+        const isSelf = !!census.selfName && who === census.selfName;
+        if (isSelf) census.selfInPresence = true;
+        if (conn?.w && rec.at - conn.openedAt <= SEED_WINDOW_MS) {
+          conn.w.frames++;
+          if (on === true) conn.w.on++;
+          else if (on === false) conn.w.off++;
+          if (isSelf) conn.w.self = true;
+        }
       }
       if (type === 'error') {
         const s = rec.data?.scope;
@@ -314,30 +511,68 @@
     touch();
   };
 
-  // A burst at connect settles the question immediately and positively.
-  const checkSeed = (conn) => {
-    if (census.seeded !== null) return;
-    if (conn.presenceInWindow >= SEED_BURST) {
-      census.seeded = true;
-      census.seedEvidence = `${conn.presenceInWindow} presence frames within `
-        + `${SEED_WINDOW_MS / 1000}s of a connect`;
-      touch();
+  // ---- the seeding verdict, rebuilt for 0.2.0 -----------------------------
+  //
+  // 0.1.x asked "were there >= 3 presence frames within 10s of a connect?" and
+  // called yes a seed. That was wrong twice over: three ordinary transitions
+  // landing near a connect look identical, and the panel told the operator to
+  // reload repeatedly — which is exactly what produces clustered transitions. The
+  // detector measured the instruction.
+  //
+  // With `online` on the allowlist there is a real discriminator. A roster seed is
+  // the server saying who IS here: every frame in it should be online:true. Churn
+  // is a mix. So the signature is composition, not size, and one clean window is
+  // worth more than any number of ambiguous ones.
+  //
+  // A window is only judged once its 10s have actually elapsed.
+  const ripe = (w) => w.closed || (Date.now() - w.at) > SEED_WINDOW_MS;
+  const chatWindows = () => census.windows.filter((w) => w.kind === 'chat' && ripe(w));
+
+  const seedVerdict = () => {
+    const ws = chatWindows();
+    if (!ws.length) return { state: 'open', text: 'no chat connection observed yet' };
+
+    const seedLike = ws.filter((w) => w.on >= 2 && w.off === 0);
+    const mixed = ws.filter((w) => w.off > 0);
+    const quiet = ws.filter((w) => w.frames === 0);
+
+    if (seedLike.length >= 2) {
+      const sizes = seedLike.map((w) => w.on);
+      const withSelf = seedLike.filter((w) => w.self).length;
+      return {
+        state: 'done',
+        text: `SEEDED — ${seedLike.length} connects opened with an all-online burst `
+          + `(sizes ${sizes.join(', ')}), no offline edge among them`
+          + (withSelf ? `; ${withSelf} included you` : ''),
+      };
     }
+    if (quiet.length >= 3 && census.presenceTotal > 0) {
+      return {
+        state: 'done',
+        text: `NOT SEEDED — ${quiet.length} connects opened with no presence frame at all, `
+          + `on a session that saw ${census.presenceTotal} elsewhere`,
+      };
+    }
+    const parts = [`${ws.length} chat connects`];
+    if (seedLike.length) parts.push(`${seedLike.length} all-online (need 2)`);
+    if (mixed.length) parts.push(`${mixed.length} mixed — not a seed`);
+    if (quiet.length) parts.push(`${quiet.length} silent (need 3)`);
+    return { state: 'open', text: parts.join(' · ') };
   };
 
-  // A quiet connect only counts as evidence AGAINST seeding once we know presence
-  // works at all on this deploy — otherwise "no presence frames" just means "nobody
-  // changed state", which is not the same claim.
-  const settleSeed = (conn) => {
-    if (census.seeded !== null) return;
-    if (conn.presenceInWindow > 0) { census.quietRuns = 0; return; }
-    if (census.presenceTotal === 0) return; // can't distinguish quiet from unseeded yet
-    census.quietRuns++;
-    if (census.quietRuns >= SEED_QUIET_RUNS) {
-      census.seeded = false;
-      census.seedEvidence = `${census.quietRuns} connects with no presence frame in the `
-        + `first ${SEED_WINDOW_MS / 1000}s, on a session that saw ${census.presenceTotal} later`;
-    }
+  // ---- the game-clock rate, from quote.game_time --------------------------
+  //
+  // Two (localMs, game_time) pairs give game-seconds per real second directly.
+  // docs/06 puts the game clock at ~52.14 from /api/time; this is an independent
+  // handle on the same number that costs no request. A wildly different figure
+  // means game_time is not what it looks like.
+  const clockRate = () => {
+    const s = (census.clock || []).filter((x) => typeof x.g === 'number');
+    if (s.length < 2) return null;
+    const a = s[0], b = s[s.length - 1];
+    const dt = (b.t - a.t) / 1000;
+    if (dt < 30) return null;   // too short a baseline to mean anything
+    return { rate: (b.g - a.g) / dt, span: dt, n: s.length };
   };
 
   let lastTick = Date.now();
@@ -376,15 +611,7 @@
     {
       id: 'seed', blocking: true,
       q: 'Does the server seed presence at connect, or only send deltas?',
-      probe: () => {
-        if (census.seeded === true) return { state: 'done', text: `SEEDED — ${census.seedEvidence}` };
-        if (census.seeded === false) return { state: 'done', text: `DELTA-ONLY — ${census.seedEvidence}` };
-        if (census.presenceTotal === 0) return { state: 'open', text: 'no presence frame seen yet' };
-        return {
-          state: 'open',
-          text: `${census.quietRuns}/${SEED_QUIET_RUNS} quiet connects — reload the game a few times`,
-        };
-      },
+      probe: seedVerdict,
     },
     {
       id: 'unknown', blocking: true,
@@ -413,6 +640,28 @@
         return {
           state: 'done',
           text: extra.length ? `YES — also carries: ${extra.join(', ')}` : 'no — nothing beyond the read fields',
+        };
+      },
+    },
+    {
+      id: 'clock', blocking: true,
+      q: 'What is quote.game_time, and does it run at the game clock rate?',
+      probe: () => {
+        if (census.clockType === null) return { state: 'open', text: 'visit the stocks screen (needs 2 quotes, 30s apart)' };
+        if (census.clockType !== 'number') {
+          return { state: 'done', text: `it is a ${census.clockType}, not a number — arithmetic is off the table` };
+        }
+        const r = clockRate();
+        if (!r) {
+          const n = (census.clock || []).length;
+          return { state: 'open', text: `${n} sample${n === 1 ? '' : 's'} — need 2 spanning 30s+ on the stocks screen` };
+        }
+        // docs/06 has the game clock at ~52.14 game-seconds per real second.
+        const near = Math.abs(r.rate - 52.14) < 2;
+        return {
+          state: 'done',
+          text: `${r.rate.toFixed(2)} game-sec/real-sec over ${Math.round(r.span)}s `
+            + `(${r.n} samples) — ${near ? 'matches the ~52.14 in docs/06' : 'does NOT match ~52.14; worth a look'}`,
         };
       },
     },
@@ -472,6 +721,50 @@
         const keys = Object.keys(e.keys).filter((k) => k !== 'type').sort();
         L.push(`- ${kind}/${type} ×${e.n} — ${keys.join(' ')}`);
       }
+    }
+
+    L.push('');
+    L.push('## Inter-arrival (gap between consecutive frames of a type)');
+    const arr = Object.entries(census.arrivals).sort((a, b) => b[1].n - a[1].n);
+    if (!arr.length) L.push('(nothing yet)');
+    for (const [key, a] of arr) {
+      const b = Object.entries(a.buckets).map(([k, v]) => `${k}:${v}`).join(' ');
+      L.push(`- ${key} ×${a.n} — ${b || '(single frame, no gap)'}`);
+    }
+
+    L.push('');
+    L.push('## Connection windows (first 10s of each connection)');
+    L.push('Seed signature is all-online with no offline edge. A mix is ordinary churn.');
+    const ws = census.windows.filter((w) => w.kind === 'chat');
+    if (!ws.length) L.push('(no chat connection recorded)');
+    for (const w of ws) {
+      L.push(`- chat +${Math.round((w.at - census.startedAt) / 1000)}s — `
+        + `presence ${w.frames} (online ${w.on}, offline ${w.off})`
+        + `${w.self ? ', included you' : ''}${w.closed ? '' : ', still open'}`);
+    }
+    L.push(`all-time presence edges: online ${census.presenceOn}, offline ${census.presenceOff}`
+      + ` (of ${census.presenceTotal} frames; values only recorded from 0.2.0 onward)`);
+
+    L.push('');
+    L.push('## quote.game_time');
+    if (!census.clock?.length) {
+      L.push(`(no samples — type seen: ${census.clockType ?? 'none'})`);
+    } else {
+      const r = clockRate();
+      L.push(`type: ${census.clockType}, ${census.clock.length} samples retained`);
+      L.push(r ? `implied rate: ${r.rate.toFixed(3)} game-sec per real-sec over ${Math.round(r.span)}s`
+        : 'baseline too short for a rate (need 2 samples 30s+ apart)');
+      L.push('```');
+      for (const c of census.clock) L.push(`${new Date(c.t).toISOString()}  ${c.g}`);
+      L.push('```');
+    }
+
+    L.push('');
+    L.push('## candle_update timeframes and bucket_start');
+    const tf = Object.entries(census.timeframes);
+    L.push(tf.length ? tf.map(([k, v]) => `${k} ×${v}`).join(', ') : '(none seen)');
+    for (const [k, v] of Object.entries(census.buckets)) {
+      L.push(`- ${k}: ${v.join(', ')}`);
     }
 
     L.push('');
@@ -633,10 +926,38 @@
       body.append(t);
     }
 
+    // --- connection windows: the seeding evidence, shown rather than summarised ---
+    const cw = census.windows.filter((w) => w.kind === 'chat');
+    if (cw.length) {
+      body.append(el('h1', null, 'chat connects — first 10s'));
+      const t = el('table', 'pkws-table');
+      for (const w of cw.slice(-8)) {
+        const tr = document.createElement('tr');
+        tr.append(el('td', null, `+${fmtDur(w.at - census.startedAt)}`));
+        tr.append(el('td', w.off === 0 && w.on >= 2 ? 'pkws-ok' : 'pkws-dim',
+          w.frames ? `${w.on} on / ${w.off} off` : 'silent'));
+        tr.append(el('td', 'pkws-quiet', w.self ? 'incl. you' : ''));
+        t.append(tr);
+      }
+      body.append(t);
+      body.append(el('div', 'pkws-quiet',
+        `all-time edges: ${census.presenceOn} online / ${census.presenceOff} offline`));
+    }
+
+    // --- the clock samples ---
+    if (census.clockType !== null) {
+      body.append(el('h1', null, 'quote.game_time'));
+      const r = clockRate();
+      body.append(el('div', null, r
+        ? `${r.rate.toFixed(2)} game-sec/real-sec (${r.n} samples, ${Math.round(r.span)}s)`
+        : `${(census.clock || []).length} sample(s), type ${census.clockType} — need 2 spanning 30s+`));
+    }
+
     body.append(el('div', 'pkws-note',
       'Reads frames the game already received. Opens nothing, transmits nothing, '
-      + 'adds zero requests. Key names only — no chat bodies, no player names, except '
-      + 'in an unrecognised-frame sample.'));
+      + 'adds zero requests. Records key names, counts and timings, plus four named '
+      + 'values (game_time, bucket_start, timeframe, and online as a true/false count). '
+      + 'Never a username, never a message body — except in an unrecognised-frame sample.'));
 
     if (drag) drag.fit();
   };

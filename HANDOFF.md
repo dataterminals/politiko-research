@@ -141,12 +141,16 @@ the file back afterwards.
      the poll supplies ~4× the anchors, quotes are event-driven rather than periodic, and
      the market socket only exists on `/stocks`. `docs/06` carries the corrected numbers.
 
-   **ws-watch 0.1.1 is still installed.** It has a `copy findings` button now. What is
-   left needs either an action (`error.scope` — DM a nonexistent user) or a **0.2.0** that
-   records a narrow allowlist of server *values* rather than key names only; the current
-   tool structurally cannot answer seeding, the online/offline split, or the `game_time`
-   cross-check. That change widens the disclosure, so clause 6 says the header changes
-   with it. Design sketch is in `docs/09`.
+   **ws-watch 0.2.0 (2026-08-08) closes the instrument's own gaps.** A closed four-field
+   value allowlist, a seeding test based on true/false composition rather than burst size,
+   a per-type inter-arrival histogram, person-scrubbed unknown samples, and a `game_time`
+   rate check against the ~52.14 in `docs/06`. The reload instruction is gone — it was
+   manufacturing the clusters the old detector looked for. 136 assertions.
+
+   **What it needs from the operator:** ordinary play with at least two chat connects (no
+   deliberate reloading — that was the confound), one stint on the stocks screen with two
+   quotes 30 s apart, and, for the last bonus question, a DM to a nonexistent username to
+   provoke an `error` frame.
 
 3. **Does a sanctioned player API exist?** Phase 0, still unanswered, still branches the
    whole project.

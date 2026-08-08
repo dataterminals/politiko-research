@@ -554,33 +554,67 @@ object this design refuses to hold. Wait for the next reconnect instead.
 
 ## Limits of the instrument
 
+> **Addressed in ws-watch 0.2.0 (2026-08-08).** Every row below marked ✅ is fixed; the
+> table is kept because the *reasoning* is the durable part — it is why the value
+> allowlist exists and why it is deliberately four fields long. See
+> [What 0.2.0 changed](#what-020-changed).
+
 `ws-watch` 0.1.1 was built to find out *what types and fields exist*, and it does that
 well — it found two message types and two unread fields in twenty minutes. But the first
 capture ran into its edges hard enough that they belong in the record, because several
-of the questions below **cannot be answered by the tool as it stands**, and a future
-reader will otherwise assume more runs will settle them.
+of the questions below **could not be answered by the tool as it stood**, and a future
+reader would otherwise assume more runs would settle them.
 
-| limit | consequence | why it is there |
+| limit | consequence | fixed? |
 |---|---|---|
-| Records **key names, never values**, for recognised types | Cannot capture `game_time`, cannot tell `online: true` from `false`, cannot read `kind` | Deliberate: it is what keeps chat bodies and other players' names out of storage |
-| Seed detector **latches at its threshold** | Burst size is never recorded; "3" is a floor on one connect and silent about the rest | `checkSeed` returns early once `seeded` is set |
-| Seed detector cannot distinguish a **server seed from clustered transitions** | `seeded: true` is a heuristic verdict, not a measurement | Both look identical without values or timestamps |
-| `quietRuns` **freezes** once `seeded` is set | Reads 0 as a default, not an observation | Same early return |
-| Records only `firstAt`/`lastAt` per type | No inter-arrival distribution, so rates must be reconstructed by hand and badly | No histogram is kept |
-| `observedMs` is **tab-open time** | Not socket-connected time; rate denominators are wrong if used naively | Accumulated on a wall-clock tick |
-| The panel **instructs reloads** to settle seeding | The instruction perturbs the thing being measured | Written before the confound was understood |
+| Records **key names, never values**, for recognised types | Cannot capture `game_time`, cannot tell `online: true` from `false` | ✅ closed allowlist of four fields |
+| Seed detector **latches at its threshold** | Burst size never recorded; "3" is a floor on one connect | ✅ per-connection windows, all retained |
+| Seed detector cannot distinguish a **server seed from clustered transitions** | `seeded: true` was a heuristic, not a measurement | ✅ composition test — see below |
+| `quietRuns` **freezes** once `seeded` is set | Reads 0 as a default, not an observation | ✅ counter removed entirely |
+| Records only `firstAt`/`lastAt` per type | No inter-arrival distribution; rates reconstructed by hand, badly | ✅ bucketed gap histogram per type |
+| `observedMs` is **tab-open time** | Not socket-connected time; naive rate denominators are wrong | ⚠️ unchanged — still tab-open time |
+| The panel **instructs reloads** to settle seeding | The instruction perturbs the thing being measured | ✅ instruction removed |
 
-Anything that needs a **value** rather than a shape — the `game_time` cross-check above,
-the online/offline split, a real population count — needs a **0.2.0** that records a
-narrow allowlist of numeric server fields (`quote.game_time`, `candle_update.bucket_start`
-and `timeframe`, `presence.online`) plus a per-type arrival histogram.
+### What 0.2.0 changed
 
-That is still zero added requests, so hard rule 1 is untouched. But it **widens the
-disclosure** — the header currently promises key names only — so under clause 6 the header
-has to change with it. The fields named are server clock and market values, not personal
-data, which puts them in the same class as the unrecognised-frame samples already kept.
-`presence.online` is the one to think hardest about: it is a boolean about another player,
-and the honest form is a count of true-vs-false edges rather than a per-user log.
+**A closed value allowlist.** One table maps *frame type → field → how to record it*, and
+a field absent from it has **no code path that can store its value**. Four entries:
+
+```
+quote.game_time              keep the number, paired with a local receive time
+candle_update.bucket_start   keep distinct values per timeframe, to test quantization
+candle_update.timeframe      tally
+presence.online              count true vs false — never beside a username
+```
+
+Everything else stays key-names-only. The safety property is structural rather than
+careful: `username` is not in the table, so no branch exists that could write one.
+
+**The seeding test is now composition, not size.** A roster seed is the server saying who
+*is* here, so every frame in it should be `online: true`. Churn is a mix. The verdict
+needs **two connects that each opened with an all-online burst and no offline edge** —
+and a mixed burst is now reported as *"not a seed"* rather than counted toward one. This
+is the specific failure that made the 0.1.x verdict worthless, and it has a regression
+test.
+
+**The reload instruction is gone**, because it was manufacturing the clusters the old
+detector was looking for.
+
+**Person-scrubbed unknown samples.** Browser testing caught a real leak: an unrecognised
+`typing` frame carried a username, and unknown frames are stored whole by design. Now
+person-shaped keys keep their **name** and lose their **value** — `{"username":"<string>",
+"room_id":1}`. The sample still tells you the frame carries a username; it no longer tells
+you whose. Non-person values (`instrument_id`, `ttl_ms`, `level`) are untouched, and those
+are the ones worth reading.
+
+**A `game_time` rate check.** Two samples 30 s apart give game-seconds per real second
+directly, which the panel compares against the ~52.14 in
+[`06-time-surface.md`](06-time-surface.md). An independent handle on the game clock that
+costs no request — and if it comes out far from 52.14, `game_time` is not what it looks
+like.
+
+None of this adds a request, so hard rule 1 is untouched. It does widen the disclosure,
+so the header changed in the same commit — clause 6 is not optional.
 
 ## Open questions
 
