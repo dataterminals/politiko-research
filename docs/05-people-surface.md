@@ -130,10 +130,15 @@ first suggested the backend emits exact times everywhere rather than pre-rounded
 
 - **Whether the roster supports sort or filter parameters.** The UI may expose controls
   that would make the whole build unnecessary. Worth looking at before anything else.
-- **Whether the WebSocket carries presence.** If it broadcasts online/offline events for
-  other players, activity data could be accumulated with zero requests — which is the
-  version of this tool that would have stayed inside the clause. `wss://politiko.io`
-  remains completely uncharacterized.
+- ~~**Whether the WebSocket carries presence.**~~ **Answered 2026-08-07 — it does.**
+  `/ws/chat` pushes `{type:"presence", username, online}` transitions, and the Comms dock
+  keeps a flat Set of online usernames off them. So activity *can* be accumulated with
+  zero requests. Three caveats before building on it: the client's set is **delta-only**
+  (starts empty, never seeded, never cleared — the game's own `● N` badge over-counts over
+  a long session); whether the server burst-seeds on connect is **unknown**; and for
+  faction-scoped presence the *public* `/factions/{id}/public`, polled at 5 s with
+  `members[].is_online`, is simply better. See
+  [`09-socket-surface.md`](09-socket-surface.md).
 - ~~What `alignment.social_axis` / `economic_axis` range over, and whether `*_count` is a
   vote tally or a sample size.~~ **Answered 2026-08-07** from the client bundles: the axes
   are floats clamped to −3…+3 for display, and `*_count` is a per-axis **sample size** —

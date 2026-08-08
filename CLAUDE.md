@@ -47,10 +47,11 @@ enforceable line, and it is the main design constraint on this whole project.
 
 ```
 docs/     numbered findings + plan; 00 recon, 01 rules, 02 plan, 03 ideas,
-          04 stocks, 05 people, 06 time, 07 alignment, 08 sleepers
+          04 stocks, 05 people, 06 time, 07 alignment, 08 sleepers, 09 sockets
 tools/    recon helpers (PowerShell)
-userscripts/  _template.user.js — passive-tap skeleton + PANEL KIT;
-              time-watch, align-watch; larger tools ship in their own repos
+userscripts/  _template.user.js — passive-tap skeleton + WS TAP + PANEL KIT;
+              time-watch, align-watch, comms-move, time-bridge, ws-watch;
+              tools/ holds their tests; larger tools ship in their own repos
 artifacts/    gitignored: downloaded bundles, HARs, captures
 ```
 

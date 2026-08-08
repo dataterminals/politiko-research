@@ -17,7 +17,10 @@
  * `@grant none` above is load-bearing, not a leftover default. Under any other grant
  * both Tampermonkey and Violentmonkey hand the script a sandboxed `window`, so the
  * fetch wrap below patches the sandbox's fetch and the page's real traffic never
- * passes through it — the tap silently sees nothing.
+ * passes through it — the tap silently sees nothing. The same applies to the
+ * WebSocket wrap, and bites harder there: a socket can be legitimately quiet for
+ * minutes, so a broken tap and an idle one look identical for a long time. Give any
+ * socket tool a visible frame counter so a persistent zero is the tell.
  *
  * DISCLOSURE (Politiko rules, Scripting Abuse clause)
  *
@@ -62,8 +65,116 @@
     return res;
   };
 
+  // ===========================================================================
+  // 2. WS TAP v1 — shared verbatim block. DELETE IT if your tool has no use for
+  //    socket frames; keep it byte-identical if it does.
+  //
+  //    Same convention as PANEL KIT: copy as-is, and if you must change it, bump
+  //    the version here and in every tool carrying a copy so they can be diffed.
+  //
+  //    The game opens two sockets of its own — /ws/chat on every authenticated
+  //    route, /ws/market while you are on the stocks screen. Reading frames off
+  //    them adds no request at all. See docs/09-socket-surface.md for the protocol
+  //    and for why this block is shaped the way it is.
+  //
+  //    onSocketFrame(fn) -> unsubscribe
+  //      fn receives a frozen plain record and nothing else:
+  //        { id, kind, safeUrl, ev:'open'|'close', at, [code, wasClean] }
+  //        { id, kind, safeUrl, ev:'frame', at, type, data }
+  //      kind is 'chat' | 'market' | 'other'; id is an opaque per-connection
+  //      counter, so a reconnect is distinguishable from the connection it replaced.
+  //
+  //    THREE THINGS THAT ARE NOT STYLE CHOICES:
+  //
+  //    a) It is a SUBCLASS, not a function wrapper or a Proxy. The game reads
+  //       `WebSocket.OPEN` in six places; a plain function loses the static and
+  //       breaks the game outright. The game also assigns .onmessage as a property
+  //       rather than calling addEventListener, so there is nothing to intercept —
+  //       we register as a peer instead, which also means a fault here cannot break
+  //       the game's chat.
+  //
+  //    b) Nothing hands out a socket, a MessageEvent (its .target is the socket),
+  //       or the connection URL. The URL carries an access token in its query
+  //       string; this keeps origin + pathname and drops the rest whole, in the
+  //       constructor, before anything else can read it. Allowlist, not denylist,
+  //       so a future credential parameter is dropped automatically.
+  //
+  //    c) It holds no reference to any connection — not even a WeakMap. Reconnects
+  //       leave nothing behind.
+  //
+  //    Ship it with tools/test-passive.js, which fails the build if a transmitting
+  //    token ever reappears in the file.
+  // ===========================================================================
+  const WS_TAP_VERSION = 1;
+
+  const subs = new Set();
+  const onSocketFrame = (fn) => { subs.add(fn); return () => subs.delete(fn); };
+
+  (() => {
+    const Base = window.WebSocket;
+    // Extend whatever is installed, so a chained wrapper from another extension
+    // keeps working; and refuse to stack a second copy of ourselves.
+    if (typeof Base !== 'function' || Base.__pkTapped) return;
+
+    const SECRET = /(token|jwt|auth|bearer|secret|password|passwd|refresh|session|cookie|credential|apikey|api_key)/i;
+
+    // Deep-copy into frozen plain data, replacing credential-looking VALUES on the
+    // way — key names survive, so "does this frame carry a token field?" stays an
+    // answerable question.
+    const clean = (v, d = 0) => {
+      if (d > 6 || v === null || typeof v !== 'object') return v;
+      if (Array.isArray(v)) return Object.freeze(v.slice(0, 200).map((x) => clean(x, d + 1)));
+      const o = {};
+      for (const [k, val] of Object.entries(v)) o[k] = SECRET.test(k) ? '[redacted]' : clean(val, d + 1);
+      return Object.freeze(o);
+    };
+
+    const emit = (rec) => {
+      const frozen = Object.freeze(rec);
+      for (const fn of subs) { try { fn(frozen); } catch (e) { log('subscriber error', e); } }
+    };
+
+    let seq = 0;
+
+    class Tapped extends Base {
+      constructor(url, protocols) {
+        super(url, protocols); // the ONLY construction here, and it is the game's own
+
+        // The raw URL must not survive this block: it carries the access token.
+        let kind = 'other', safeUrl = '';
+        try {
+          const u = new URL(String(url), location.href);
+          safeUrl = u.origin + u.pathname;     // allowlist; query + fragment dropped whole
+          kind = u.pathname === '/ws/chat' ? 'chat'
+            : u.pathname === '/ws/market' ? 'market' : 'other';
+        } catch { /* an unparseable URL just stays 'other' with no safeUrl */ }
+
+        const info = Object.freeze({ id: ++seq, kind, safeUrl });
+
+        super.addEventListener('open', () => emit({ ...info, ev: 'open', at: Date.now() }));
+        super.addEventListener('close', (e) => emit({
+          ...info, ev: 'close', at: Date.now(), code: e.code, wasClean: e.wasClean,
+        }));
+        super.addEventListener('message', (e) => {
+          if (typeof e.data !== 'string') return; // binary: skip rather than read a Blob
+          let p;
+          try { p = JSON.parse(e.data); } catch { return; }
+          emit({
+            ...info, ev: 'frame', at: Date.now(),
+            type: (p && typeof p.type === 'string') ? p.type : null,
+            data: clean(p),
+          });
+        });
+      }
+    }
+
+    Object.defineProperty(Tapped, '__pkTapped', { value: true });
+    window.WebSocket = Tapped;
+    log('tap installed, WS TAP v' + WS_TAP_VERSION);
+  })();
+
   // ---------------------------------------------------------------------------
-  // 2. SPA lifecycle — React Router means no page loads. Re-mount on route change
+  // 3. SPA lifecycle — React Router means no page loads. Re-mount on route change
   //    and always clean up after yourself.
   // ---------------------------------------------------------------------------
   let lastPath = null;
@@ -91,7 +202,7 @@
   window.addEventListener('popstate', checkRoute);
 
   // ===========================================================================
-  // 3. PANEL KIT v1 — shared verbatim block.
+  // 4. PANEL KIT v1 — shared verbatim block.
   //
   //    Repo convention: every panel we ship is draggable and remembers where you
   //    put it. Copy this block into a new tool exactly as it stands. If you have
@@ -202,12 +313,13 @@
   };
 
   // ---------------------------------------------------------------------------
-  // 4. Boot
+  // 5. Boot
   // ---------------------------------------------------------------------------
   const boot = () => {
     log('ready');
     checkRoute();
     onApiResponse(({ url, data }) => log('api', url, data));
+    onSocketFrame((rec) => log('ws', rec.kind, rec.ev, rec.type ?? ''));
 
     // Panel skeleton the kit expects: a fixed container, a header that drags it,
     // and a body you re-render. Persist {x,y} yourself — the kit only reports it.

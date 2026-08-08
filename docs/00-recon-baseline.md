@@ -80,6 +80,15 @@ zero-extra-request data source.
 
 No `EventSource` or `socket.io` strings — looks like a raw WebSocket.
 
+> **Corrected 2026-08-07 — and there are two of them.**
+> Read out of the 2026-08-03 bundles: `/ws/chat` (entry bundle, open on every
+> authenticated route) and `/ws/market` (StocksPage only, open while on `/stocks`). Raw
+> JSON with a `type` discriminant, token in the handshake query string. The chat socket
+> **carries presence**. Full protocol, both directions, in
+> [`09-socket-surface.md`](09-socket-surface.md).
+>
+> The "raw WebSocket, no socket.io" read above was correct.
+
 ## Game surface, enumerated from chunk names
 
 Vite names lazy chunks after their source module, so the route list leaks for free:

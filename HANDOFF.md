@@ -36,6 +36,7 @@ home and is not.
 | align-watch | **politiko-research** `userscripts/` | 0.2.0 |
 | comms-move | **politiko-research** `userscripts/` | 0.1.0 |
 | time-bridge | **politiko-research** `userscripts/` | 0.1.0 |
+| ws-watch | **politiko-research** `userscripts/` | 0.1.0 — *temporary instrument* |
 | people-watch | `politiko-people-watch` | 1.2.0 |
 | market-watch | `politiko-market-watch` | 1.0.0 |
 | Time Wire (PWA) | `PolitikoTimeWire` | — |
@@ -110,11 +111,26 @@ the file back afterwards.
 
 ## Open threads, most valuable first
 
-1. **`wss://politiko.io` is still completely uncharacterized.** Protocol, handshake, message
-   shape — all unknown. A socket the client already holds open is the purest data source
-   under the clause, and it is the one thing that could give people-watch real presence
-   instead of a decaying `is_online` snapshot.
-2. **Does a sanctioned player API exist?** Phase 0, still unanswered, still branches the
+1. ~~**`wss://politiko.io` is still completely uncharacterized.**~~ **Done 2026-08-07** —
+   [`docs/09-socket-surface.md`](docs/09-socket-surface.md), read entirely off the
+   2026-08-03 bundles with zero game contact. Two sockets, not one: `/ws/chat` (every
+   authenticated route) and `/ws/market` (only on `/stocks`). **`/ws/chat` carries
+   presence**, so the people-watch unlock exists and is inside the clause.
+   The read-only tap is **built and verified**: `WS TAP v1` in
+   [`_template.user.js`](userscripts/_template.user.js), shipped in
+   [`ws-watch`](userscripts/ws-watch.user.js) 0.1.0 behind
+   [`tools/test-passive.js`](userscripts/tools/test-passive.js).
+   **What is left is running it.** ws-watch is a *temporary instrument*, not a feature —
+   see the next item.
+2. **Run ws-watch, then delete it.** It is a measuring instrument with an expiry date. It
+   tracks the six questions at the bottom of [`docs/09`](docs/09-socket-surface.md) and
+   prints **"Nothing left to learn"** when every blocking one is settled — at which point
+   fold the answers into `docs/09` and uninstall it. The two that need the operator to do
+   anything: reload the game a few times (the seeding question needs several connects),
+   and open the stocks screen once. Everything else accumulates during normal play.
+   Keep `WS TAP v1`; retire the panel around it.
+
+3. **Does a sanctioned player API exist?** Phase 0, still unanswered, still branches the
    whole project.
 3. **Sleeper unknowns** ([`docs/08`](docs/08-sleeper-surface.md)) — what converts a lead,
    what sets `effectiveness`, and whether meeting a lead requires being at its site. One

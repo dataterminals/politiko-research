@@ -34,7 +34,7 @@ Penalty: game ban.
 | Read the DOM of the page you're on and overlay computed info | ✅ | Actively-viewed page, zero requests |
 | Hook `window.fetch` / `XMLHttpRequest` and read responses the app *already* requested | ✅ | Adds no request at all; strictly a passive tap |
 | Read the app's TanStack Query cache in memory | ✅ | Same — data the client already holds |
-| Passively read frames on the WebSocket the client already opened | ✅ (verify) | No new connection, no new request. Confirm we don't *send* anything. |
+| Passively read frames on the WebSocket the client already opened | ✅ **(verified 2026-08-07)** | No new connection, no new request. The "confirm we don't *send* anything" condition is satisfiable **by construction and provable by test** — see [`09-socket-surface.md`](09-socket-surface.md). |
 | Build against a documented/official Politiko API with a token | ✅ | Named as permitted — **but confirm such an API exists** |
 | Reformat, re-sort, re-chart, annotate anything above | ✅ | Presentation only |
 | Local persistence of what you saw (own history, own price log) | ✅ | Your own observations from pages you viewed |
@@ -81,8 +81,21 @@ turned out to be tedium-relief that a keypress could supply instead.
 
 The cheaper unlocks named in July are still the ones worth wanting — a server-side control
 the UI already uses, or presence broadcast over the already-open WebSocket, which is ✅ in
-the table above. `wss://politiko.io` is still uncharacterized and remains the highest-value
-thing left unexplored.
+the table above. ~~`wss://politiko.io` is still uncharacterized and remains the
+highest-value thing left unexplored.~~
+
+**Characterized 2026-08-07**, entirely from the bundles on disk with zero game contact.
+There are two sockets, and `/ws/chat` **does** broadcast presence — so the cheaper unlock
+named in July exists and is inside the clause.
+[`09-socket-surface.md`](09-socket-surface.md) has the protocol, the tap design, and the
+conditions on it.
+
+One thing that surface turned up belongs in this file rather than that one. The chat
+component registers `window.addEventListener("chat:open-dm", …)`, whose handler's first
+act is to **put a `join` frame on the wire** — and nothing in the shipped client ever
+dispatches that event. It reads like a free page-level API and it is not one: using it
+would make a script the only caller in existence of a path that originates traffic. It is
+on the denylist, and any future use is an explicit operator decision, not a default.
 
 ## Three more rules with teeth
 
