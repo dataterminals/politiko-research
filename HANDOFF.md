@@ -122,22 +122,31 @@ the file back afterwards.
    [`tools/test-passive.js`](userscripts/tools/test-passive.js).
    **What is left is running it.** ws-watch is a *temporary instrument*, not a feature —
    see the next item.
-2. ~~**Run ws-watch, then delete it.**~~ **Run 2026-08-07** — 103 frames, 7 connections,
-   ~6 minutes. Five of the six questions settled and folded into
-   [`docs/09`](docs/09-socket-surface.md). Headlines: **presence is server-seeded** (so a
-   passive observer gets the roster, not just edges), **`quote` carries `game_time`** that
-   the client never reads, and **`market/subscribed`/`unsubscribed` exist and are silently
-   discarded** — 25 frames no bundle read could have revealed.
+2. ~~**Run ws-watch, then delete it.**~~ **Run 2026-08-07** — 125 frames, 8 connections,
+   ~20 min, folded into [`docs/09`](docs/09-socket-surface.md).
 
-   **ws-watch is still installed and has not been deleted.** Two cheap reasons to keep it
-   a little longer, both in `docs/09`'s open list: the `error.scope` vocabulary needs one
-   failed action (a DM to a nonexistent user), and the chat socket has had far too few
-   frames to say anything about unrecognised *chat* types — both discoveries were on the
-   market side. When those are done: fold in, uninstall, keep `WS TAP v1`.
+   **Solidly measured:** `market/subscribed` ×14 and `market/unsubscribed` ×11 exist and
+   are silently discarded — 25 frames no bundle read could have revealed, and the concrete
+   vindication of building the tap. `quote` carries a `game_time` the client never reads.
+   `presence` carries exactly `username` + `online`, including your own.
 
-   It also has **no export button** — the findings came out via
-   `copy(localStorage.getItem('pkws:census'))` in the console. Worth adding if any future
-   tool reuses the pattern.
+   **Two things the first write-up got wrong, both now corrected in the docs.** An
+   adversarial re-derivation caught them; read
+   [`docs/09` → Limits of the instrument](docs/09-socket-surface.md) before trusting any
+   further ws-watch output.
+   - **"Presence is SEEDED" is not established.** The detector cannot tell a server seed
+     from clustered transitions, and the panel's own "reload a few times" instruction is
+     what produces clusters. It measured what it told the operator to do.
+   - **`quote.game_time` is a *worse* clock than `/api/time`, not better.** Session-wide
+     the poll supplies ~4× the anchors, quotes are event-driven rather than periodic, and
+     the market socket only exists on `/stocks`. `docs/06` carries the corrected numbers.
+
+   **ws-watch 0.1.1 is still installed.** It has a `copy findings` button now. What is
+   left needs either an action (`error.scope` — DM a nonexistent user) or a **0.2.0** that
+   records a narrow allowlist of server *values* rather than key names only; the current
+   tool structurally cannot answer seeding, the online/offline split, or the `game_time`
+   cross-check. That change widens the disclosure, so clause 6 says the header changes
+   with it. Design sketch is in `docs/09`.
 
 3. **Does a sanctioned player API exist?** Phase 0, still unanswered, still branches the
    whole project.

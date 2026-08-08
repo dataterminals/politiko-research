@@ -130,11 +130,16 @@ first suggested the backend emits exact times everywhere rather than pre-rounded
 
 - **Whether the roster supports sort or filter parameters.** The UI may expose controls
   that would make the whole build unnecessary. Worth looking at before anything else.
-- ~~**Whether the WebSocket carries presence.**~~ **Answered 2026-08-07 — it does, and
-  the server seeds it.** `/ws/chat` pushes `{type:"presence", username, online}`, and
-  **measured on the wire**, the server sends a burst at connect — so a passive observer
-  gets the **online roster**, not merely the edges after it. That is the version of this
-  tool that stays inside the clause, and it now has evidence behind it.
+- ~~**Whether the WebSocket carries presence.**~~ **Answered 2026-08-07 — it does.**
+  `/ws/chat` pushes `{type:"presence", username, online}`, measured on the wire.
+
+  **Whether the server *seeds* it at connect is still open**, and an earlier version of
+  this note said otherwise. `ws-watch` reported "SEEDED", but its rule — three frames
+  within 10 s of a connect — cannot tell a seed from clustered transitions, and the
+  session that produced it was deliberately reload-heavy because the tool asked for that.
+  If seeding holds, a passive observer gets the **roster** rather than only the edges,
+  which is the version of this tool that stays inside the clause. It is not proven.
+  See [`09-socket-surface.md`](09-socket-surface.md).
 
   Four things to carry into any build:
   - The frame carries **exactly** `username` and `online`. No timestamp — so a tap yields
@@ -142,11 +147,12 @@ first suggested the backend emits exact times everywhere rather than pre-rounded
     one field that would have refuted the app-wide scope reading.
   - **It includes your own username**, and the client applies no self-filter, so the
     game's `● N` is off by one.
-  - The client's set is **never cleared**, and re-seeding on reconnect adds without
-    removing, so the badge over-counts across a long session. A tool must track
-    connection epochs itself.
+  - The client's set is **never cleared**, so the badge over-counts across a long session.
+    A tool must track connection epochs itself.
   - **"Online" means holding a `/ws/chat` connection** — closer to "has the game open"
-    than to "is playing". Still far better than a decaying `is_online`.
+    than to "is playing". Broader and faster than a polled `is_online`, but **noisier and
+    harder to segment**: no timestamp, no way to separate a seed from a transition, and
+    it counts you.
 
   For *faction-scoped* presence the public `/factions/{id}/public`, polled at 5 s with
   `members[].is_online`, remains simply better. See

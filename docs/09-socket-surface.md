@@ -15,33 +15,78 @@ deploy; so does everything in this file. Re-read the client before trusting any 
 
 ## What the live capture settled — 2026-08-07
 
-A first `ws-watch` run during normal play: **103 frames, 7 connections, ~6 minutes
-observed.** Zero requests added; every frame below had already arrived for the game's own
-use. This is the section the rest of the document was written to make possible.
+**125 frames, 8 connections, ~20 minutes of tab-open time.** Zero requests added; every
+frame below had already arrived for the game's own use.
 
-| question | answer |
+Read as two samples of **one cumulative counter set**, not two runs — `ws-watch` persists
+its census, so the earlier 103-frame reading is a prefix of this one. The independent
+increment between them is 22 frames, all chat.
+
+### What the capture actually establishes
+
+| finding | strength |
 |---|---|
-| Does the server seed presence at connect? | **Yes — SEEDED.** 3 `presence` frames within 10 s of a connect |
-| Does `presence` carry more than `username` + `online`? | **No.** Exactly `type, username, online` |
-| Does presence include your own username? | **Yes** — the game's `● N` is off by one |
-| Frame types the client silently discards? | **Yes — `market/subscribed` ×14, `market/unsubscribed` ×11** |
-| Does `quote` carry more than `price`/`bid`/`ask`? | **Yes — `game_time`** |
+| `market/subscribed` ×14 and `market/unsubscribed` ×11 exist and are discarded | **measured** |
+| `quote` carries `game_time`, on 5 of 5 frames; `candle_update` does not | **measured** |
+| `candle_update` = exactly 3 × `quote`, identical `firstAt`, in both readings | **measured** |
+| `presence` carries exactly `type`, `username`, `online` | **measured** |
+| `room_joined` splits 15 without `dm_target`, 10 with | **measured** |
+| `history` and `room_joined` arrive 1:1 in aggregate, endpoints coupled to the ms | **measured** |
+| Zero `error` and zero `dnd_updated` frames | **measured** |
+| Your own username appears in the presence stream | **measured** |
+| The server *seeds* presence at connect | **heuristic — see below** |
 
-Three of these change what is worth building. They are worked into the sections below;
-the short version:
+### The two that matter
 
-1. **Presence is seeded, so a passive observer gets the roster, not just the edges.**
-   This is the version of a presence tool that stays inside the clause, and it now has
-   evidence rather than hope behind it.
-2. **The market socket acknowledges subscriptions, and the client throws the acks away.**
-   25 frames in six minutes, invisible to every reader of the bundle. Exactly the class
-   of thing the no-`default`-branch argument predicted.
-3. **`quote` is stamped in game time.** The client never reads the field.
+**1. The market socket acknowledges subscriptions, and the client throws the acks away.**
+25 frames, invisible to every reader of the bundle. Exactly what the no-`default`-branch
+argument predicted, and the concrete vindication of building the tap at all.
 
-**The sample is small and its negatives are weak.** Six minutes and ~58 chat frames is
-nowhere near enough to conclude there are no unrecognised *chat* types — both discoveries
-were on the market socket. No `error` frame arrived, so `scope` values remain unknown, and
-no `dnd_updated` arrived because DND was never toggled.
+**2. `quote` carries `game_time`, which the client never reads.** Interesting — but see
+[`06-time-surface.md`](06-time-surface.md), where the first assessment of its value was
+wrong in the opposite direction from the hedge.
+
+### What this capture does *not* establish
+
+Worth stating plainly, because the first write-up of this run over-claimed several times
+and an adversarial re-derivation caught it:
+
+- **`seeded: true` is a heuristic verdict, not a measurement, and this session was the
+  worst possible one to run it in.** The detector fires on *three `presence` frames within
+  10 s of a connect* — which is the same shape as three genuine transitions that happen to
+  land near a connect. And the tool's own panel instructs the operator to *"reload the game
+  a few times"*, which produced 5 chat connections in 20 minutes. If presence broadcasts on
+  socket open and close, a reload-heavy session **manufactures exactly the burst the
+  detector looks for.** The instruction and the measurement interfere with each other.
+- **27 presence frames is a frame count, not a person count.** The tool records key names
+  and never values, so the census is consistent with anything from one account flapping 27
+  times to 27 distinct users. **No online population can be read off this.**
+- **The seed/transition split is unconstrained.** Genuine transitions lie somewhere in
+  **[0, 24]**. The seed size was never measured — the detector latches at its threshold of
+  3 and never records a burst size again, so "3" is a floor on *one* connect and says
+  nothing about the other four.
+- **`online: true` and `online: false` are indistinguishable here.** Values are not
+  recorded, so the census contains no edges as such — only 27 undifferentiated frames.
+- **The absence of `error` frames measures the operator's behaviour, not the server's.**
+  Error frames are provoked, and this session provoked essentially nothing.
+- **`quietRuns: 0` is inert.** The counter freezes once `seeded` is set, which happened on
+  the first connect. It is a default, not an observation.
+- **`observedMs` is tab-open time, not socket-connected time.**
+- **The negative on unrecognised *chat* types is weak.** The effective sample is ~5 near-
+  identical join bursts plus 3 message events — not 80 independent draws. Against the
+  tool's own bar for a meaningful negative (2 h, 500 frames) this sits at **17% and 25%**.
+
+### One inference that does survive, with its chain
+
+The connection split is **5 chat + 3 market**, and it is derivable without circularity:
+15 non-DM `room_joined` with at most 3 non-DM kinds per open forces **C ≥ 5**; the 3
+dangling subscriptions (14 − 11), one per market socket teardown, force **M ≥ 3** hence
+**C ≤ 5**. So C = 5, and uniformity of the per-connect room count *follows* rather than
+being assumed.
+
+A tempting further step — *"3 non-DM rooms per connect means the player has both a faction
+and a corporation"* — **does not hold, and was withdrawn.** `kind` is recorded as a key
+name; its **values never are**. The census cannot tell which three rooms those were.
 
 ## The correction to carry forward
 
@@ -274,21 +319,30 @@ case`presence`:{ let e=t.username, n=t.online;
 
 ### Three consequences worth stating plainly
 
-**1. The client is delta-only, but the server seeds it.** ~~Whether the *server* replays a
-burst of `presence` frames on join is not determinable from the bundles.~~ **Measured
-2026-08-07: it does.** Three `presence` frames arrived within 10 s of a connect, before
-any human activity.
+**1. The client is delta-only. Whether the server seeds is still not settled.**
 
-This is the finding that makes a presence tool worth building. Because the server seeds,
-**a passive observer gets the online roster at connect time, not merely the edges after
-it** — which is precisely the shape `01-rules-envelope.md` called the cheap unlock worth
-wanting, and it needs no request to obtain.
+`ws-watch` reported `SEEDED`, and the first write-up of that run recorded it as measured.
+**That was too strong.** The detector's rule is *three `presence` frames within 10 s of a
+connect*, which cannot be distinguished from three ordinary transitions landing near a
+connect — the frames are identical in shape, and the tool records no values.
 
-Two limits to keep attached to it. The seed observed was **three users**, consistent with
-a small world (291 citizens, `online_now` frequently 0–few), so the roster is real but
-short. And "online" here means *holding a `/ws/chat` connection*, which is closer to
-"has the game open" than to "is playing" — better than a decaying `is_online`, but not
-the same as activity.
+The confound is worse than generic. The panel tells the operator to **reload the game a
+few times** in order to settle this very question, and the capture duly shows 5 chat
+connections in 20 minutes. If presence broadcasts on socket open and close — which is the
+mechanism that would make seeding matter — then reloading *is* what generates clustered
+presence bursts. **The instruction manufactures the evidence it was meant to gather.**
+
+What can be said: **at least 3 `presence` frames arrived within 10 s of one connect.**
+That is compatible with seeding and does not establish it.
+
+This still matters, because if the server does seed, a passive observer gets the online
+roster at connect rather than only the edges after it — the shape
+`01-rules-envelope.md` named as the cheap unlock worth wanting. It just isn't proven yet,
+and the current instrument cannot prove it. See
+[Limits of the instrument](#limits-of-the-instrument).
+
+One limit holds regardless: **"online" means holding a `/ws/chat` connection**, which is
+nearer "has the game open" than "is playing".
 
 **2. A `presence` frame carries nothing else.** Measured: exactly `type`, `username`,
 `online`. No room id, no timestamp, no role, no DND flag.
@@ -326,9 +380,17 @@ drafts of this analysis leaned on it wrongly. The client destructuring two prope
 nothing about what else is on the wire. A `room_id` on the frame would immediately
 downgrade this to "the union of my rooms".
 
-**Presence is a strictly better liveness signal than `is_online`** (*high*), because it is
-an edge rather than a poll — but it carries no timestamp that the client reads, so a tap
-yields `(local_receive_time, username, bool)`, not a server-authoritative instant.
+~~**Presence is a strictly better liveness signal than `is_online`** (*high*).~~
+**Downgraded 2026-08-07.** The defensible version is: **faster and broader, but noisier
+and harder to segment.**
+
+It is an edge rather than a poll, and it covers arbitrary usernames rather than one
+faction's roster. Against that: it carries **no timestamp**, so a tap yields
+`(local_receive_time, username, bool)` and never a server-authoritative instant; it cannot
+be separated from a connect seed except by a 10-second timing guess; it counts you; and
+the client's set never clears. Meanwhile `/factions/{id}/public` polls `is_online` every
+5 s, is public, and needs no interpretation at all. Which is better depends entirely on
+whether you need breadth or precision.
 
 ### A second liveness channel on the same socket
 
@@ -490,23 +552,63 @@ keys** (`__reactFiber$` + `Math.random().toString(36).slice(2)`), so there is no
 property name to walk to. It would also hand back a live socket with `.send` — the exact
 object this design refuses to hold. Wait for the next reconnect instead.
 
+## Limits of the instrument
+
+`ws-watch` 0.1.1 was built to find out *what types and fields exist*, and it does that
+well — it found two message types and two unread fields in twenty minutes. But the first
+capture ran into its edges hard enough that they belong in the record, because several
+of the questions below **cannot be answered by the tool as it stands**, and a future
+reader will otherwise assume more runs will settle them.
+
+| limit | consequence | why it is there |
+|---|---|---|
+| Records **key names, never values**, for recognised types | Cannot capture `game_time`, cannot tell `online: true` from `false`, cannot read `kind` | Deliberate: it is what keeps chat bodies and other players' names out of storage |
+| Seed detector **latches at its threshold** | Burst size is never recorded; "3" is a floor on one connect and silent about the rest | `checkSeed` returns early once `seeded` is set |
+| Seed detector cannot distinguish a **server seed from clustered transitions** | `seeded: true` is a heuristic verdict, not a measurement | Both look identical without values or timestamps |
+| `quietRuns` **freezes** once `seeded` is set | Reads 0 as a default, not an observation | Same early return |
+| Records only `firstAt`/`lastAt` per type | No inter-arrival distribution, so rates must be reconstructed by hand and badly | No histogram is kept |
+| `observedMs` is **tab-open time** | Not socket-connected time; rate denominators are wrong if used naively | Accumulated on a wall-clock tick |
+| The panel **instructs reloads** to settle seeding | The instruction perturbs the thing being measured | Written before the confound was understood |
+
+Anything that needs a **value** rather than a shape — the `game_time` cross-check above,
+the online/offline split, a real population count — needs a **0.2.0** that records a
+narrow allowlist of numeric server fields (`quote.game_time`, `candle_update.bucket_start`
+and `timeframe`, `presence.online`) plus a per-type arrival histogram.
+
+That is still zero added requests, so hard rule 1 is untouched. But it **widens the
+disclosure** — the header currently promises key names only — so under clause 6 the header
+has to change with it. The fields named are server clock and market values, not personal
+data, which puts them in the same class as the unrecognised-frame samples already kept.
+`presence.online` is the one to think hardest about: it is a boolean about another player,
+and the honest form is a count of true-vs-false edges rather than a per-user log.
+
 ## Open questions
 
 Ordered by what they would unlock.
 
-**A first `ws-watch` run on 2026-08-07 settled five of these.** They are struck through
-below rather than deleted, so the next reader can see what was asked and what it cost to
-answer. What is left is either rare (4), slow (7), or not ours to test (8, 9).
+**The 2026-08-07 capture settled three of these outright, and left 1 and 3 partly open**
+after an adversarial re-derivation walked back what the tool's panel had reported as
+settled. Struck through rather than deleted, so the next reader can see what was asked
+and what it cost.
 
-1. ~~**Does the server burst-seed `presence` on connect?**~~ **Answered: yes.** Three
-   frames within 10 s of a connect. An observer gets the roster, not just the edges.
+1. **Does the server burst-seed `presence` on connect?** *(still open — the panel says
+   otherwise, and the panel is wrong)* What is measured is ≥3 `presence` frames within
+   10 s of one connect. That is compatible with seeding and does not establish it, because
+   clustered transitions look identical and the tool records no values. Made worse by the
+   panel instructing reloads, which is the very thing that would produce spurious clusters.
+   **Settling it needs the 0.2.0 value-recording described above**, plus a session with no
+   deliberate reloads.
 2. ~~**Does the `presence` frame carry fields the client discards?**~~ **Answered: no** —
    exactly `type`, `username`, `online`. Notably no `room_id`, which was the one field
    that would have refuted the app-wide scope reading.
 3. ~~**Does either socket emit types the client has no case for?**~~ **Answered: yes** —
-   `market/subscribed` and `market/unsubscribed`, 25 frames in six minutes, all discarded.
-   **Still open for `/ws/chat` specifically**: both discoveries were on the market socket,
-   and ~58 chat frames is far too few to conclude anything negative.
+   `market/subscribed` ×14 and `market/unsubscribed` ×11, all discarded.
+   **Still open for `/ws/chat` specifically.** Both discoveries were market-side, and the
+   chat evidence is thinner than the frame count suggests: ~80 chat frames, but they are
+   ~5 near-identical join bursts plus 3 message events, not 80 independent draws. Against
+   the tool's own bar for a meaningful negative (2 h, 500 frames) this run reached 17% and
+   25%. Rare types are also most likely to be *provoked* by actions this session never
+   performed.
 4. **What `scope` values can an `error` frame carry?** *(still open)* Only `join` appears
    in the bundle, and no `error` frame arrived in the sample. Needs a failed action — a DM
    to a nonexistent user is the obvious one, and costs nothing.
@@ -515,20 +617,20 @@ answer. What is left is either rare (4), slow (7), or not ours to test (8, 9).
 6. ~~**Does a market `quote` carry more than `price`/`bid`/`ask`?**~~ **Answered: yes —
    `game_time`**, never read by the client. `candle_update` is a full OHLCV bar with
    `bucket_start`.
-7. **Does `quote.game_time` agree with `/api/time`?** *(new, from the above)* If it does,
-   the market socket is a second clock anchor arriving far more often than the ~60 s
-   `/api/time` poll `time-watch` already reads, for zero extra cost. If it drifts, that is
-   more interesting still. Cross-check against
-   [`06-time-surface.md`](06-time-surface.md); needs only the stocks screen open.
+7. **Does `quote.game_time` agree with `/api/time`?** *(open, and not answerable by the
+   current tool)* `ws-watch` records key names, never values, so the `game_time` **value
+   was never captured** — the cross-check needs the 0.2.0 described above. Note the
+   framing in the first write-up of this question was wrong about why it matters; see
+   [`06-time-surface.md`](06-time-surface.md), where the density argument reverses.
 8. **How long does the server hold someone "online" after an ungraceful disconnect?**
    Bounds how far a presence-derived "active now" can be trusted. Answerable only by long
    passive observation.
-8. **Is presence suppressed for DND users** — does DND double as invisibility? **Do not
+9. **Is presence suppressed for DND users** — does DND double as invisibility? **Do not
    test this by toggling DND and asking a friend to watch.** That is a two-account
    experiment in spirit. Ask the operator.
-9. **Does `/sw.js` open any transport of its own?** It was never downloaded. A page-level
-   wrap could not see it regardless. Would need one file added to a future manual
-   `fetch-bundles.ps1` run.
+10. **Does `/sw.js` open any transport of its own?** It was never downloaded. A page-level
+    wrap could not see it regardless. Would need one file added to a future manual
+    `fetch-bundles.ps1` run.
 
 ## Notes to route privately, not publish
 

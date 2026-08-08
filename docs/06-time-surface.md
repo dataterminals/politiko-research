@@ -84,24 +84,65 @@ T5 also recorded response headers: `CF-Cache-Status: DYNAMIC` — the endpoint i
 edge-cached, so none of these brackets are skewed by CDN staleness — and a server
 `Date` 4.4–5.4 s ahead of the local clock, matching the local-offset measurement below.
 
-### A second, denser anchor source — found 2026-08-07, unverified
+### A second clock field — `quote.game_time`, found 2026-08-07
 
 Live socket capture shows every `/ws/market` **`quote` frame carries a `game_time`
-field**, which the game client never reads. See
-[`09-socket-surface.md`](09-socket-surface.md).
+field** that the game client never reads (5 of 5 frames). `candle_update` does **not**
+carry it. See [`09-socket-surface.md`](09-socket-surface.md).
 
-If it agrees with `/api/time`, it is a strictly better anchor source than what
-`time-watch` taps today: quotes arrive continuously while the stocks screen is open,
-against a ~60 s poll, and it costs nothing extra — the frames have already arrived.
-Denser anchors mean a tighter measured acceleration and a sharper phase estimate, which
-is exactly what [`Closing the gaps`](#closing-the-gaps) is short of.
+> **Correction, same day.** This section first claimed `game_time` was "a strictly better
+> anchor source" arriving "continuously… against a ~60 s poll". **That was wrong, and
+> wrong in the direction of the thing being advocated.** Measured over the same session,
+> `/api/time` supplies about **four times as many anchors** as `quote` does. The numbers
+> are below. Recording it here rather than quietly deleting it, because the failure mode
+> — finding an unread field and reaching for a use before measuring its rate — is the one
+> worth not repeating.
 
-**Nothing has been checked yet.** Unknown: its unit (game-seconds, like the `/api/time`
-payload, or a formatted date), its precision, and whether it agrees with `/api/time` at
-all. If it *disagrees*, that is the more interesting result — two clocks on one server
-is worth understanding before either is trusted. Cheapest test: have `ws-watch` (or any
-`WS TAP v1` consumer) open on the stocks screen while `time-watch` records a normal
-`/api/time` sample, and compare.
+**Measured rates**, from the 2026-08-07 census:
+
+| | value |
+|---|---|
+| `quote` frames | 5, spanning 122.3 s |
+| mean gap between quotes | **~30.6 s** |
+| `/api/time` polls over the same 20 m 40 s session | **~20** |
+| `quote` frames over that session | **5** |
+| ratio | **the poll wins ~4:1** |
+| share of session with any market frame at all | **13.6%** |
+
+Four things sink it as a primary anchor:
+
+1. **Coverage.** `/api/time` polls on every authenticated route. The market socket exists
+   only on `/stocks`. In this session all market traffic finished inside the first three
+   minutes; the remaining 85% of the window had none.
+2. **It is event-driven, not a heartbeat.** 14 subscriptions produced only 5 quotes, and
+   there is a 45.6 s stretch with a live subscription and no quote at all. Quotes track
+   *market activity on the selected instrument* — the worst possible cadence for a clock.
+3. **Error bracketing.** An HTTP poll's local send and receive times bracket the server
+   value to within one round trip. A pushed frame gives a receive time only: one-sided,
+   with unbounded latency.
+4. **Baseline.** The poll's window here was ~10× longer, and drift-rate error falls with
+   baseline length.
+
+**`candle_update` does not help either.** It looks denser at ~8.7 s, but it is exactly
+3 × `quote` in both readings with an identical `firstAt` to the millisecond — one quote
+and three candles (one per timeframe) emitted per price event. It contributes **no
+additional distinct time instants**, and carries no `game_time`.
+
+**Where it could still earn its keep:** as a *supplementary* cross-check while the
+operator is on `/stocks` (+24% anchors, versus −76% if it replaced the poll), for spotting
+a poll/socket disagreement inside ~30 s instead of ~60 s, and for labelling price data in
+game time. Framing it as a replacement is a net loss.
+
+**Still unverified, and not verifiable with the current tool.** `ws-watch` 0.1.1 records
+key *names* and never values, so **no `game_time` value was ever captured** — its unit,
+precision and agreement with `/api/time` are all still unknown. That needs the 0.2.0
+value-recording change described in
+[`09-socket-surface.md`](09-socket-surface.md#limits-of-the-instrument).
+
+`bucket_start` on `candle_update` may be the more interesting field: if it is floor-
+quantized to its `timeframe`, the first frame carrying a new value marks a boundary
+crossing, which is a better anchor *shape* than a mid-interval sample. That depends on
+candles firing at rollover even with zero volume, which nothing has tested.
 
 Cross-checks:
 
