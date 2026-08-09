@@ -89,19 +89,23 @@ Picking up cold: [`HANDOFF.md`](HANDOFF.md)
 ```
 docs/                 numbered findings and plans
 tools/                fetch-bundles.ps1 — one-shot static-asset pull for local grepping
-userscripts/          _template.user.js — passive-tap skeleton, SPA-aware, PANEL KIT
-                      time-watch.user.js  — game-clock calibrator
-                      align-watch.user.js — your political compass on the home page
-                      comms-move.user.js  — makes the game's Comms dock draggable
-                      time-bridge.user.js — hands the clock anchor to the Time Wire planner
+userscripts/          README.md — install links and per-tool documentation
+                      _template.user.js   — passive-tap skeleton, SPA-aware, PANEL KIT
+                      people-watch.user.js — ledger of who is idle, at full precision
+                      market-watch.user.js — price history, charts and alerts
+                      time-watch.user.js   — game-clock calibrator
+                      align-watch.user.js  — your political compass on the home page
+                      comms-move.user.js   — makes the game's Comms dock draggable
+                      time-bridge.user.js  — hands the clock anchor to the Time Wire planner
+                      ws-watch.user.js     — read-only observer for the game's WebSockets
               tools/  node test suites for the above
 artifacts/            gitignored: downloaded bundles, HARs, captures
 CLAUDE.md             working rules for agent sessions
 ```
 
-Larger tools that came out of this research live in their own repositories; this one keeps
-the findings, the rules analysis, the skeleton they were built on, and the small passive
-overlays.
+Every userscript ships from `userscripts/` — findings, rules analysis, the skeleton they
+were built on and the tools themselves all live together. Install links and per-tool docs
+are in [`userscripts/README.md`](userscripts/README.md).
 
 Panels drawn over the game are draggable and remember where you put them — the shared
 `PANEL KIT` block in the template is copied verbatim into each tool rather than pulled

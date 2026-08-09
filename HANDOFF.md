@@ -1,8 +1,8 @@
 # Handoff — 2026-08-07
 
 Supersedes the 2026-07-28 scaffolding handoff. That one described a repo with nothing built
-in it; this one describes four shipped userscripts, two more in their own repos, a PWA, and
-a posture that went out and came back.
+in it; this one describes seven shipped userscripts, a PWA, and a posture that went out and
+came back.
 
 ## Where this stands
 
@@ -25,25 +25,30 @@ reach for that shape first.
 3. [`docs/00-recon-baseline.md`](docs/00-recon-baseline.md) — the stack, logged out.
 4. Whichever `docs/0N-*-surface.md` covers what you are about to touch.
 
-## The tools, and which repo each ships from
+## The tools
 
-**This is the thing that will trip you up.** `politiko-time-watch` looks like time-watch's
-home and is not.
+**Every userscript ships from this repo, out of `userscripts/`.** people-watch and
+market-watch used to have their own repositories and were folded back in on 2026-08-09;
+if you find a reference to `politiko-people-watch` or `politiko-market-watch` anywhere,
+it is stale.
 
-| tool | ships from | version |
+| tool | version | |
 |---|---|---|
-| time-watch | **politiko-research** `userscripts/` | 0.4.0 |
-| align-watch | **politiko-research** `userscripts/` | 0.2.0 |
-| comms-move | **politiko-research** `userscripts/` | 0.1.0 |
-| time-bridge | **politiko-research** `userscripts/` | 0.1.0 |
-| ws-watch | **politiko-research** `userscripts/` | 0.1.0 — *temporary instrument* |
-| people-watch | `politiko-people-watch` | 1.2.0 |
-| market-watch | `politiko-market-watch` | 1.0.0 |
-| Time Wire (PWA) | `PolitikoTimeWire` | — |
+| people-watch | 1.2.1 | |
+| market-watch | 1.0.1 | |
+| time-watch | 0.4.0 | |
+| align-watch | 0.2.0 | |
+| comms-move | 0.1.0 | |
+| time-bridge | 0.1.0 | |
+| ws-watch | 0.2.0 | *temporary instrument* |
+| Time Wire (PWA) | — | ships from `PolitikoTimeWire` |
 
-`politiko-time-watch` is a **frozen v0.1.0 snapshot**. Its README says so and its
-`@updateURL` deliberately points at the research copy, so an old install migrates itself.
-Don't edit the script there.
+Install links and per-tool docs: [`userscripts/README.md`](userscripts/README.md).
+
+**The one thing that will still trip you up:** `politiko-time-watch` looks like time-watch's
+home and is not. It is a **frozen v0.1.0 snapshot** — its README says so and its `@updateURL`
+deliberately points at the copy here, so an old install migrates itself. Don't edit the
+script there.
 
 Every script declares `@updateURL`/`@downloadURL`, so **shipping a fix means bumping
 `@version`** — a manager only acts on an increase.
@@ -83,8 +88,9 @@ Every script declares `@updateURL`/`@downloadURL`, so **shipping a fix means bum
 - **Time Wire**: run `node scripts/stamp-sw.mjs` after touching the shell, or installed PWAs
   keep serving the cached version.
 - **Tests slice their layer out of the shipped file** rather than copying it, so they cannot
-  drift. `politiko-market-watch/tools/test-passive.js` is a fence: it fails if anything that
-  could send a request reappears.
+  drift. `userscripts/tools/test-market-passive.js` is a fence: it fails if anything that
+  could send a request reappears. `test-passive.js` is the same idea for ws-watch — the two
+  are unrelated, which is why market-watch's was renamed when it moved in.
 
 ## How things get verified (nothing touches the live game)
 

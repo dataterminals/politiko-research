@@ -523,7 +523,7 @@ a claim that the token is unreachable, and any disclosure should not overclaim.
    **not even to count them.** Counting belongs in the harness.
 3. Allowlist URL redaction in the constructor; credential-key scrub on bodies before any
    freeze, storage, or render.
-4. A static fence in the spirit of `politiko-market-watch/tools/test-passive.js`: slice the
+4. A static fence in the spirit of `userscripts/tools/test-market-passive.js`: slice the
    file after the metadata block and fail the build if it contains `.send(`,
    `new WebSocket`, `fetch(`, `XMLHttpRequest`, `sendBeacon`, `EventSource`, or
    `Notification`, or if `super(` appears more than once. A correct tap contains **zero**
