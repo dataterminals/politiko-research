@@ -404,6 +404,24 @@ console.log('\n— 0.2.0: the home dossier is a live full-width reading source �
   ok('no self-referential comparison line remains', !r.includes('dossier vs live'));
 }
 
+console.log('\n— 0.2.6: the report carries the measurement, not just the instrument —');
+{
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'assessment' }, { snapshot_date: 'x', stats_table: [{ key: 'persuasion', current: 10, change: 0 }] }, 2000);
+  for (let i = 0; i < 3; i++) {
+    E.ingest(L, { kind: 'action', ep: '/disobedience' }, { success: i < 2, hospitalized: i === 2 }, 3000 + i);
+  }
+  E.ingest(L, { kind: 'assessment' }, { snapshot_date: 'x', stats_table: [{ key: 'persuasion', current: 10.06, change: 0 }] }, 4000);
+  const r = E.buildReport(L, {}, '9.9.9');
+  ok('report has a measured-per-action section', r.includes('measured per action:'));
+  ok('with the per-attempt average and its n', r.includes('persuasion +0.02(n=3)'));
+  ok('and the outcome split beside it', /disobedience ×3 · success:2 fail\+hospitalized:1/.test(r));
+  // The sealed tab is a policy gate; the report must name the axis, not guess.
+  E.ingest(L, { kind: 'stats-sheet', name: 'me' }, { can_view: false, privacy_rights_axis: 0 }, 5000);
+  ok('sealed tab reports its axis', E.buildReport(L, {}, '9.9.9').includes('answered sealed (rights axis 0)'));
+}
+
 console.log('\n— 0.2.5: N identical actions in one window are N samples, not noise —');
 {
   // The real 2026-08-11 case: 3 disobediences between two readings, +0.06.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.5
+// @version      0.2.6
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -77,10 +77,12 @@
  * people-watch's roster walk. Windows holding several actions are kept and
  * shown as ambiguous, never averaged into per-action numbers.
  *
- * As of 2026-08-11 the live game's profile stats tab is unfinished — it can
- * answer sealed/empty/an error for your own profile, and the panel says so when
- * it does. The working sheets are HOME (the dossier: every stat, live) and the
- * TRAIN page (live values for whatever your current city trains).
+ * The profile stats tab is NOT a reliable sheet, and as of 2026-08-11 the
+ * reason is measured: it answers sealed with `privacy_rights_axis: 0`, and the
+ * client requires 3 to show a stat sheet (2+ for holdings). That is a world
+ * policy gate — it applies to your own profile too — not a bug and not
+ * something a tool can route around. The working sheets are HOME (the dossier:
+ * every stat, live) and the TRAIN page (whatever your current city trains).
  *
  * Second purpose: crime responses might carry award fields the client discards
  * (both prior passive captures found the wire wider than the reader). This tool
@@ -93,7 +95,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.2.5';
+  const VERSION = '0.2.6';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -519,6 +521,20 @@
     }
     const keys = Object.keys(L.last);
     lines.push(`readings held: ${keys.length} key${keys.length === 1 ? '' : 's'} · deltas recorded: ${L.deltas.length} · sample endpoints: ${Object.keys(samples).length}`);
+
+    // The actual answer the tool exists to produce. It was missing from every
+    // paste until 0.2.6 — the report described the instrument and omitted the
+    // measurement.
+    const acts = Object.entries(L.actStats).filter(([, a]) => a.n > 0);
+    if (acts.length) {
+      lines.push('measured per action:');
+      for (const [ep, a] of acts.sort((x, y) => y[1].n - x[1].n)) {
+        const outs = Object.entries(a.outcomes).map(([k, n]) => `${k}:${n}`).join(' ') || 'no outcome field';
+        const xp = Object.entries(a.xp).sort((x, y) => Math.abs(y[1].sum / y[1].n) - Math.abs(x[1].sum / x[1].n))
+          .map(([k, x]) => `${k} ${x.sum / x.n >= 0 ? '+' : ''}${+(x.sum / x.n).toFixed(4)}(n=${x.n})`).join(' · ');
+        lines.push(`  ${ep.replace(/^\/actions\//, '').replace(/^\//, '')} ×${a.n} · ${outs} · ${xp || 'nothing measured yet'}`);
+      }
+    }
     // Digest of the raw action samples, so a pasted report can reveal response
     // fields the client never renders. NUMBERS AND BOOLEANS CARRY THEIR VALUES:
     // they are the mechanically interesting ones (a `mastery` or `roll` is
@@ -740,7 +756,7 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   const issueLabel = (i) => i.kind === 'sealed'
-    ? `<b>sealed</b>${i.axis != null ? ` (rights axis ${esc(String(i.axis))}, needs 3)` : ''}`
+    ? `<b>sealed</b>${i.axis != null ? ` — your world's privacy <b>rights axis is ${esc(String(i.axis))}</b>, and stat sheets need <b>3</b>` : ''}`
     : i.kind.startsWith('http') ? `<b>an error (${esc(i.kind.toUpperCase())})</b>`
       : '<b>empty</b>';
 
@@ -825,10 +841,13 @@
 
     bd.innerHTML = `
       ${L.sheetIssue ? `<div class="hint" style="border-color:#7c2d12;color:#fdba74">Your profile's stats tab
-        answered ${issueLabel(L.sheetIssue)}
-        — the game's stats tab is unfinished right now. Use <b>HOME</b> as your sheet
-        instead: the dossier reads every stat live on each visit and window refocus, and
-        this panel diffs what arrives.</div>` : ''}
+        answered ${issueLabel(L.sheetIssue)}.
+        ${L.sheetIssue.kind === 'sealed'
+          ? `That is a <b>government policy gate, not a bug</b> — nobody can read a stat sheet
+             until the world's Rights axis reaches 3, including your own.`
+          : ''}
+        Use <b>HOME</b> as your sheet instead: the dossier reads every stat live on each
+        visit and window refocus, and this panel diffs what arrives.</div>` : ''}
       ${pending.length ? `<div class="hint" style="border-color:#155e75;color:#7dd3fc">
         <b>${pending.length} action${pending.length === 1 ? '' : 's'} not measured yet</b>
         (${esc([...new Set(pending.map((p) => p.ep.replace(/^\/actions\//, '').replace(/^\//, '')))].join(', '))}).

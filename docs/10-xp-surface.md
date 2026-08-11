@@ -75,15 +75,20 @@ sheet depends on a policy axis. Whether `can_view` is unconditionally true for y
 profile is inferred (very likely) rather than measured.
 
 > **Field report, 2026-08-11 — the inference above did not survive its first day.** A
-> crew-mate on the live game could not view his *own* stat sheet; the operator's read is
-> that the live stats tab is **unfinished** ("that stats setup on the home is temporary —
-> I assume it'll probably go into the stats tab"). So `/users/{me}/stats` cannot be
-> relied on as the primary reading source yet, and the home dossier may be a placeholder
-> that later moves into the tab — expect drift here. **The train page is the working live
-> sheet**: its targets carry `value` per key, on a finished screen. Whether its target
-> list covers all 37 keys is still open (question 2), and now matters more.
-> `xp-watch` 0.1.1 surfaces a sealed/empty own-sheet response in its panel instead of
-> silently recording nothing, and points its guidance at the train page.
+> crew-mate on the live game could not view his *own* stat sheet; the first read was that
+> the stats tab is **unfinished**. `/users/{me}/stats` therefore cannot be the primary
+> reading source, and the guidance moved to the train page and then to the home dossier.
+>
+> **Cause measured later the same day, and it is not "unfinished".** A sealed own-profile
+> response arrived carrying `can_view: false` and **`privacy_rights_axis: 0`**, and the
+> client requires **3** to render a stat sheet (`ProfilePage`: `privacy rights axis {n} ·
+> requires 3`; holdings requires `2+`). So stat sheets — *including your own* — are gated
+> behind a **world policy axis**, currently 0. Not a bug, not a placeholder, and nothing a
+> tool can route around: it opens when the government moves the Rights axis to 3.
+>
+> This also explains the earlier confusion cleanly. `can_view` is **not** unconditionally
+> true for your own profile (question 4), and the reason is political rather than
+> technical. `xp-watch` 0.2.6 states the axis and the threshold in its panel.
 
 ## What awards skills, as the client sees it
 
@@ -456,6 +461,13 @@ while "therefore this is the award" was a leap.
 Whether `mastery` *moves* is now the interesting question, and it needs only time: three
 samples at one instant cannot show a progression stat progressing.
 
+> **Answered within the hour: it moves. `mastery` went 41 → 42** across the next block of
+> disobediences. So it is a genuine progression counter the client never renders —
+> plausibly per-issue mastery, incrementing roughly once per several actions. Its step
+> (+1) and its scale (integers in the 40s) both rule it out as the fractional XP award,
+> which is what the earlier correction concluded. **What it gates or grants is unknown**,
+> and nothing in the client reads it, so the answer is server-side.
+
 **The other values, all measured:**
 
 | field | reading |
@@ -578,12 +590,12 @@ to map `result_metadata` and lobbying outcomes properly.
    paste after any gain settles it; if running, whether its window is a rolling game year
    = 7 real days), and **what drives the assessment cadence** (per-account; one account
    daily, another 15 days).
-4. ~~**Is `can_view` always true for your own stats?**~~ **Falsified in the field,
-   2026-08-11, within hours of asking** — a crew-mate could not view his own sheet on the
-   live game; the stats tab is unfinished. What the sealed/empty response actually
-   carries (a `can_view: false`? an empty `stats`? an error status the tap never sees?)
-   is still unmeasured — xp-watch 0.1.1 records which of the first two it is when it
-   arrives.
+4. ~~**Is `can_view` always true for your own stats?**~~ **Falsified and then explained,
+   2026-08-11.** The sealed response carries `can_view: false` with
+   **`privacy_rights_axis: 0`**, against a client threshold of **3** for stats and **2+**
+   for holdings. Own-profile stats are gated by a **world policy axis**, not by
+   unfinished code. Successor question, and it is a political one rather than a technical
+   one: **what moves the Rights axis**, and does anyone in this world intend to.
 5. **How does `heart` scale training gains?** `practice_gain` predictions at two
    different heart values would bound it.
 6. **Does jail tick `street_sense` continuously or per event?** Sheet readings before and

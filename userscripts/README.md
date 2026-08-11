@@ -19,7 +19,7 @@ bannable, so the disclosure block is the contract.
 | Comms Move | 0.1.0 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.2.5 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.2.6 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -241,9 +241,11 @@ readings, and readings only arrive where you navigate:
   window regains focus while you're there. This is the primary source.
 - **the TRAIN page** — live values, but only for what your **current city** trains
   (target lists are location-based; a no-city location offers Heart alone).
-- **your own profile → STATS tab** — same mechanism, but as of 2026-08-11 the game's
-  stats tab is unfinished and may answer sealed/empty/an error. The panel says so if it
-  does; you don't need it.
+- **your own profile → STATS tab** — same mechanism, but currently **sealed for
+  everyone, including on your own profile**. That's a government policy gate, not a bug:
+  a stat sheet needs the world's privacy Rights axis at **3** (holdings need 2+), and it
+  sits at **0**. The panel says so, with the live number, if you hit it. You don't need
+  this page — home covers everything it would.
 
 So the workflow is a **sandwich**: glance at home, do the thing, glance at home. Every
 one of those fetches is a navigation the game performs because you asked for that page;
