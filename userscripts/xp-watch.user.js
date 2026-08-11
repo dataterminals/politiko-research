@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.4
+// @version      0.2.0
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -29,8 +29,12 @@
  *                                                states its own XP award
  *               GET  /api/education…           — fires on education pages; the course
  *                                                catalog with its declared rewards
- *               GET  /api/user/progression     — fires on the home page; shown only as
- *                                                "the game's own period assessment"
+ *               GET  /api/user/progression     — fires on the home page; its `current`
+ *                                                values are a live full-width sheet
+ *                                                (field-verified 2026-08-11, docs/10)
+ *                                                and are read as readings; its `change`
+ *                                                column is period-snapshot data and is
+ *                                                not used
  *               POST /api/actions/*, /api/disobedience, /api/protests…, /api/combat…,
  *               /api/terminal/exec, /api/city/bank/rob, /api/travel, /api/jobs/specials
  *                                              — responses to actions YOU submitted,
@@ -70,9 +74,9 @@
  * shown as ambiguous, never averaged into per-action numbers.
  *
  * As of 2026-08-11 the live game's profile stats tab is unfinished — it can
- * answer sealed/empty for your own profile, and the panel says so when it does.
- * Until the game finishes it, the working sheet is the TRAIN page, whose
- * targets carry live values.
+ * answer sealed/empty/an error for your own profile, and the panel says so when
+ * it does. The working sheets are HOME (the dossier: every stat, live) and the
+ * TRAIN page (live values for whatever your current city trains).
  *
  * Second purpose: crime responses might carry award fields the client discards
  * (both prior passive captures found the wire wider than the reader). This tool
@@ -85,7 +89,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.1.4';
+  const VERSION = '0.2.0';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -363,24 +367,27 @@
     }
 
     if (msg.kind === 'assessment') {
-      // Snapshot-cycle values: never fed into `last` (docs/10) — but stored so
-      // the report can compare the dossier against live readings and settle
-      // whether `current` is live. Crime skills currently have no other
-      // candidate source, so this comparison is load-bearing.
+      // PROMOTED 2026-08-11 (docs/10): `current` on the dossier is live. The
+      // verdict came from the field — a crew account gained +1.18 persuasion
+      // between two reports while the dossier's assessment dates stood still,
+      // and the comparison still read 7/7 match. Only `change` is
+      // snapshot-cycle data. So the home page is a full-width live sheet:
+      // every visit reads all keys, crime skills included.
       const table = Array.isArray(data.stats_table) ? data.stats_table
         : Array.isArray(data.stats) ? data.stats : [];
-      const values = {}, change = {};
+      const change = {};
       for (const row of table) {
         if (!row || typeof row.key !== 'string') continue;
-        if (typeof row.current === 'number' && Number.isFinite(row.current)) values[row.key] = row.current;
+        if (typeof row.current === 'number' && Number.isFinite(row.current)) {
+          closeWindow(L, row.key, row.current, t, out);
+        }
         if (typeof row.change === 'number' && Number.isFinite(row.change)) change[row.key] = row.change;
       }
       L.assessment = {
         snapshot_date: data.snapshot_date ?? null,
         previous_date: data.previous_date ?? null,
-        at: t, values, change,
+        at: t, keys: table.length, change,
       };
-      return out;
     }
 
     if (msg.kind === 'action') {
@@ -434,25 +441,31 @@
     lines.push(L.sheetIssue
       ? `profile stats tab: answered ${L.sheetIssue.kind}${L.sheetIssue.axis != null ? ` (rights axis ${L.sheetIssue.axis})` : ''}`
       : 'profile stats tab: no issue recorded');
-    if (L.assessment?.snapshot_date || L.assessment?.values) {
-      const vals = L.assessment.values ?? {};
-      lines.push(`home dossier assessed: ${L.assessment.snapshot_date ?? '?'} (prev ${L.assessment.previous_date ?? '?'}) · ${Object.keys(vals).length} keys`);
-      // The load-bearing comparison (docs/10): if dossier values match live
-      // readings taken after gains, `current` is live and the home page is a
-      // full sheet for every skill /train doesn't serve.
-      const overlap = Object.keys(vals).filter((k) => L.last[k]);
-      if (overlap.length) {
-        let equal = 0, worst = null, worstD = 0;
-        for (const k of overlap) {
-          const d = vals[k] - L.last[k].v;
-          if (Math.abs(d) <= EPS) equal++;
-          else if (Math.abs(d) > Math.abs(worstD)) { worstD = d; worst = k; }
-        }
-        lines.push(`dossier vs live: ${equal}/${overlap.length} match${worst ? ` · biggest gap ${worst} ${worstD > 0 ? '+' : ''}${worstD.toFixed(4)} (dossier − live)` : ''}`);
-      }
+    if (L.assessment?.snapshot_date != null || L.assessment?.keys) {
+      lines.push(`home dossier assessed: ${L.assessment.snapshot_date ?? '?'} (prev ${L.assessment.previous_date ?? '?'}) · ${L.assessment.keys ?? 0} keys · live reading source`);
     }
     const keys = Object.keys(L.last);
     lines.push(`readings held: ${keys.length} key${keys.length === 1 ? '' : 's'} · deltas recorded: ${L.deltas.length} · sample endpoints: ${Object.keys(samples).length}`);
+    // Key-name digest of the raw action samples, so a pasted report can reveal
+    // response fields the client never renders — values stay home.
+    const flat = (o, p, d, acc) => {
+      if (d > 3 || !o || typeof o !== 'object') return acc;
+      for (const [k, v] of Object.entries(o)) {
+        const key = p ? `${p}.${k}` : k;
+        acc.add(key);
+        if (Array.isArray(v)) { if (v.length && typeof v[0] === 'object') flat(v[0], `${key}[]`, d + 1, acc); }
+        else if (v && typeof v === 'object') flat(v, key, d + 1, acc);
+      }
+      return acc;
+    };
+    for (const [ep, ring] of Object.entries(samples)) {
+      const seen = new Set();
+      for (const s of ring) { try { flat(JSON.parse(s.body), '', 0, seen); } catch { /* truncated sample */ } }
+      if (seen.size) {
+        const list = [...seen].sort();
+        lines.push(`sampled ${ep}: ${list.slice(0, 40).join(' ')}${list.length > 40 ? ' …' : ''}`);
+      }
+    }
     return lines.join('\n');
   };
 
@@ -720,13 +733,14 @@
     bd.innerHTML = `
       ${L.sheetIssue ? `<div class="hint" style="border-color:#7c2d12;color:#fdba74">Your profile's stats tab
         answered ${issueLabel(L.sheetIssue)}
-        — the game's stats tab is unfinished right now. Use the <b>TRAIN page</b> as your
-        sheet instead: opening it (or refocusing the window while on it) reads live values
-        for every trainable target, and this panel diffs those the same way.</div>` : ''}
-      ${sheetAge === null && !L.sheetIssue ? `<div class="hint">No reading yet. Open the <b>TRAIN page</b> —
-        the game fetches live values for every trainable target there (and again on every
-        window refocus) — or your profile's STATS tab once the game finishes it. This panel
-        diffs what arrives. Sandwich a grind block between two looks for clean windows.</div>` : ''}
+        — the game's stats tab is unfinished right now. Use <b>HOME</b> as your sheet
+        instead: the dossier reads every stat live on each visit and window refocus, and
+        this panel diffs what arrives.</div>` : ''}
+      ${sheetAge === null && !L.sheetIssue ? `<div class="hint">No reading yet. Go <b>HOME</b> —
+        the dossier there reads ALL your stats live, on every visit and every window
+        refocus. This panel diffs what arrives: sandwich a grind block (or one single
+        action) between two glances for clean measurements. The Train page works too, for
+        whatever your city trains.</div>` : ''}
       <div>
         <h4>latest deltas</h4>
         ${feed.length === 0 ? '<div class="muted">none recorded yet</div>' : `<table>${feed.map((d) => `
@@ -757,7 +771,7 @@
       </div>
       <div class="muted">
         ${L.me ? `${esc(L.me)} · ` : ''}${sheetAge !== null ? (sheetAge === 'now' ? 'sheet fresh · ' : `sheet ${sheetAge} ago · `) : ''}
-        ${L.assessment?.snapshot_date ? `dossier assessed ${esc(String(L.assessment.snapshot_date))} (period totals — not this tool's numbers) · ` : ''}
+        ${L.assessment?.snapshot_date ? `dossier assessed ${esc(String(L.assessment.snapshot_date))} · ` : ''}
         samples: ${Object.keys(samples).length} endpoint${Object.keys(samples).length === 1 ? '' : 's'} (__pkxw.samples())
       </div>`;
     if (drag) drag.fit();

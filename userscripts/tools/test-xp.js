@@ -294,11 +294,11 @@ const boot = () => {
   check('window excludes the pre-reading action', rows[0].attrib, { type: 'action', ep: '/actions/deal-drugs', n: 1 });
 }
 {
-  // assessment is display-only: never a reading, never a delta
+  // assessment is a live reading source since 0.2.0 (docs/10 field verdict)
   const L = boot();
-  const rows = E.ingest(L, { kind: 'assessment' }, { stats_table: [{ key: 'stealth', current: 999, change: 5 }], snapshot_date: 'Y7 D300', previous_date: 'Y7 D290' }, 3000);
-  check('no rows from assessment', rows.length, 0);
-  check('sheet value untouched by assessment', L.last.stealth.v, 10);
+  const rows = E.ingest(L, { kind: 'assessment' }, { stats_table: [{ key: 'stealth', current: 10.4, change: 5 }], snapshot_date: 'Y7 D300', previous_date: 'Y7 D290' }, 3000);
+  check('assessment closes windows like any reading', rows.map((r) => [r.key, +r.d.toFixed(4)]), [['stealth', 0.4]]);
+  check('reading advanced', L.last.stealth.v, 10.4);
   check('assessment dates kept for display', L.assessment.snapshot_date, 'Y7 D300');
 }
 {
@@ -322,26 +322,52 @@ console.log('\n— 0.1.3: the broken tab’s HTTP status is finally visible —'
   ok('report says so', E.buildReport(L, {}, '9.9.9').includes('answered http 404'));
 }
 
-console.log('\n— 0.1.3: dossier values stored and compared, never ingested —');
+console.log('\n— 0.2.0: the home dossier is a live full-width reading source —');
 {
   const L = E.makeLedger();
   E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
-  E.ingest(L, { kind: 'stats-sheet', name: 'me' }, { can_view: true, stats: { stealth: 10.12, strength: 7.8 } }, 2000);
+  const first = E.ingest(L, { kind: 'assessment' }, {
+    snapshot_date: '2026-08-11', previous_date: '2026-07-27',
+    stats_table: [
+      { key: 'stealth', label: 'Stealth', current: 10, change: 0.5 },
+      { key: 'street_sense', label: 'Street Sense', current: 0.55, change: 0.55 },
+      { key: 'art', label: 'Art', current: 1.0, change: 0 },
+    ],
+  }, 2000);
+  check('first dossier visit is a baseline, no deltas', first.length, 0);
+  check('dossier keys became readings', Object.keys(L.last).sort(), ['art', 'stealth', 'street_sense']);
+  // the klyde workflow: home → one disobedience → home
+  E.ingest(L, { kind: 'action', ep: '/disobedience' }, {}, 3000);
   const rows = E.ingest(L, { kind: 'assessment' }, {
     snapshot_date: '2026-08-11', previous_date: '2026-07-27',
     stats_table: [
-      { key: 'stealth', label: 'Stealth', current: 10.12, change: 0.5 },
-      { key: 'strength', label: 'Strength', current: 7.0, change: 0.2 },
+      { key: 'stealth', label: 'Stealth', current: 10, change: 0.5 },
       { key: 'street_sense', label: 'Street Sense', current: 0.55, change: 0.55 },
+      { key: 'art', label: 'Art', current: 1.18, change: 0 },
     ],
-  }, 3000);
-  check('assessment produces no delta rows', rows.length, 0);
-  check('assessment never touches live readings', Object.keys(L.last).sort(), ['stealth', 'strength']);
-  check('dossier values stored', L.assessment.values.street_sense, 0.55);
+  }, 4000);
+  check('home sandwich attributes the art gain to the disobedience',
+    rows.map((r) => [r.key, +r.d.toFixed(4), r.attrib.type, r.attrib.ep]),
+    [['art', 0.18, 'action', '/disobedience']]);
+  check('change column stored, never a reading', L.assessment.change.street_sense, 0.55);
   const r = E.buildReport(L, {}, '9.9.9');
-  ok('report counts dossier keys', r.includes('· 3 keys'));
-  ok('comparison counts the match and names the gap',
-    r.includes('dossier vs live: 1/2 match') && r.includes('biggest gap strength -0.8000 (dossier − live)'));
+  ok('report marks the dossier as a live source', r.includes('· 3 keys · live reading source'));
+  ok('no self-referential comparison line remains', !r.includes('dossier vs live'));
+}
+
+console.log('\n— 0.2.0: sample key digest in the report, values stay home —');
+{
+  const L = E.makeLedger();
+  const samples = {};
+  E.recordSample(samples, '/disobedience', {
+    swing: 3, jailed: false, secret_token: 'SENTINEL',
+    xp_award: { persuasion: 0.4, art: 0.18 }, witnesses: [{ username: 'bob', mood: 2 }],
+  }, 1000);
+  const r = E.buildReport(L, samples, '9.9.9');
+  ok('digest names the endpoint', r.includes('sampled /disobedience:'));
+  ok('digest surfaces nested award-shaped keys', r.includes('xp_award.persuasion') && r.includes('xp_award.art'));
+  ok('digest walks arrays', r.includes('witnesses[].username'));
+  ok('digest carries no values', !r.includes('0.4') && !r.includes('SENTINEL') && !r.includes('bob'));
 }
 
 console.log('\n— the copy-report button: paste-ready, console-free —');

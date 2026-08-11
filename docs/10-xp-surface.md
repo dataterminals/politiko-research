@@ -61,10 +61,13 @@ Four endpoints carry own-character stat/skill numbers. Nothing else does — and
 | `GET /api/user/progression` | home page ("Character Dossier", `HomePage` 20359) | `{stats_table: [{key, label, current, change}], net_worth: {current, change, percent_change}, snapshot_date, previous_date}` |
 | `GET /api/education`, `/api/education/{track}` | education pages | course catalog with **declared** awards (below); no live stat values |
 
-**`/user/progression` is snapshot data.** The card renders "Assessed {snapshot_date}"
-and "No assessment on file. Snapshot pending next cycle." — `current` is the value at the
-last assessment cycle and `change` is the delta from the cycle before. **This is exactly
-the period total the crew request rejects.** Cycle cadence is unknown from statics.
+~~**`/user/progression` is snapshot data.**~~ **Half wrong — corrected 2026-08-11 by
+field measurement.** The card's "Assessed {snapshot_date}" framing misled this read:
+**`current` is LIVE** (proven by a +1.18 persuasion gain matching while the assessment
+dates stood still — see the verdict section below), and only **`change`** is
+period-to-period snapshot data. So the dossier is the game's one live full-width sheet,
+and the crew's "not the period total" requirement is satisfied by diffing it. Cycle
+cadence is per-account and still unknown.
 
 `stats` on the profile payload is privacy-gated for *other* players — the sealed view
 prints "privacy rights axis · requires 3" (`ProfilePage` 3110), so reading someone else's
@@ -286,6 +289,57 @@ dossier vs live: 7/7 match
   `city_theme`, so the crew's copy-reports build the city→trainable-skills map as they
   travel.
 
+### The verdict: `/user/progression.current` is LIVE (2026-08-11)
+
+Third field report, same account as the first, ~26 minutes later, after a stint of
+persuasion training and civil disobedience:
+
+```
+train targets: 7 @ San Francisco (West Coast Elite · Advanced Mobility & Culture)
+  agility 78.61 (was 78.19)   persuasion 6.17 (was 4.99)   heart 81 (unchanged)
+home dossier assessed: 2026-08-11 (prev 2026-07-27) · 37 keys      ← both dates UNCHANGED
+dossier vs live: 7/7 match
+```
+
+**The comparison is now decisive.** Between the two reports the account gained **+1.18
+persuasion and +0.42 agility**, while the dossier's `snapshot_date` and `previous_date`
+did not move. A stale snapshot would necessarily have disagreed with the train page by
+those amounts; the dossier matched 7/7 anyway. Therefore `current` tracks live values and
+is **not** as-of-assessment. Only the `change` column is period data.
+
+Consequences, all good:
+
+- **The home page is a live, full-width (37-key) sheet, refetched on every visit and
+  every window refocus.** It supersedes both the broken stats tab and the city-limited
+  train page as the primary reading source.
+- **Crime skills are covered.** `stealth` and `street_sense` have a live source again
+  without waiting for the devs or traveling to the right city.
+- The workflow collapses to the cheapest possible loop: **glance home → act → glance
+  home.** One action in that window yields exact per-action XP across every skill it
+  touched.
+
+`xp-watch` 0.2.0 promotes the dossier to a reading source accordingly.
+
+### The crew's first live measurements, and the tool's first real limitation
+
+From the same session (paraphrased from chat): persuasion and art farmed via civil
+disobedience with "yuge gains"; the tool "works from what I see"; and then the
+observation that matters — *"I don't think it's logging all of the stats that are being
+affected."*
+
+That is **expected behaviour of 0.1.x, not a bug**, and it is exactly what the promotion
+above fixes. Before 0.2.0 the only live readings came from the train page, so a
+disobedience that moved persuasion *and* art *and* street_sense could only ever show the
+subset the current city happened to train — one skill of three, in this account's case.
+Reading the dossier closes it: after 0.2.0 a home-sandwiched action reports **every** key
+that moved.
+
+Worth stating for the next reader: the report the user found insufficient was correct
+about what it had measured. The failure was **coverage of the reading source**, not
+attribution — and the user's report of it arrived before any amount of local testing
+would have surfaced it, because no local harness knows which skills a disobedience
+actually touches.
+
 ### Faction training jobs — the third award surface (measured in-bundle, 2026-08-11)
 
 Chasing the "whip" correction through `FactionPage-C7LZV8QP.js` turned up a system the
@@ -327,11 +381,10 @@ to map `result_metadata` and lobbying outcomes properly.
    (per-player vs shared rotation — a second same-window report distinguishes), and
    whether **faction training jobs** (which can target all 37) are the intended
    complement.
-3. **What is the assessment cadence behind `/user/progression`?** One sample now exists:
-   real-world dates, `2026-08-11 (prev 2026-07-27)` — 15 days, not obviously periodic.
-   **Is `stats_table.current` live or as-of-snapshot?** Now the single most valuable
-   unknown (see the coverage consequence above); 0.1.3's dossier-vs-live comparison
-   answers it from one home visit after any measured gain.
+3. ~~**Is `stats_table.current` live or as-of-snapshot?**~~ **Answered 2026-08-11: LIVE**
+   — see the verdict section. Still open, and now merely cosmetic: **what drives the
+   assessment cadence** of the `change` column (per-account; one account daily, another
+   15 days).
 4. ~~**Is `can_view` always true for your own stats?**~~ **Falsified in the field,
    2026-08-11, within hours of asking** — a crew-mate could not view his own sheet on the
    live game; the stats tab is unfinished. What the sealed/empty response actually

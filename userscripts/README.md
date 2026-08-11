@@ -19,7 +19,7 @@ bannable, so the disclosure block is the contract.
 | Comms Move | 0.1.0 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.1.4 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.2.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -227,18 +227,21 @@ actively viewing, and originates no requests of its own.
 
 The game refreshes no skill data after a crime — its own UI cannot show you what a car
 theft trained (the client's live own-stats query was deleted; see
-[`docs/10-xp-surface.md`](../docs/10-xp-surface.md)). Your live sheet is fetched in
-exactly two places, both operator-driven:
+[`docs/10-xp-surface.md`](../docs/10-xp-surface.md)). So the tool works by diffing
+readings, and readings only arrive where you navigate:
 
-- **the TRAIN page** — fetched when you open it, and again every time the window regains
-  focus while you're on it; its targets carry live values
-- **your own profile → STATS tab** — same mechanism, **but as of 2026-08-11 the live
-  game's stats tab is unfinished** and can answer sealed/empty for your own profile. The
-  panel tells you when that happens. Until the game finishes it, use the Train page.
+- **HOME — the one that matters.** The dossier carries **all 37 stats and skills, live**
+  (field-verified 2026-08-11), refetched every time you land on home and every time the
+  window regains focus while you're there. This is the primary source.
+- **the TRAIN page** — live values, but only for what your **current city** trains
+  (target lists are location-based; a no-city location offers Heart alone).
+- **your own profile → STATS tab** — same mechanism, but as of 2026-08-11 the game's
+  stats tab is unfinished and may answer sealed/empty/an error. The panel says so if it
+  does; you don't need it.
 
-So the workflow is a **sheet-sandwich**: look at your sheet (Train page), do the thing,
-look again. Every one of those fetches is a navigation the game performs because you
-asked for that page; the panel just diffs what arrives.
+So the workflow is a **sandwich**: glance at home, do the thing, glance at home. Every
+one of those fetches is a navigation the game performs because you asked for that page;
+the panel just diffs what arrives.
 
 ## What a delta gets labelled
 
@@ -250,15 +253,16 @@ asked for that page; the panel just diffs what arrives.
 | `passive` | no action in the window; labelled `jailed`/`traveling` when the status poll saw one (street sense ticks in jail) |
 | `ambiguous ×N` | N actions in the window. Kept and shown, **never averaged into per-action stats** — grind blocks between two distant readings land here, which is correct |
 
-Want clean per-action numbers for a crime? Sandwich single attempts: Train page → one
-theft → alt-tab back to the Train page (the refocus refetches it) — one keypress-ish per
-measurement, same spirit as People Watch's roster walk.
+Want clean per-action numbers for a crime? Sandwich single attempts: home → one theft →
+back to home — one navigation per measurement, same spirit as People Watch's roster walk.
+Because the dossier is full-width, a single sandwiched action reports **every** skill it
+moved, not just the ones your city happens to train.
 
-One open question the first Train-page visit answers: whether its target list covers all
-37 keys or only a trainable subset. No console needed — open the Train page, open the
-panel, click **copy report**, and paste it to whoever's asking: the report lists every
-target `/train` served with its current value and both predicted gains, plus what the
-stats tab answered. (It deliberately contains no username.)
+**copy report** (no console needed) produces a paste-ready summary for the crew: the
+train targets your current city offers with values and predicted gains, **stamped with
+the city and theme** — paste one from each city and the crew maps which city trains
+what — plus sheet status and a key-name digest of sampled action responses. It carries no
+username and no values from those samples.
 
 ## The panel
 
