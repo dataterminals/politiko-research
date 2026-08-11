@@ -268,6 +268,16 @@ dossier vs live: 7/7 match
   report — a post-gain match can only mean live.
 - Envelope `heart` arrives at 4-dp (`6.6501`) while target rows render 2-dp — the
   envelope is the higher-precision source.
+- **Operator-reported, unmeasured:** heavy jail time and frequent civil disobedience
+  have built a large `street_sense` stat on this account. The client states no such
+  link anywhere (`ActivismPage` copy is all flavor — checked), so use-based training of
+  street_sense via jail *and disobedience* is field knowledge the game never discloses.
+  Notably, the operator's train subset is mostly **untouched** skills (five of seven at
+  value 1.00) while the heavily-used street_sense is absent — compatible with "the train
+  page offers what use doesn't cover," but at n=2 a random 7-of-37 rotation leaves both
+  crime skills out of both samples ~43% of the time, so no conclusion yet. Repeated
+  copy-reports across windows separate the hypotheses: rotation shows churn; a
+  use-complement rule keeps used skills out permanently.
 
 ### Faction training jobs — the third award surface (measured in-bundle, 2026-08-11)
 
