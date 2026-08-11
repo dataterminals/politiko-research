@@ -240,6 +240,35 @@ only candidate left is the home dossier's `stats_table`, which makes the live-vs
 question decisive; 0.1.3's report auto-compares dossier values against the ledger's live
 readings so the verdict falls out of normal play.
 
+### The second report — the operator's own account, same window (2026-08-11)
+
+```
+train targets: 7 · heart 6.6501 · slots/window 1
+  heart 6.65 (+0.3433/+0.5149) · heavy_weapons 1.00 · law 1.00 · psychology 1.00
+  rifle 5.22 (+0.3476) · teaching 1.00 · wisdom 1.00      (value-1.00 rows: +0.3661/+0.5491)
+home dossier assessed: 2026-08-11 (prev 2026-08-10) · 37 keys
+dossier vs live: 7/7 match
+```
+
+- **The `/train` subset is per-player after all** — properly supported this time: two
+  same-window reports with disjoint sets except `heart` (operator: heart, heavy_weapons,
+  law, psychology, rifle, teaching, wisdom; crew-mate: heart, agility, dodge, driving,
+  music, persuasion, tailoring). The withdrawn claim returns on real evidence. **`heart`
+  appears in both** — plausibly always offered, fitting its role as the gain multiplier.
+  Selection rule still unknown; the crew-mate's set contains his *highest* stat
+  (agility 78.19), so it is not "lowest N".
+- **Gain scales with heart, confirmed directionally.** Same value 1.00, two hearts:
+  +0.3931 at heart 81 vs +0.3661 at heart 6.65. Curve still unfit (two points).
+- **The dossier carries all 37 keys** — full-coverage confirmed — and its cadence
+  differs per account: operator `prev 2026-08-10` (daily-looking) vs crew-mate
+  `prev 2026-07-27` (15 days). Both assessed today. Event-driven or activity-gated?
+- **`dossier vs live: 7/7 match` is promising but not yet the verdict.** The account was
+  assessed *today* and gained nothing since (jailed), so live and snapshot-as-of-today
+  are indistinguishable in this sample. Decisive form: one training, then home, then the
+  report — a post-gain match can only mean live.
+- Envelope `heart` arrives at 4-dp (`6.6501`) while target rows render 2-dp — the
+  envelope is the higher-precision source.
+
 ### Faction training jobs — the third award surface (measured in-bundle, 2026-08-11)
 
 Chasing the "whip" correction through `FactionPage-C7LZV8QP.js` turned up a system the
