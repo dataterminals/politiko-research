@@ -351,7 +351,7 @@ console.log('\n— the copy-report button: paste-ready, console-free —');
 
   E.ingest(L, { kind: 'status' }, { username: 'klydetestuser', status: 'active' }, 1000);
   E.ingest(L, { kind: 'train-sheet' }, {
-    heart: 12, daily_slots: 4,
+    heart: 12, daily_slots: 4, city_name: 'New York', city_theme: 'Finance',
     targets: [
       { kind: 'skill', key: 'stealth', label: 'Stealth', value: 10, practice_gain: 0.1, class_gain: 0.15 },
       { kind: 'attribute', key: 'strength', label: 'Strength', value: 7, practice_gain: 0.8, class_gain: 1.2 },
@@ -361,7 +361,12 @@ console.log('\n— the copy-report button: paste-ready, console-free —');
   E.ingest(L, { kind: 'assessment' }, { snapshot_date: 'Y7 D300', previous_date: 'Y7 D290' }, 4000);
   const r = E.buildReport(L, { '/actions/graffiti': [{}] }, '9.9.9');
   ok('names the version', r.includes('xp-watch 9.9.9'));
-  ok('counts targets with heart and slots', r.includes('train targets: 2 · heart 12 · slots/window 4'));
+  ok('stamps the city and theme (the map datum)', r.includes('train targets: 2 @ New York (Finance) · heart 12 · slots/window 4'));
+  {
+    const N = E.makeLedger();
+    E.ingest(N, { kind: 'train-sheet' }, { heart: 1, daily_slots: 1, targets: [{ kind: 'attribute', key: 'heart', label: 'Heart', value: 1, practice_gain: 0.3, class_gain: 0.45 }] }, 500);
+    ok('no city renders as such ("only Heart" case)', E.buildReport(N, {}, '9.9.9').includes('train targets: 1 @ no city'));
+  }
   ok('lists both target lines with value and both gains',
     r.includes('stealth = 10.00  practice +0.1  class +0.15') && r.includes('strength = 7.00  practice +0.8  class +1.2'));
   ok('targets sorted by key', r.indexOf('stealth =') < r.indexOf('strength ='));

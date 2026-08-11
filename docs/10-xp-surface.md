@@ -57,7 +57,7 @@ Four endpoints carry own-character stat/skill numbers. Nothing else does — and
 | endpoint | fires when | carries |
 |---|---|---|
 | `GET /api/users/{me}/stats` | own profile, **stats tab selected** (`ProfilePage` 21372, `enabled: tab === 'stats'`) | `{can_view, privacy_rights_axis, stats: {…all 37 keys…}}` — live values at fetch time |
-| `GET /api/train` | train page | per-target `{kind: 'attribute'\|'skill', key, label, value, practice_gain, class_gain, description, class_description}` + envelope `{can_train, unavailable_reason, energy_cost, energy_current, energy_max, balance, class_cash_cost, daily_slots, heart, game_day}` |
+| `GET /api/train` | train page | per-target `{kind: 'attribute'\|'skill', key, label, value, practice_gain, class_gain, description, class_description}` + envelope `{can_train, unavailable_reason, energy_cost, energy_current, energy_max, balance, class_cash_cost, daily_slots, heart, game_day, city_name, city_theme}` — the target list is **location-determined** (header renders the city and theme; fallback copy: "No city — only Heart is available", 3892) |
 | `GET /api/user/progression` | home page ("Character Dossier", `HomePage` 20359) | `{stats_table: [{key, label, current, change}], net_worth: {current, change, percent_change}, snapshot_date, previous_date}` |
 | `GET /api/education`, `/api/education/{track}` | education pages | course catalog with **declared** awards (below); no live stat values |
 
@@ -250,13 +250,18 @@ home dossier assessed: 2026-08-11 (prev 2026-08-10) · 37 keys
 dossier vs live: 7/7 match
 ```
 
-- **The `/train` subset is per-player after all** — properly supported this time: two
-  same-window reports with disjoint sets except `heart` (operator: heart, heavy_weapons,
-  law, psychology, rifle, teaching, wisdom; crew-mate: heart, agility, dodge, driving,
-  music, persuasion, tailoring). The withdrawn claim returns on real evidence. **`heart`
-  appears in both** — plausibly always offered, fitting its role as the gain multiplier.
-  Selection rule still unknown; the crew-mate's set contains his *highest* stat
-  (agility 78.19), so it is not "lowest N".
+- ~~**The `/train` subset is per-player after all** — two same-window reports with
+  disjoint sets except `heart`.~~ **Withdrawn a second time, 2026-08-11 — the subset is
+  per-LOCATION.** The operator stated the game rule outright ("different skills are
+  available to train based on whatever location you're in"), and the client corroborates
+  it on re-reading: the `/train` envelope carries **`city_name` and `city_theme`**
+  (rendered as the page header, `TrainPage` 3672), and the no-city fallback copy is
+  literally *"No city — only Heart is available"* (3892) — which both proves the
+  location rule and explains `heart` appearing in every sample: it is the no-city
+  baseline target. The two reports' disjoint sets reflect two different cities, not two
+  players. `city_theme` is the likely selector mechanism. This claim has now been wrong
+  twice in one day in two different directions; the durable lesson is that n=2 field
+  samples support nothing.
 - **Gain scales with heart, confirmed directionally.** Same value 1.00, two hearts:
   +0.3931 at heart 81 vs +0.3661 at heart 6.65. Curve still unfit (two points).
 - **The dossier carries all 37 keys** — full-coverage confirmed — and its cadence
@@ -272,12 +277,14 @@ dossier vs live: 7/7 match
   have built a large `street_sense` stat on this account. The client states no such
   link anywhere (`ActivismPage` copy is all flavor — checked), so use-based training of
   street_sense via jail *and disobedience* is field knowledge the game never discloses.
-  Notably, the operator's train subset is mostly **untouched** skills (five of seven at
-  value 1.00) while the heavily-used street_sense is absent — compatible with "the train
-  page offers what use doesn't cover," but at n=2 a random 7-of-37 rotation leaves both
-  crime skills out of both samples ~43% of the time, so no conclusion yet. Repeated
-  copy-reports across windows separate the hypotheses: rotation shows churn; a
-  use-complement rule keeps used skills out permanently.
+  ~~Notably, the operator's train subset is mostly untouched skills while the
+  heavily-used street_sense is absent — compatible with "the train page offers what use
+  doesn't cover."~~ Superseded within the hour: the subset is **location-based** (see
+  above), so the absence of crime skills from both samples describes the two sampled
+  cities, not a use-complement rule. The actionable version: **some city may train
+  stealth or street_sense** — xp-watch 0.1.4 stamps every report with `city_name` /
+  `city_theme`, so the crew's copy-reports build the city→trainable-skills map as they
+  travel.
 
 ### Faction training jobs — the third award surface (measured in-bundle, 2026-08-11)
 

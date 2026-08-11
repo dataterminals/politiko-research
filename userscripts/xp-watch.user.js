@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.3
+// @version      0.1.4
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -85,7 +85,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -307,6 +307,11 @@
       L.trainMeta = {
         heart: data.heart ?? null,
         daily_slots: data.daily_slots ?? null,
+        // The target list is location-determined (docs/10, field-confirmed
+        // 2026-08-11), so a reading without its city is half a datum: stamped
+        // reports from different cities build the city→trainable-skills map.
+        city_name: typeof data.city_name === 'string' ? data.city_name : null,
+        city_theme: typeof data.city_theme === 'string' ? data.city_theme : null,
         targets: Object.fromEntries(targets.map((x) => [x.key, {
           practice_gain: x.practice_gain ?? null, class_gain: x.class_gain ?? null,
         }])),
@@ -415,7 +420,10 @@
     const lines = [`xp-watch ${version} report`];
     if (L.trainMeta) {
       const t = Object.entries(L.trainMeta.targets);
-      lines.push(`train targets: ${t.length} · heart ${L.trainMeta.heart ?? '?'} · slots/window ${L.trainMeta.daily_slots ?? '?'}`);
+      const where = L.trainMeta.city_name
+        ? `${L.trainMeta.city_name}${L.trainMeta.city_theme ? ` (${L.trainMeta.city_theme})` : ''}`
+        : 'no city';
+      lines.push(`train targets: ${t.length} @ ${where} · heart ${L.trainMeta.heart ?? '?'} · slots/window ${L.trainMeta.daily_slots ?? '?'}`);
       for (const [k, m] of t.sort((a, b) => a[0].localeCompare(b[0]))) {
         const v = L.last[k] ? L.last[k].v.toFixed(2) : '?';
         lines.push(`  ${k} = ${v}  practice +${m.practice_gain ?? '?'}  class +${m.class_gain ?? '?'}`);
