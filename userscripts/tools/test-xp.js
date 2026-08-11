@@ -404,6 +404,43 @@ console.log('\n— 0.2.0: the home dossier is a live full-width reading source �
   ok('no self-referential comparison line remains', !r.includes('dossier vs live'));
 }
 
+console.log('\n— 0.2.7: mastery is shown by the game; the RATE is not —');
+{
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  // 8 disobediences; mastery ticks 41 → 42 on the 5th.
+  for (let i = 0; i < 8; i++) {
+    E.ingest(L, { kind: 'action', ep: '/disobedience' }, { success: true, mastery: i < 4 ? 41 : 42 }, 2000 + i);
+  }
+  check('current value tracked', L.mastery['/disobedience'].v, 42);
+  check('one step, measured over the attempts it took', L.mastery['/disobedience'].steps, [{ d: 1, over: 4 }]);
+  const r = E.buildReport(L, {}, '9.9.9');
+  ok('report uses the game’s own scale and tier', r.includes('mastery disobedience: 42/100 (practiced)'));
+  ok('and the rate the game never shows', r.includes('+1 over 4 attempts'));
+  // 18 points to go at 0.25/attempt = 72 attempts.
+  ok('and the distance to fluent', r.includes('~72 more to fluent'));
+}
+{
+  // A stat that has not moved must not fake a rate.
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  for (let i = 0; i < 3; i++) E.ingest(L, { kind: 'action', ep: '/disobedience' }, { mastery: 41 }, 2000 + i);
+  check('no step recorded', L.mastery['/disobedience'].steps.length, 0);
+  // The span is the attempts spent AT this value (3), not the attempt number
+  // it first appeared at (1) — the distinction the first cut got wrong.
+  ok('report counts the attempts spent at this value',
+    E.buildReport(L, {}, '9.9.9').includes('unchanged over 3 attempts'));
+  ok('no fluent projection without a rate', !E.buildReport(L, {}, '9.9.9').includes('to fluent'));
+}
+{
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'action', ep: '/disobedience' }, { mastery: 72 }, 2000);
+  E.ingest(L, { kind: 'action', ep: '/disobedience' }, { mastery: 73 }, 2001);
+  ok('tier vocabulary matches the game at the top end', E.buildReport(L, {}, '9.9.9').includes('73/100 (fluent)'));
+  ok('no projection once fluent is passed', !E.buildReport(L, {}, '9.9.9').includes('to fluent'));
+}
+
 console.log('\n— 0.2.6: the report carries the measurement, not just the instrument —');
 {
   const L = E.makeLedger();

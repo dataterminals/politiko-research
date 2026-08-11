@@ -19,7 +19,7 @@ bannable, so the disclosure block is the contract.
 | Comms Move | 0.1.0 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.2.6 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.2.7 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -323,8 +323,10 @@ since that's where usernames and flavour text live).
 
 That already paid off. Real payloads seen 2026-08-11:
 
-- **`/disobedience` carries `mastery`** — a progression-shaped number the game never
-  displays, and the leading candidate for a direct per-action XP award.
+- **`/disobedience` carries `mastery`** — the same 0–100 score the activism screen shows
+  you ("your mastery N / 100", *learning* under 35, *practiced* 35–59, *fluent* 60+). The
+  game shows the number but never the **rate**, so the panel tracks attempts between
+  increments and tells you roughly how many more actions stand between you and *fluent*.
 - **Both carry a plain `success` boolean**, so failed attempts are now recorded as such
   (`fail+hospitalized` is distinct from `fail`) — which makes "does failing still pay
   XP?" a question you can just read off the actions table.

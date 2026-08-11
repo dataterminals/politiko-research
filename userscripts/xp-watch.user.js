@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.6
+// @version      0.2.7
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -95,7 +95,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.2.6';
+  const VERSION = '0.2.7';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -238,6 +238,7 @@
     eduCourses: {},             // code → {completed, rewards:[{key,amount}]}
     assessment: null,           // {snapshot_date, previous_date, change, currentSeen}
     changeVerdict: null,        // what the dossier's `change` column turned out to be
+    mastery: {},                // ep → {v, since, steps[]} — the rate the game doesn't show
     events: [],                 // {t, kind:'action'|'train'|'edu'|'status', …}
     deltas: [],                 // {t, key, d, from, to, attrib:{type, ep?, n?, note?}}
     actStats: {},               // ep → {n, outcomes:{}, xp:{key:{sum,n}}}
@@ -455,6 +456,22 @@
       const o = outcomeOf(msg.ep, data);
       if (o) a.outcomes[o] = (a.outcomes[o] ?? 0) + 1;
       pushEvent(L, { t, kind: 'action', ep: msg.ep, outcome: o });
+
+      // Mastery IS shown by the game — ActivismPage renders "your mastery
+      // N / 100" (learning <35, practiced <60, fluent 60+) off
+      // GET /disobedience/context. What it never shows is the RATE: how many
+      // attempts buy a point, and therefore how far away 'fluent' really is.
+      // The action response echoes the same number, so counting attempts
+      // between increments costs nothing and answers the useful question.
+      if (typeof data.mastery === 'number' && Number.isFinite(data.mastery)) {
+        const m = (L.mastery[msg.ep] ??= { v: null, since: 0, steps: [] });
+        if (m.v === null) { m.v = data.mastery; m.since = a.n; }
+        else if (data.mastery !== m.v) {
+          m.steps.push({ d: +(data.mastery - m.v).toFixed(4), over: a.n - m.since });
+          if (m.steps.length > 20) m.steps.shift();
+          m.v = data.mastery; m.since = a.n;
+        }
+      }
     }
 
     if (out.length) {
@@ -476,6 +493,30 @@
     try { body = JSON.stringify(scrub(data)).slice(0, SAMPLE_CHARS); } catch { return; }
     ring.push({ t, body });
     if (ring.length > SAMPLE_RING) ring.splice(0, ring.length - SAMPLE_RING);
+  };
+
+  // The game's own tier vocabulary and scale, read off ActivismPage: the label
+  // is rendered beside "your mastery N / 100", so these thresholds are the
+  // game's, not ours. `fluent` at 60 is the only visible milestone, which makes
+  // "attempts remaining" the number worth computing.
+  const MASTERY_MAX = 100;
+  const masteryTier = (v) => (v >= 60 ? 'fluent' : v >= 35 ? 'practiced' : 'learning');
+  // `attempts` is the endpoint's running total; `m.since` is the attempt NUMBER
+  // at which the current value first appeared, so the span at that value is the
+  // difference plus one — not `m.since` itself.
+  const masteryText = (m, attempts) => {
+    const parts = [`${m.v}/${MASTERY_MAX} (${masteryTier(m.v)})`];
+    if (m.steps.length) {
+      const gained = m.steps.reduce((s, x) => s + x.d, 0);
+      const over = m.steps.reduce((s, x) => s + x.over, 0);
+      const per = gained / over;                       // points per attempt
+      parts.push(`+${+gained.toFixed(2)} over ${over} attempt${over === 1 ? '' : 's'}`);
+      if (per > 0 && m.v < 60) parts.push(`~${Math.ceil((60 - m.v) / per)} more to fluent`);
+    } else {
+      const span = Math.max(1, (attempts ?? 0) - m.since + 1);
+      parts.push(`unchanged over ${span} attempt${span === 1 ? '' : 's'}`);
+    }
+    return parts.join(' · ');
   };
 
   // One-click diagnostic report, built for pasting into a crew chat: which
@@ -525,6 +566,10 @@
     // The actual answer the tool exists to produce. It was missing from every
     // paste until 0.2.6 — the report described the instrument and omitted the
     // measurement.
+    for (const [ep, m] of Object.entries(L.mastery)) {
+      if (m.v === null) continue;
+      lines.push(`mastery ${ep.replace(/^\/actions\//, '').replace(/^\//, '')}: ${masteryText(m, L.actStats[ep]?.n)}`);
+    }
     const acts = Object.entries(L.actStats).filter(([, a]) => a.n > 0);
     if (acts.length) {
       lines.push('measured per action:');

@@ -415,10 +415,16 @@ and they settle the question this whole document was built around.
 
 Three consequences, in order of importance:
 
-**1. `mastery` exists on the disobedience response, and no bundle read could have found
-it.** The client's `ActivismPage` never renders it. It is the only skill-progression-shaped
-field on any action response in this repo's history, and it is the leading candidate for
-the direct per-action award the tracker was built to approximate. **Its value was already
+**1. `mastery` exists on the disobedience response.** ~~The client's `ActivismPage` never
+renders it, and no bundle read could have found it.~~ **Both halves wrong — corrected
+2026-08-11 by the operator, who plays the screen.** `ActivismPage` renders it prominently:
+*"your mastery **N / 100**"*, with the game's own tier vocabulary — **learning** below 35,
+**practiced** 35–59, **fluent** 60+. The value it displays comes from
+`GET /disobedience/context`, not from the action response, which is why a grep for
+skill-ish words never surfaced it and why the sampler found the echo rather than the
+source. The lesson is the same one this file keeps learning from the other direction:
+**"the client does not read X" is a claim about the code I searched, and a player looking
+at the screen outranks it.** **Its value was already
 being stored** (the sample scrubber only strips person-shaped and credential-shaped keys,
 and `mastery` is neither) — but 0.2.3's report printed key names only, so the number never
 made it out. **0.2.4 prints numeric and boolean values in the digest**, so the next paste
@@ -462,18 +468,23 @@ Whether `mastery` *moves* is now the interesting question, and it needs only tim
 samples at one instant cannot show a progression stat progressing.
 
 > **Answered within the hour: it moves. `mastery` went 41 → 42** across the next block of
-> disobediences. So it is a genuine progression counter the client never renders —
-> plausibly per-issue mastery, incrementing roughly once per several actions. Its step
-> (+1) and its scale (integers in the 40s) both rule it out as the fractional XP award,
-> which is what the earlier correction concluded. **What it gates or grants is unknown**,
-> and nothing in the client reads it, so the answer is server-side.
+> disobediences. Its step (+1) on a 0–100 scale confirms it is not the fractional XP
+> award. **It is the game's own visible progression toward `fluent` at 60** — so the
+> useful unknown was never "what is it" but **how fast it moves**, which the game does
+> *not* show: no rate, no distance-to-next-tier, nothing but today's number.
+>
+> `xp-watch` 0.2.7 measures exactly that, for free, from the echo on the action response:
+> attempts between increments, and therefore attempts remaining to `fluent`. Whether
+> mastery *grants* anything (swing, difficulty, arrest odds) is still server-side and
+> unknown — but with the rate in hand it is now testable against
+> `/disobedience/preview`'s `swing` and `difficulty` as mastery climbs.
 
 **The other values, all measured:**
 
 | field | reading |
 |---|---|
-| `people_moved` | **510843, −257229, 521687** — population-scale, and **signed**. A failed action moves the crowd *against* you. |
-| `breakdown.roll` vs `difficulty` | 40.03/45.25/44.96 against difficulty **12** — `roll` is a score beaten against a threshold, **not** a probability. All three succeeded. |
+| `people_moved` | **510843, −257229, 521687** — population-scale, and **signed**. A failed action moves the crowd *against* you. Rendered by the game (`+N` / `N moved <direction>` / "no one swayed"), so this one is confirmation, not discovery. |
+| `breakdown.roll` vs `difficulty` | 40.03/45.25/44.96 against difficulty **12** — `roll` is a score beaten against a threshold, **not** a probability. All three succeeded. **Graffiti's scale only**: disobedience's `difficulty` is 0–1, tiered by `ActivismPage` as trivial <0.25, fair <0.5, hard <0.75, brutal above. Two actions, two conventions. |
 | `arrest_chance`, `mob_chance` | 0.06 and 0.09 — these *are* probabilities (0–1). Two different numeric conventions in one payload. |
 | `juice_spent` | 4 per graffiti |
 | `spray_can_spent` | **1 — a count, not a boolean** |
