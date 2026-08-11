@@ -51,14 +51,29 @@ const BANNED = [
   'sendBeacon',
   'EventSource',
   'Notification(',
-  'dispatchEvent',
   'CustomEvent',
+  'chat:open-dm',
   'importScripts',
   'WebSocket.prototype',
 ];
 for (const tok of BANNED) {
   const n = SRC.split(tok).length - 1;
   check(`no occurrence of ${JSON.stringify(tok)}`, n, 0);
+}
+
+// `dispatchEvent` is NOT banned outright here, unlike in ws-watch — but the
+// reason it is banned there still applies and the exception is deliberately
+// hair-thin. ws-watch bans it because the game listens for a `chat:open-dm`
+// window event whose handler's first act is to transmit a join frame; any
+// event we dispatch that the GAME listens for can originate traffic. The one
+// event allowed here is a popstate telling the app's own router that we
+// changed the URL — the same client-side navigation align-watch performs, and
+// the same thing clicking a nav link does. `CustomEvent` stays banned above,
+// which is the constructor that vector needs.
+{
+  const dispatches = SRC.match(/dispatchEvent\([^)]*\)/g) ?? [];
+  check('dispatchEvent appears exactly once', dispatches.length, 1);
+  check('the one dispatch is a router popstate', dispatches[0], "dispatchEvent(new PopStateEvent('popstate')");
 }
 
 check('exactly one `window.fetch =` (the wrap)', SRC.split('window.fetch =').length - 1, 1);
@@ -80,6 +95,16 @@ ok('disclosure names the storage prefix', HEAD.includes('pkxp:'));
 ok('disclosure says the auth key is never touched', /`auth` localStorage key/.test(HEAD) && /never touched/.test(HEAD));
 ok('disclosure says other players are never stored', /Another player/.test(HEAD));
 ok('disclosure says request bodies are never read', /Request\s*\n?\s*\*\s*bodies are never read|Request bodies are never read/.test(HEAD.replace(/\n \* {13}/g, ' ')));
+
+// The home button is a client-side route change to the router's INDEX path.
+// `/home` is not a route in this app (measured); the game's own nav links to `/`.
+ok('home button pushes the index path', /history\.pushState\(\{\}, '', '\/'\)/.test(SRC));
+ok('home button is a route change, not a request', /new PopStateEvent\('popstate'\)/.test(SRC));
+ok('no /home path anywhere', !SRC.includes("'/home'"));
+
+// rAF alone latches when the page is not compositing; a stale panel reads as a
+// broken tool. The render scheduler must carry a timer backstop.
+ok('render scheduler has a non-rAF backstop', /requestAnimationFrame\(run\);\s*\n\s*setTimeout\(run, \d+\);/.test(SRC));
 
 // PANEL KIT must be the shared block, not a local reimplementation.
 ok('carries PANEL KIT v1 verbatim marker', SRC.includes('PANEL KIT v1 — shared verbatim block'));

@@ -19,7 +19,7 @@ bannable, so the disclosure block is the contract.
 | Comms Move | 0.1.0 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.2.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.2.1 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -268,9 +268,17 @@ username and no values from those samples.
 
 **Alt+X**, or the `XP` button. Drag either anywhere; they remember. Sections: the latest
 deltas with their labels, per-skill session/all-time totals with last-known values, and
-per-action-endpoint attempts / outcomes / measured-XP-per-attempt. Buttons: export
-(JSON), **copy report** (paste-ready diagnostic — train targets with values and predicted
-gains, sheet status; no username), copy tsv (delta history), clear.
+per-action-endpoint attempts / outcomes / measured-XP-per-attempt.
+
+Buttons: **home ↻** (takes a reading — same client-side navigation as clicking Home in
+the game's nav), export (JSON), **copy report** (paste-ready diagnostic — train targets
+with values and predicted gains stamped with your city, sheet status, and a key-name
+digest of sampled action responses; no username, no sample values), copy tsv (delta
+history), clear.
+
+If you take actions without a reading after them, the panel says so — *"3 actions not
+measured yet"* — because a gain only becomes a number once a reading closes the window.
+Nothing is lost; click **home ↻** and it resolves.
 
 ## The second job: finding out what crime responses really carry
 

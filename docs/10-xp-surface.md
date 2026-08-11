@@ -340,6 +340,24 @@ attribution — and the user's report of it arrived before any amount of local t
 would have surfaced it, because no local harness knows which skills a disobedience
 actually touches.
 
+### The second field lesson: an open measurement looks identical to a broken tool
+
+Same session, after 0.2.0: the crew-mate cleared his ledger, ran three graffiti attempts
+(all failed, one bust, ending hospitalized), opened the panel and saw
+`graffiti 3 · bust:1 · none attributed` — and reasonably concluded either the tool was
+broken or that failed graffiti awards nothing. **Neither.** He had taken no reading after
+the attempts, so the window was still open; the phrase "none attributed" described the
+tool's state and read as a claim about the game.
+
+The design lesson, worth carrying to any diff-based instrument: **a pending measurement
+must announce itself.** 0.2.1 shows a standing note — *"3 actions not measured yet …
+click home ↻ to take one now"* — and the per-endpoint cell distinguishes
+**"not measured yet"** from **"no measured gain"**. Same data, opposite meanings.
+
+His mechanical hypothesis remains untested and is worth testing: **does a failed action
+award skill XP at all?** Sandwich single attempts and compare success against bust —
+which the tool now supports directly, since it already tallies outcomes per endpoint.
+
 ### Faction training jobs — the third award surface (measured in-bundle, 2026-08-11)
 
 Chasing the "whip" correction through `FactionPage-C7LZV8QP.js` turned up a system the
@@ -372,7 +390,13 @@ to map `result_metadata` and lobbying outcomes properly.
 ## Open questions
 
 1. **Do crime responses carry award fields the client discards?** The single most
-   valuable unknown. One grinding session with xp-watch installed answers it.
+   valuable unknown. One grinding session with xp-watch installed answers it — and since
+   0.2.0 the copy-report prints a key-name digest of sampled responses, so the answer is
+   readable from a pasted report rather than a console.
+1b. **Does a failed action award skill XP?** Field hypothesis from a crew-mate whose
+   three failed graffiti showed no gain (though that reading was confounded — see the
+   second field lesson above). Testable now: sandwich single attempts, compare the
+   outcome tally against the attributed XP.
 2. ~~**Does `/train`'s target list cover all 37 keys, or a trainable subset?**~~
    **Answered 2026-08-11: a subset** — 7 targets of 37 on the one sampled account, no
    crime skills among them. ~~And per-player, with an off-taxonomy `whip` on another

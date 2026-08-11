@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.0
+// @version      0.2.1
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -51,7 +51,10 @@
  *   Requests: ZERO additional requests to politiko.io. Nothing is polled, timed,
  *             scheduled, retried, or prefetched. Every reading this tool ever
  *             gets exists because you navigated somewhere and the game fetched
- *             what it always fetches there.
+ *             what it always fetches there. The panel's "home ↻" button performs
+ *             the same client-side route change as clicking Home in the game's
+ *             own nav — the app then fetches as it normally would, and only at
+ *             the moment you click.
  *
  *   Storage:  localStorage keys prefixed `pkxp:` — your own readings, deltas,
  *             action events, person-scrubbed response samples, panel position
@@ -89,7 +92,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -717,8 +720,14 @@
     const sess = totalsBy(sessionStart), all = totalsBy(0);
     const sum = (b) => b.action + b.train + b.education + b.passive + b.ambiguous;
 
-    const sheetAge = Object.values(L.last).length
-      ? age(Math.max(...Object.values(L.last).map((x) => x.t))) : null;
+    const lastReadAt = Object.values(L.last).length
+      ? Math.max(...Object.values(L.last).map((x) => x.t)) : null;
+    const sheetAge = lastReadAt === null ? null : age(lastReadAt);
+    // Actions taken since the last reading are UNMEASURED until a reading
+    // closes their window. Field report 2026-08-11: a user ran three graffiti
+    // attempts, saw "none attributed", and reasonably concluded the tool was
+    // broken — nothing told him the measurement was still open. Say it.
+    const pending = lastReadAt === null ? [] : L.events.filter((e) => e.kind === 'action' && e.t > lastReadAt);
 
     const rows = Object.keys(all)
       .map((k) => ({ k, s: sess[k] ? sum(sess[k]) : 0, a: sum(all[k]), last: L.last[k] }))
@@ -736,11 +745,18 @@
         — the game's stats tab is unfinished right now. Use <b>HOME</b> as your sheet
         instead: the dossier reads every stat live on each visit and window refocus, and
         this panel diffs what arrives.</div>` : ''}
-      ${sheetAge === null && !L.sheetIssue ? `<div class="hint">No reading yet. Go <b>HOME</b> —
-        the dossier there reads ALL your stats live, on every visit and every window
-        refocus. This panel diffs what arrives: sandwich a grind block (or one single
-        action) between two glances for clean measurements. The Train page works too, for
-        whatever your city trains.</div>` : ''}
+      ${pending.length ? `<div class="hint" style="border-color:#155e75;color:#7dd3fc">
+        <b>${pending.length} action${pending.length === 1 ? '' : 's'} not measured yet</b>
+        (${esc([...new Set(pending.map((p) => p.ep.replace(/^\/actions\//, '').replace(/^\//, '')))].join(', '))}).
+        Nothing is lost — a gain only becomes a number once a reading closes the window.
+        Click <b>home ↻</b> below to take one now.${pending.length > 1
+          ? ` With ${pending.length} actions in the window the total is measured but cannot be
+             split between them; for exact per-action XP, read before and after a single action.` : ''}
+      </div>` : ''}
+      ${sheetAge === null && !L.sheetIssue ? `<div class="hint">No reading yet — click
+        <b>home ↻</b> below. The home dossier reads ALL your stats live, on every visit and
+        every window refocus, and this panel diffs what arrives. The loop: read, act, read.
+        One action between two reads gives that action's exact XP in every skill it moved.</div>` : ''}
       <div>
         <h4>latest deltas</h4>
         ${feed.length === 0 ? '<div class="muted">none recorded yet</div>' : `<table>${feed.map((d) => `
@@ -765,7 +781,8 @@
           <tr><th>endpoint</th><th class="num">n</th><th>outcomes</th><th>xp/attempt</th></tr>
           ${acts.map(([ep, a]) => {
             const oc = Object.entries(a.outcomes).map(([k, v]) => `${esc(k)}:${v}`).join(' ') || '—';
-            const xp = Object.entries(a.xp).map(([k, x]) => `${esc(k)} ${fmt(x.sum / x.n)}(${x.n})`).join(' · ') || '<span class="muted">none attributed</span>';
+            const xp = Object.entries(a.xp).map(([k, x]) => `${esc(k)} ${fmt(x.sum / x.n)}(${x.n})`).join(' · ')
+              || `<span class="muted">${pending.some((p) => p.ep === ep) ? 'not measured yet' : 'no measured gain'}</span>`;
             return `<tr><td>${esc(ep.replace(/^\/actions\//, ''))}</td><td class="num">${a.n}</td><td>${oc}</td><td>${xp}</td></tr>`;
           }).join('')}</table>`}
       </div>
@@ -780,7 +797,15 @@
   const scheduleRender = () => {
     if (renderQueued || document.visibilityState !== 'visible') return;
     renderQueued = true;
-    requestAnimationFrame(() => { renderQueued = false; render(); });
+    // rAF coalesces bursts, but it does NOT fire while the page is not
+    // compositing (backgrounded tab, installed PWA in the background). Relying
+    // on it alone latches renderQueued forever and the panel silently stops
+    // updating — which looks exactly like a broken tool. The timer is the
+    // backstop; whichever wins clears the flag and the other becomes a no-op.
+    let done = false;
+    const run = () => { if (done) return; done = true; renderQueued = false; render(); };
+    requestAnimationFrame(run);
+    setTimeout(run, 250);
   };
 
   const exportAll = () => JSON.stringify({ ledger: L, samples }, null, 2);
@@ -807,11 +832,20 @@
     panel = document.createElement('div');
     panel.id = 'pkxp';
     panel.hidden = !ui.open;
-    panel.innerHTML = '<header><b>XP WATCH</b><span>passive · adds no requests</span><button title="close">×</button></header><div class="bd"></div><div class="ft"></div>';
+    panel.innerHTML = '<header><b>XP WATCH</b><button title="close">×</button></header><div class="bd"></div><div class="ft"></div>';
     document.body.appendChild(panel);
 
     const ft = panel.querySelector('.ft');
     for (const [label, fn] of [
+      // Same client-side route change as clicking Home in the game's own nav.
+      // The app then fetches the dossier as it normally would, and only at the
+      // moment you click — which is what takes the reading. See docs/10.
+      ['home ↻', () => {
+        // Home is the router's INDEX route — the game's own nav links to `/`,
+        // not `/home` (measured in the 2026-08-10 bundle).
+        history.pushState({}, '', '/');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }],
       ['export', () => {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([exportAll()], { type: 'application/json' }));
