@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.1
+// @version      0.1.2
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -85,6 +85,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
+  const VERSION = '0.1.2';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -382,6 +383,31 @@
     try { body = JSON.stringify(scrub(data)).slice(0, SAMPLE_CHARS); } catch { return; }
     ring.push({ t, body });
     if (ring.length > SAMPLE_RING) ring.splice(0, ring.length - SAMPLE_RING);
+  };
+
+  // One-click diagnostic report, built for pasting into a crew chat: which
+  // targets /train actually serves (with predicted gains — the class-multiplier
+  // question answers itself from this), what the sheet sources are doing, and
+  // the current readings. Own-account numbers only; no username included.
+  const buildReport = (L, samples, version) => {
+    const lines = [`xp-watch ${version} report`];
+    if (L.trainMeta) {
+      const t = Object.entries(L.trainMeta.targets);
+      lines.push(`train targets: ${t.length} · heart ${L.trainMeta.heart ?? '?'} · slots/window ${L.trainMeta.daily_slots ?? '?'}`);
+      for (const [k, m] of t.sort((a, b) => a[0].localeCompare(b[0]))) {
+        const v = L.last[k] ? L.last[k].v.toFixed(2) : '?';
+        lines.push(`  ${k} = ${v}  practice +${m.practice_gain ?? '?'}  class +${m.class_gain ?? '?'}`);
+      }
+    } else {
+      lines.push('train targets: page not visited yet');
+    }
+    lines.push(L.sheetIssue
+      ? `profile stats tab: answered ${L.sheetIssue.kind}${L.sheetIssue.axis != null ? ` (rights axis ${L.sheetIssue.axis})` : ''}`
+      : 'profile stats tab: no issue recorded');
+    if (L.assessment?.snapshot_date) lines.push(`home dossier assessed: ${L.assessment.snapshot_date} (prev ${L.assessment.previous_date ?? '?'})`);
+    const keys = Object.keys(L.last);
+    lines.push(`readings held: ${keys.length} key${keys.length === 1 ? '' : 's'} · deltas recorded: ${L.deltas.length} · sample endpoints: ${Object.keys(samples).length}`);
+    return lines.join('\n');
   };
 
   // ---------------------------------------------------------------------------
@@ -720,6 +746,9 @@
         a.download = `xp-watch-${new Date().toISOString().slice(0, 10)}.json`;
         a.click(); URL.revokeObjectURL(a.href);
       }],
+      ['copy report', () => {
+        try { navigator.clipboard.writeText(buildReport(L, samples, VERSION)); } catch (e) { log('clipboard', e); }
+      }],
       ['copy tsv', copyTSV],
       ['clear', () => {
         if (!confirm('xp-watch: wipe all recorded readings, deltas and samples?')) return;
@@ -787,6 +816,7 @@
   // ---------------------------------------------------------------------------
   window.__pkxw = {
     export: () => exportAll(),
+    report: () => buildReport(L, samples, VERSION),
     deltas: () => L.deltas.slice(),
     samples: () => JSON.parse(JSON.stringify(samples)),
     ledger: () => JSON.parse(JSON.stringify(L)),

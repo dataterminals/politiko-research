@@ -93,7 +93,7 @@ ok('render is visibility-gated', SRC.includes("document.visibilityState !== 'vis
 // ---------------------------------------------------------------------------
 const ENGINE = cut('  const slug = (label)', '  // Persistent state');
 const build = () => new Function('log', `${ENGINE}
-  return { slug, classify, outcomeOf, scrub, makeLedger, ingest, recordSample, EPS, CAP };`)(() => {});
+  return { slug, classify, outcomeOf, scrub, makeLedger, ingest, recordSample, buildReport, EPS, CAP };`)(() => {});
 const E = build();
 
 console.log('\n— router: a strict allowlist —');
@@ -309,6 +309,33 @@ const boot = () => {
   }
   ok('events capped', L.events.length <= E.CAP.events);
   check('attempt count still exact', L.actStats['/actions/graffiti'].n, 2000);
+}
+
+console.log('\n— the copy-report button: paste-ready, console-free —');
+{
+  const L = E.makeLedger();
+  ok('unvisited train page is said plainly', E.buildReport(L, {}, '9.9.9').includes('page not visited yet'));
+
+  E.ingest(L, { kind: 'status' }, { username: 'klydetestuser', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'train-sheet' }, {
+    heart: 12, daily_slots: 4,
+    targets: [
+      { kind: 'skill', key: 'stealth', label: 'Stealth', value: 10, practice_gain: 0.1, class_gain: 0.15 },
+      { kind: 'attribute', key: 'strength', label: 'Strength', value: 7, practice_gain: 0.8, class_gain: 1.2 },
+    ],
+  }, 2000);
+  E.ingest(L, { kind: 'stats-sheet', name: 'klydetestuser' }, { can_view: false, privacy_rights_axis: -1.2 }, 3000);
+  E.ingest(L, { kind: 'assessment' }, { snapshot_date: 'Y7 D300', previous_date: 'Y7 D290' }, 4000);
+  const r = E.buildReport(L, { '/actions/graffiti': [{}] }, '9.9.9');
+  ok('names the version', r.includes('xp-watch 9.9.9'));
+  ok('counts targets with heart and slots', r.includes('train targets: 2 · heart 12 · slots/window 4'));
+  ok('lists both target lines with value and both gains',
+    r.includes('stealth = 10.00  practice +0.1  class +0.15') && r.includes('strength = 7.00  practice +0.8  class +1.2'));
+  ok('targets sorted by key', r.indexOf('stealth =') < r.indexOf('strength ='));
+  ok('reports the sealed stats tab with the axis', r.includes('answered sealed (rights axis -1.2)'));
+  ok('reports the dossier assessment dates', r.includes('assessed: Y7 D300 (prev Y7 D290)'));
+  ok('tallies readings, deltas, samples', r.includes('readings held: 2 keys · deltas recorded: 0 · sample endpoints: 1'));
+  ok('never includes the username', !r.includes('klydetestuser'));
 }
 
 console.log('\n— samples: ring of 3, scrubbed before write —');

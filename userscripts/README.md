@@ -19,7 +19,7 @@ bannable, so the disclosure block is the contract.
 | Comms Move | 0.1.0 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.1.1 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.1.2 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -255,15 +255,18 @@ theft → alt-tab back to the Train page (the refocus refetches it) — one keyp
 measurement, same spirit as People Watch's roster walk.
 
 One open question the first Train-page visit answers: whether its target list covers all
-37 keys or only a trainable subset — `__pkxw.ledger().last` after opening it shows exactly
-which skills got a reading.
+37 keys or only a trainable subset. No console needed — open the Train page, open the
+panel, click **copy report**, and paste it to whoever's asking: the report lists every
+target `/train` served with its current value and both predicted gains, plus what the
+stats tab answered. (It deliberately contains no username.)
 
 ## The panel
 
 **Alt+X**, or the `XP` button. Drag either anywhere; they remember. Sections: the latest
 deltas with their labels, per-skill session/all-time totals with last-known values, and
 per-action-endpoint attempts / outcomes / measured-XP-per-attempt. Buttons: export
-(JSON), copy tsv (delta history), clear.
+(JSON), **copy report** (paste-ready diagnostic — train targets with values and predicted
+gains, sheet status; no username), copy tsv (delta history), clear.
 
 ## The second job: finding out what crime responses really carry
 
