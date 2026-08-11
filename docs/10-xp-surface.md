@@ -189,16 +189,67 @@ Its instrument function, and the reason to run it beyond the crew's dashboard: i
 fields the client discards, the first real grinding session surfaces them — at which
 point per-action XP stops needing the diff engine at all for those actions.
 
+## Field data, 2026-08-11 — the first copy-report from a live account
+
+A crew-mate's xp-watch 0.1.2 report from his train page, plus channel chatter around it.
+This is **measured live-server data** — one account, one moment — and it reshapes several
+inferences:
+
+```
+train targets: 7 · heart 81 · slots/window 1
+  agility = 78.19  practice +0.3159  class +0.4739
+  dodge = 9.38  practice +0.3614  class +0.5421
+  driving = 1.00  practice +0.3931  class +0.5897
+  heart = 81.00  practice +0.3153  class +0.473
+  music = 1.00  practice +0.3931  class +0.5897
+  persuasion = 4.99  practice +0.3741  class +0.5612
+  tailoring = 1.00  practice +0.3931  class +0.5897
+profile stats tab: no issue recorded
+home dossier assessed: 2026-08-11 (prev 2026-07-27)
+```
+
+- **`/train` is a per-player subset, not the full sheet.** 7 targets of 37 (2 stats + 5
+  skills) for this account — and crucially **no stealth and no street_sense**, the crime
+  skills the tracker exists for. Another crew-mate's train page offered **`whip`**, which
+  is not one of the client's 37 hardcoded keys at all (server vocabulary is wider than
+  the client's lists — third confirmed instance of that pattern, and the reason xp-watch
+  hardcodes no key list). What determines the set is unknown — jobs are suspected
+  (channel: "join the lobbying jobs" in reply to the whip question).
+- **Class mode is exactly 1.5× practice.** All five target pairs give 1.500 to 4-dp
+  rounding. Question 7 closed.
+- **Practice gain decreases as the target's value rises** — +0.3931 at value 1.00 down
+  to +0.3153 at 81. Same-value targets get identical gains, so gain is a function of
+  (current value, heart), not of the target's identity. Curve unfit; more reports will
+  trace it.
+- **`slots/window 1`** for this account (heart 81), and the operator reports windows
+  clear on a ~12-hour cadence. Whether slot count scales with anything is open.
+- **The dossier's assessment dates are real-world dates** — `2026-08-11 (prev
+  2026-07-27)`, a 15-day gap, assessed the same day as the reading. Not obviously
+  periodic; could be deploy-driven.
+- **The broken stats tab left no trace in the tap** — no sealed, no empty. Since the tap
+  read only `res.ok` JSON, the likely failure mode is an HTTP error status, which 0.1.2
+  could not see. 0.1.3 records the status code for exactly this endpoint, so one more
+  visit to the broken tab measures it.
+
+The coverage consequence, stated plainly: **right now, crime skills have no live reading
+source at all** — not the stats tab (broken), not `/train` (absent from the subset). The
+only candidate left is the home dossier's `stats_table`, which makes the live-vs-snapshot
+question decisive; 0.1.3's report auto-compares dossier values against the ledger's live
+readings so the verdict falls out of normal play.
+
 ## Open questions
 
 1. **Do crime responses carry award fields the client discards?** The single most
    valuable unknown. One grinding session with xp-watch installed answers it.
-2. **Does `/train`'s target list cover all 37 keys, or a trainable subset?** One visit to
-   the train page answers it — and with the stats tab unfinished (see the field report
-   above), this is now the load-bearing question: whatever `/train` doesn't list has no
-   live reading source at all right now.
-3. **What is the assessment cadence behind `/user/progression`** (`snapshot_date` step)?
-   Answerable by comparing two home visits on different days.
+2. ~~**Does `/train`'s target list cover all 37 keys, or a trainable subset?**~~
+   **Answered 2026-08-11: a subset, and per-player** — 7 targets on the sampled account
+   (no crime skills), a different set including the off-taxonomy key `whip` on another.
+   The successor question: **what selects the set?** Jobs suspected.
+3. **What is the assessment cadence behind `/user/progression`?** One sample now exists:
+   real-world dates, `2026-08-11 (prev 2026-07-27)` — 15 days, not obviously periodic.
+   **Is `stats_table.current` live or as-of-snapshot?** Now the single most valuable
+   unknown (see the coverage consequence above); 0.1.3's dossier-vs-live comparison
+   answers it from one home visit after any measured gain.
 4. ~~**Is `can_view` always true for your own stats?**~~ **Falsified in the field,
    2026-08-11, within hours of asking** — a crew-mate could not view his own sheet on the
    live game; the stats tab is unfinished. What the sealed/empty response actually
@@ -210,7 +261,8 @@ point per-action XP stops needing the diff engine at all for those actions.
 6. **Does jail tick `street_sense` continuously or per event?** Sheet readings before and
    after a jail stint (status poll brackets it) give the total; resolution needs repeat
    observations.
-7. **Is class mode's "1.5×" exact?** `class_gain / practice_gain` per target, one GET.
+7. ~~**Is class mode's "1.5×" exact?**~~ **Answered 2026-08-11: yes** — 1.500 across all
+   five sampled targets, to the 4-dp rounding the payload carries.
 
 ## Method disclosure
 

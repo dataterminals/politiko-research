@@ -311,6 +311,39 @@ const boot = () => {
   check('attempt count still exact', L.actStats['/actions/graffiti'].n, 2000);
 }
 
+console.log('\n— 0.1.3: the broken tab’s HTTP status is finally visible —');
+{
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'stats-sheet-error', name: 'rival' }, { status: 404 }, 2000);
+  check('another player’s erroring tab is ignored', L.sheetIssue, null);
+  E.ingest(L, { kind: 'stats-sheet-error', name: 'me' }, { status: 404 }, 3000);
+  check('own tab error recorded with its status', L.sheetIssue, { t: 3000, kind: 'http 404' });
+  ok('report says so', E.buildReport(L, {}, '9.9.9').includes('answered http 404'));
+}
+
+console.log('\n— 0.1.3: dossier values stored and compared, never ingested —');
+{
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'stats-sheet', name: 'me' }, { can_view: true, stats: { stealth: 10.12, strength: 7.8 } }, 2000);
+  const rows = E.ingest(L, { kind: 'assessment' }, {
+    snapshot_date: '2026-08-11', previous_date: '2026-07-27',
+    stats_table: [
+      { key: 'stealth', label: 'Stealth', current: 10.12, change: 0.5 },
+      { key: 'strength', label: 'Strength', current: 7.0, change: 0.2 },
+      { key: 'street_sense', label: 'Street Sense', current: 0.55, change: 0.55 },
+    ],
+  }, 3000);
+  check('assessment produces no delta rows', rows.length, 0);
+  check('assessment never touches live readings', Object.keys(L.last).sort(), ['stealth', 'strength']);
+  check('dossier values stored', L.assessment.values.street_sense, 0.55);
+  const r = E.buildReport(L, {}, '9.9.9');
+  ok('report counts dossier keys', r.includes('· 3 keys'));
+  ok('comparison counts the match and names the gap',
+    r.includes('dossier vs live: 1/2 match') && r.includes('biggest gap strength -0.8000 (dossier − live)'));
+}
+
 console.log('\n— the copy-report button: paste-ready, console-free —');
 {
   const L = E.makeLedger();

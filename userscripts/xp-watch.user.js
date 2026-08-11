@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.2
+// @version      0.1.3
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -85,7 +85,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -348,12 +348,34 @@
       return out;
     }
 
+    if (msg.kind === 'stats-sheet-error') {
+      // The tab's request came back non-2xx. Field-measured 2026-08-11: the
+      // unfinished stats tab left no sealed/empty trace, so the failure most
+      // likely lives at the HTTP layer — record the status so one visit to the
+      // broken tab measures it.
+      if (L.me && msg.name === L.me) L.sheetIssue = { t, kind: `http ${data.status}` };
+      return out;
+    }
+
     if (msg.kind === 'assessment') {
+      // Snapshot-cycle values: never fed into `last` (docs/10) — but stored so
+      // the report can compare the dossier against live readings and settle
+      // whether `current` is live. Crime skills currently have no other
+      // candidate source, so this comparison is load-bearing.
+      const table = Array.isArray(data.stats_table) ? data.stats_table
+        : Array.isArray(data.stats) ? data.stats : [];
+      const values = {}, change = {};
+      for (const row of table) {
+        if (!row || typeof row.key !== 'string') continue;
+        if (typeof row.current === 'number' && Number.isFinite(row.current)) values[row.key] = row.current;
+        if (typeof row.change === 'number' && Number.isFinite(row.change)) change[row.key] = row.change;
+      }
       L.assessment = {
         snapshot_date: data.snapshot_date ?? null,
         previous_date: data.previous_date ?? null,
+        at: t, values, change,
       };
-      return out; // snapshot-cycle values: never fed into `last` (docs/10)
+      return out;
     }
 
     if (msg.kind === 'action') {
@@ -404,7 +426,23 @@
     lines.push(L.sheetIssue
       ? `profile stats tab: answered ${L.sheetIssue.kind}${L.sheetIssue.axis != null ? ` (rights axis ${L.sheetIssue.axis})` : ''}`
       : 'profile stats tab: no issue recorded');
-    if (L.assessment?.snapshot_date) lines.push(`home dossier assessed: ${L.assessment.snapshot_date} (prev ${L.assessment.previous_date ?? '?'})`);
+    if (L.assessment?.snapshot_date || L.assessment?.values) {
+      const vals = L.assessment.values ?? {};
+      lines.push(`home dossier assessed: ${L.assessment.snapshot_date ?? '?'} (prev ${L.assessment.previous_date ?? '?'}) · ${Object.keys(vals).length} keys`);
+      // The load-bearing comparison (docs/10): if dossier values match live
+      // readings taken after gains, `current` is live and the home page is a
+      // full sheet for every skill /train doesn't serve.
+      const overlap = Object.keys(vals).filter((k) => L.last[k]);
+      if (overlap.length) {
+        let equal = 0, worst = null, worstD = 0;
+        for (const k of overlap) {
+          const d = vals[k] - L.last[k].v;
+          if (Math.abs(d) <= EPS) equal++;
+          else if (Math.abs(d) > Math.abs(worstD)) { worstD = d; worst = k; }
+        }
+        lines.push(`dossier vs live: ${equal}/${overlap.length} match${worst ? ` · biggest gap ${worst} ${worstD > 0 ? '+' : ''}${worstD.toFixed(4)} (dossier − live)` : ''}`);
+      }
+    }
     const keys = Object.keys(L.last);
     lines.push(`readings held: ${keys.length} key${keys.length === 1 ? '' : 's'} · deltas recorded: ${L.deltas.length} · sample endpoints: ${Object.keys(samples).length}`);
     return lines.join('\n');
@@ -441,9 +479,16 @@
       const req = args[0];
       const url = typeof req === 'string' ? req : req?.url ?? '';
       const method = (args[1]?.method ?? (typeof req === 'object' ? req?.method : null) ?? 'GET');
-      if (url.includes('/api/') && res.ok && res.headers.get('content-type')?.includes('json')) {
+      if (url.includes('/api/')) {
         const msg = classify(url, method);
-        if (msg) {
+        if (msg && !res.ok) {
+          // Body left unread. Only the own-sheet endpoint records its failure —
+          // the broken stats tab was invisible to an ok-only tap (docs/10).
+          if (msg.kind === 'stats-sheet') {
+            const err = { ...msg, kind: 'stats-sheet-error' };
+            listeners.forEach((fn) => { try { fn(err, { status: res.status }); } catch (e) { log('listener error', e); } });
+          }
+        } else if (msg && res.headers.get('content-type')?.includes('json')) {
           // clone so the app's own consumer still gets an unread body
           res.clone().json().then(
             (data) => listeners.forEach((fn) => { try { fn(msg, data); } catch (e) { log('listener error', e); } }),
@@ -594,6 +639,11 @@
   };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+  const issueLabel = (i) => i.kind === 'sealed'
+    ? `<b>sealed</b>${i.axis != null ? ` (rights axis ${esc(String(i.axis))}, needs 3)` : ''}`
+    : i.kind.startsWith('http') ? `<b>an error (${esc(i.kind.toUpperCase())})</b>`
+      : '<b>empty</b>';
+
   const attribText = (a) => {
     if (a.type === 'action') return esc(a.ep.replace(/^\/actions\//, '').replace(/^\//, ''));
     if (a.type === 'train') return 'train';
@@ -661,7 +711,7 @@
 
     bd.innerHTML = `
       ${L.sheetIssue ? `<div class="hint" style="border-color:#7c2d12;color:#fdba74">Your profile's stats tab
-        answered ${L.sheetIssue.kind === 'sealed' ? `<b>sealed</b>${L.sheetIssue.axis != null ? ` (rights axis ${esc(String(L.sheetIssue.axis))}, needs 3)` : ''}` : '<b>empty</b>'}
+        answered ${issueLabel(L.sheetIssue)}
         — the game's stats tab is unfinished right now. Use the <b>TRAIN page</b> as your
         sheet instead: opening it (or refocusing the window while on it) reads live values
         for every trainable target, and this panel diffs those the same way.</div>` : ''}
