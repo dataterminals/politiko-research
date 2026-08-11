@@ -71,6 +71,17 @@ prints "privacy rights axis · requires 3" (`ProfilePage` 3110), so reading some
 sheet depends on a policy axis. Whether `can_view` is unconditionally true for your own
 profile is inferred (very likely) rather than measured.
 
+> **Field report, 2026-08-11 — the inference above did not survive its first day.** A
+> crew-mate on the live game could not view his *own* stat sheet; the operator's read is
+> that the live stats tab is **unfinished** ("that stats setup on the home is temporary —
+> I assume it'll probably go into the stats tab"). So `/users/{me}/stats` cannot be
+> relied on as the primary reading source yet, and the home dossier may be a placeholder
+> that later moves into the tab — expect drift here. **The train page is the working live
+> sheet**: its targets carry `value` per key, on a finished screen. Whether its target
+> list covers all 37 keys is still open (question 2), and now matters more.
+> `xp-watch` 0.1.1 surfaces a sealed/empty own-sheet response in its panel instead of
+> silently recording nothing, and points its guidance at the train page.
+
 ## What awards skills, as the client sees it
 
 ### Training — the one direct, response-carried award (measured)
@@ -183,11 +194,17 @@ point per-action XP stops needing the diff engine at all for those actions.
 1. **Do crime responses carry award fields the client discards?** The single most
    valuable unknown. One grinding session with xp-watch installed answers it.
 2. **Does `/train`'s target list cover all 37 keys, or a trainable subset?** One visit to
-   the train page answers it.
+   the train page answers it — and with the stats tab unfinished (see the field report
+   above), this is now the load-bearing question: whatever `/train` doesn't list has no
+   live reading source at all right now.
 3. **What is the assessment cadence behind `/user/progression`** (`snapshot_date` step)?
    Answerable by comparing two home visits on different days.
-4. **Is `can_view` always true for your own stats?** Presumed; falsified instantly if the
-   tap sees a sealed own-profile response.
+4. ~~**Is `can_view` always true for your own stats?**~~ **Falsified in the field,
+   2026-08-11, within hours of asking** — a crew-mate could not view his own sheet on the
+   live game; the stats tab is unfinished. What the sealed/empty response actually
+   carries (a `can_view: false`? an empty `stats`? an error status the tap never sees?)
+   is still unmeasured — xp-watch 0.1.1 records which of the first two it is when it
+   arrives.
 5. **How does `heart` scale training gains?** `practice_gain` predictions at two
    different heart values would bound it.
 6. **Does jail tick `street_sense` continuously or per event?** Sheet readings before and

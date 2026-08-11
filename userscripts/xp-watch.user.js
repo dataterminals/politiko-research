@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.0
+// @version      0.1.1
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -64,10 +64,15 @@
  * The honest limitation, stated up front: the game refreshes no skill data after
  * a crime — its own UI cannot show you what a crime trained. So a delta can only
  * be pinned to one action when your readings bracket that action alone. The
- * sheet-sandwich (open your profile's stats tab before and after; a window
- * refocus while it is mounted also refetches) is the operator-driven instrument,
- * exactly like people-watch's roster walk. Windows holding several actions are
- * kept and shown as ambiguous, never averaged into per-action numbers.
+ * sheet-sandwich (a reading before and after; a window refocus on the mounted
+ * page also refetches) is the operator-driven instrument, exactly like
+ * people-watch's roster walk. Windows holding several actions are kept and
+ * shown as ambiguous, never averaged into per-action numbers.
+ *
+ * As of 2026-08-11 the live game's profile stats tab is unfinished — it can
+ * answer sealed/empty for your own profile, and the panel says so when it does.
+ * Until the game finishes it, the working sheet is the TRAIN page, whose
+ * targets carry live values.
  *
  * Second purpose: crime responses might carry award fields the client discards
  * (both prior passive captures found the wire wider than the reader). This tool
@@ -206,6 +211,7 @@
   const makeLedger = () => ({
     me: null,
     status: null,               // last seen /user/status status string
+    sheetIssue: null,           // {t, kind:'sealed'|'empty'} when the live stats tab misbehaves
     last: {},                   // key → {v, t}
     labelToKey: {},             // "First Aid" → first_aid, learned from train GET
     trainMeta: null,            // {heart, daily_slots, targets:{key:{practice_gain,class_gain}}}
@@ -283,7 +289,13 @@
       // anything could store it.
       if (!L.me || msg.name !== L.me) return out;
       const sheet = data.stats;
-      if (!sheet || typeof sheet !== 'object' || data.can_view === false) return out;
+      // Field report 2026-08-11: the live game's stats tab is unfinished and can
+      // return a sealed/empty payload for your own profile. Silent nothing here
+      // cost real debugging time, so the condition is recorded and surfaced in
+      // the panel instead — and the train page is the working sheet meanwhile.
+      if (data.can_view === false) { L.sheetIssue = { t, kind: 'sealed', axis: data.privacy_rights_axis ?? null }; return out; }
+      if (!sheet || typeof sheet !== 'object') { L.sheetIssue = { t, kind: 'empty' }; return out; }
+      L.sheetIssue = null;
       for (const [key, v] of Object.entries(sheet)) {
         if (typeof v === 'number' && Number.isFinite(v)) closeWindow(L, key, v, t, out);
       }
@@ -622,9 +634,15 @@
       .slice(0, 10);
 
     bd.innerHTML = `
-      ${sheetAge === null ? `<div class="hint">No sheet reading yet. Open <b>your profile → STATS tab</b> —
-        the game fetches your live sheet there (and again on every window refocus), and this
-        panel diffs what arrives. Sandwich a grind block between two looks for clean windows.</div>` : ''}
+      ${L.sheetIssue ? `<div class="hint" style="border-color:#7c2d12;color:#fdba74">Your profile's stats tab
+        answered ${L.sheetIssue.kind === 'sealed' ? `<b>sealed</b>${L.sheetIssue.axis != null ? ` (rights axis ${esc(String(L.sheetIssue.axis))}, needs 3)` : ''}` : '<b>empty</b>'}
+        — the game's stats tab is unfinished right now. Use the <b>TRAIN page</b> as your
+        sheet instead: opening it (or refocusing the window while on it) reads live values
+        for every trainable target, and this panel diffs those the same way.</div>` : ''}
+      ${sheetAge === null && !L.sheetIssue ? `<div class="hint">No reading yet. Open the <b>TRAIN page</b> —
+        the game fetches live values for every trainable target there (and again on every
+        window refocus) — or your profile's STATS tab once the game finishes it. This panel
+        diffs what arrives. Sandwich a grind block between two looks for clean windows.</div>` : ''}
       <div>
         <h4>latest deltas</h4>
         ${feed.length === 0 ? '<div class="muted">none recorded yet</div>' : `<table>${feed.map((d) => `

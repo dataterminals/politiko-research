@@ -175,6 +175,24 @@ console.log('\n— engine: identity and own-sheet gating —');
   check('first sight makes no delta', L.deltas.length, 0);
 }
 
+console.log('\n— engine: the unfinished live stats tab (field report 2026-08-11) —');
+{
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'stats-sheet', name: 'me' }, { can_view: false, privacy_rights_axis: -1.2 }, 2000);
+  check('sealed own sheet recorded as an issue', L.sheetIssue, { t: 2000, kind: 'sealed', axis: -1.2 });
+  check('sealed sheet stores no values', L.last, {});
+  E.ingest(L, { kind: 'stats-sheet', name: 'me' }, {}, 3000);
+  check('empty own sheet recorded as an issue', L.sheetIssue, { t: 3000, kind: 'empty' });
+  E.ingest(L, { kind: 'stats-sheet', name: 'me' }, { can_view: true, stats: { stealth: 5 } }, 4000);
+  check('a working sheet clears the issue', L.sheetIssue, null);
+  check('and lands normally', L.last.stealth.v, 5);
+  // the train page is the working sheet meanwhile — same ledger, same windows
+  E.ingest(L, { kind: 'action', ep: '/actions/graffiti' }, {}, 5000);
+  E.ingest(L, { kind: 'train-sheet' }, { targets: [{ kind: 'skill', key: 'stealth', label: 'Stealth', value: 5.05, practice_gain: 0.1, class_gain: 0.15 }] }, 6000);
+  check('train-page reading closes the window', L.deltas[L.deltas.length - 1].attrib, { type: 'action', ep: '/actions/graffiti', n: 1 });
+}
+
 console.log('\n— engine: attribution rules —');
 const boot = () => {
   const L = E.makeLedger();
