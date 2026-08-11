@@ -19,7 +19,7 @@ bannable, so the disclosure block is the contract.
 | Comms Move | 0.1.0 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.2.2 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.2.3 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -287,6 +287,21 @@ history), clear.
 If you take actions without a reading after them, the panel says so — *"3 actions not
 measured yet"* — because a gain only becomes a number once a reading closes the window.
 Nothing is lost; click **home ↻** and it resolves.
+
+## What are the home page's little green arrows?
+
+Nobody knows yet, and the tool is now running the experiment. The dossier's `change`
+column is captioned as "since the last assessment", but that caption is doing no work —
+the same card's framing already misled us once about whether its numbers were live.
+
+So after any gain, two visits to home tell you which it is, printed in **copy report**:
+
+- **RUNNING** — the arrow moved by exactly what you gained, so it's a running total
+  against some baseline. If that baseline is a rolling in-game year — one game year is
+  exactly one real week — then a gain should silently *drop out* of the arrow about seven
+  real days later. Watch one number for a week and you'll know.
+- **FROZEN** — the arrow ignored your gain, so it really is period data and the caption
+  was honest.
 
 ## The second job: finding out what crime responses really carry
 

@@ -358,6 +358,43 @@ His mechanical hypothesis remains untested and is worth testing: **does a failed
 award skill XP at all?** Sandwich single attempts and compare success against bust —
 which the tool now supports directly, since it already tallies outcomes per endpoint.
 
+### What is the `change` column? (open, instrumented 2026-08-11)
+
+The dossier's little green arrows. Operator hypothesis: they may be **unlabelled gains
+over an in-game year**. Worth taking seriously — the card's own framing already misled
+this document once about `current`, so "since the previous assessment" is a caption, not
+a measurement.
+
+The hypothesis has a sharp prediction, because **one game year is one real week**
+(acceleration 52.14 ≈ 365/7, [`06-time-surface.md`](06-time-surface.md)). So "over a game
+year" means "over the last 7 real days" — a rolling week.
+
+What the two sampled reports say so far, which is *not* supportive but not fatal either:
+
+| account | `snapshot_date` | `previous_date` | gap |
+|---|---|---|---|
+| crew-mate | 2026-08-11 | 2026-07-27 | 15 real days ≈ **2.1 game years** |
+| operator | 2026-08-11 | 2026-08-10 | 1 real day ≈ **0.14 game years** |
+
+Neither gap is one game year, and they differ from each other, so the *dates* are not on a
+game-year cadence — they look event- or visit-driven ("Snapshot pending next cycle").
+But the dates could be describing the net-worth panel while the per-stat `change` is
+computed over an entirely different window. **No `change` value has ever been compared
+against a known gain.** That is the actual gap.
+
+**`xp-watch` 0.2.3 runs the discriminator automatically.** Two dossier reads that bracket
+a measured gain distinguish:
+
+- **RUNNING** — `change` moved by the same amount as `current`: it is a running total
+  against some baseline. Then the question becomes *which* baseline, and the rolling-week
+  version predicts a further signature nothing else produces: **a gain must eventually
+  drop back out of `change` about 7 real days later.** Watch one number across a week.
+- **FROZEN** — `change` ignored the gain: it is period-to-period data fixed at assessment
+  time, the caption is honest, and the game-year reading is dead.
+
+The verdict prints in the copy-report along with the raw `change` values, so a single
+paste after any gain settles the first half.
+
 ### Faction training jobs — the third award surface (measured in-bundle, 2026-08-11)
 
 Chasing the "whip" correction through `FactionPage-C7LZV8QP.js` turned up a system the
@@ -406,9 +443,11 @@ to map `result_metadata` and lobbying outcomes properly.
    whether **faction training jobs** (which can target all 37) are the intended
    complement.
 3. ~~**Is `stats_table.current` live or as-of-snapshot?**~~ **Answered 2026-08-11: LIVE**
-   — see the verdict section. Still open, and now merely cosmetic: **what drives the
-   assessment cadence** of the `change` column (per-account; one account daily, another
-   15 days).
+   — see the verdict section. Two successors, both instrumented in 0.2.3 and neither
+   cosmetic: **what is the `change` column** (running total vs frozen period data — one
+   paste after any gain settles it; if running, whether its window is a rolling game year
+   = 7 real days), and **what drives the assessment cadence** (per-account; one account
+   daily, another 15 days).
 4. ~~**Is `can_view` always true for your own stats?**~~ **Falsified in the field,
    2026-08-11, within hours of asking** — a crew-mate could not view his own sheet on the
    live game; the stats tab is unfinished. What the sealed/empty response actually

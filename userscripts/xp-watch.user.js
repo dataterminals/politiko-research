@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.2
+// @version      0.2.3
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -93,7 +93,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.2.2';
+  const VERSION = '0.2.3';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -225,7 +225,8 @@
     labelToKey: {},             // "First Aid" → first_aid, learned from train GET
     trainMeta: null,            // {heart, daily_slots, targets:{key:{practice_gain,class_gain}}}
     eduCourses: {},             // code → {completed, rewards:[{key,amount}]}
-    assessment: null,           // {snapshot_date, previous_date} — display only
+    assessment: null,           // {snapshot_date, previous_date, change, currentSeen}
+    changeVerdict: null,        // what the dossier's `change` column turned out to be
     events: [],                 // {t, kind:'action'|'train'|'edu'|'status', …}
     deltas: [],                 // {t, key, d, from, to, attrib:{type, ep?, n?, note?}}
     actStats: {},               // ep → {n, outcomes:{}, xp:{key:{sum,n}}}
@@ -387,10 +388,46 @@
         }
         if (typeof row.change === 'number' && Number.isFinite(row.change)) change[row.key] = row.change;
       }
+
+      // What IS the `change` column (the home page's little green arrows)?
+      // The dates say "since the previous assessment", but that is the card's
+      // framing, not a measurement — and the same framing already misled this
+      // repo once about `current` (docs/10). Two dossier reads that bracket a
+      // known gain discriminate the possibilities without any extra request:
+      //
+      //   change moves WITH current  → a running total against a fixed
+      //                                baseline (a window, possibly rolling)
+      //   change stays PUT           → frozen at assessment time; true
+      //                                period-to-period snapshot data
+      //
+      // A rolling window has a further signature only time can show: an old
+      // gain must eventually drop back OUT of `change`. One game year is one
+      // real week (docs/06), so the operator's "is it a game year?" reading
+      // predicts specifically that change ≈ the gains of the last 7 real days.
+      const prev = L.assessment;
+      if (prev && prev.change) {
+        for (const k of Object.keys(change)) {
+          const dCur = (L.last[k]?.v ?? 0) - (prev.currentSeen?.[k] ?? NaN);
+          const dChg = change[k] - prev.change[k];
+          if (!Number.isFinite(dCur) || Math.abs(dCur) <= EPS) continue;
+          L.changeVerdict = {
+            at: t, key: k, dCurrent: dCur, dChange: dChg,
+            kind: Math.abs(dChg - dCur) <= EPS ? 'running'
+              : Math.abs(dChg) <= EPS ? 'frozen' : 'other',
+            datesMoved: prev.snapshot_date !== (data.snapshot_date ?? null),
+          };
+          break; // one clean witness is the whole experiment
+        }
+      }
+
+      const currentSeen = {};
+      for (const row of table) {
+        if (row && typeof row.key === 'string' && typeof row.current === 'number') currentSeen[row.key] = row.current;
+      }
       L.assessment = {
         snapshot_date: data.snapshot_date ?? null,
         previous_date: data.previous_date ?? null,
-        at: t, keys: table.length, change,
+        at: t, keys: table.length, change, currentSeen,
       };
     }
 
@@ -447,6 +484,18 @@
       : 'profile stats tab: no issue recorded');
     if (L.assessment?.snapshot_date != null || L.assessment?.keys) {
       lines.push(`home dossier assessed: ${L.assessment.snapshot_date ?? '?'} (prev ${L.assessment.previous_date ?? '?'}) · ${L.assessment.keys ?? 0} keys · live reading source`);
+      const v = L.changeVerdict;
+      if (v) {
+        lines.push(`change column: ${v.kind === 'running' ? 'RUNNING — moved with the gain'
+          : v.kind === 'frozen' ? 'FROZEN — did not move with the gain'
+            : 'moved by a different amount'} (${v.key} current ${v.dCurrent > 0 ? '+' : ''}${v.dCurrent.toFixed(4)}, change ${v.dChange > 0 ? '+' : ''}${v.dChange.toFixed(4)}${v.datesMoved ? ', assessment dates moved' : ', dates unchanged'})`);
+      }
+      // The raw arrows, so a reader can sanity-check them against what they
+      // know they did — the "is it a game year?" question needs the values.
+      const top = Object.entries(L.assessment.change ?? {})
+        .filter(([, n]) => Math.abs(n) > EPS)
+        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 8);
+      if (top.length) lines.push(`change values: ${top.map(([k, n]) => `${k} ${n > 0 ? '+' : ''}${n}`).join(' · ')}`);
     }
     const keys = Object.keys(L.last);
     lines.push(`readings held: ${keys.length} key${keys.length === 1 ? '' : 's'} · deltas recorded: ${L.deltas.length} · sample endpoints: ${Object.keys(samples).length}`);

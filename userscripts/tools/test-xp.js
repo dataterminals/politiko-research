@@ -395,6 +395,42 @@ console.log('\n— 0.2.0: the home dossier is a live full-width reading source �
   ok('no self-referential comparison line remains', !r.includes('dossier vs live'));
 }
 
+console.log('\n— 0.2.3: what IS the change column (the home page green arrows)? —');
+const dossier = (art, change) => ({
+  snapshot_date: '2026-08-11', previous_date: '2026-08-04',
+  stats_table: [{ key: 'art', label: 'Art', current: art, change }],
+});
+{
+  // running: the arrow moves with the gain → a total against some baseline
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'assessment' }, dossier(1.0, 0.5), 2000);
+  check('one reading is not yet an experiment', L.changeVerdict, null);
+  E.ingest(L, { kind: 'assessment' }, dossier(1.18, 0.68), 3000);
+  check('verdict: running', [L.changeVerdict.kind, +L.changeVerdict.dCurrent.toFixed(4), +L.changeVerdict.dChange.toFixed(4)],
+    ['running', 0.18, 0.18]);
+  ok('report states it', E.buildReport(L, {}, '9.9.9').includes('change column: RUNNING'));
+  ok('report prints the raw arrows for eyeballing', E.buildReport(L, {}, '9.9.9').includes('change values: art +0.68'));
+}
+{
+  // frozen: the arrow ignores the gain → period data fixed at assessment time
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'assessment' }, dossier(1.0, 0.5), 2000);
+  E.ingest(L, { kind: 'assessment' }, dossier(1.18, 0.5), 3000);
+  check('verdict: frozen', L.changeVerdict.kind, 'frozen');
+  ok('report states it', E.buildReport(L, {}, '9.9.9').includes('change column: FROZEN'));
+  ok('report notes the dates held still', E.buildReport(L, {}, '9.9.9').includes('dates unchanged'));
+}
+{
+  // no gain between reads → no witness, no claim
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'assessment' }, dossier(1.0, 0.5), 2000);
+  E.ingest(L, { kind: 'assessment' }, dossier(1.0, 0.5), 3000);
+  check('no gain means no verdict', L.changeVerdict, null);
+}
+
 console.log('\n— 0.2.0: sample key digest in the report, values stay home —');
 {
   const L = E.makeLedger();
