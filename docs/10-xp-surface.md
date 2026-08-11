@@ -208,13 +208,16 @@ profile stats tab: no issue recorded
 home dossier assessed: 2026-08-11 (prev 2026-07-27)
 ```
 
-- **`/train` is a per-player subset, not the full sheet.** 7 targets of 37 (2 stats + 5
-  skills) for this account — and crucially **no stealth and no street_sense**, the crime
-  skills the tracker exists for. Another crew-mate's train page offered **`whip`**, which
-  is not one of the client's 37 hardcoded keys at all (server vocabulary is wider than
-  the client's lists — third confirmed instance of that pattern, and the reason xp-watch
-  hardcodes no key list). What determines the set is unknown — jobs are suspected
-  (channel: "join the lobbying jobs" in reply to the whip question).
+- **`/train` serves a subset, not the full sheet.** 7 targets of 37 (2 stats + 5 skills)
+  for this account — and crucially **no stealth and no street_sense**, the crime skills
+  the tracker exists for. ~~Another crew-mate's train page offered `whip`, an
+  off-taxonomy key — third instance of server vocabulary outrunning the client.~~
+  **Withdrawn 2026-08-11, same hour, by the operator:** "whip" is the `role_key` of a
+  slot in a **faction lobbying job** (the crew-mate was asking which *skill* the slot
+  runs on, to class-train for it) — not a train target, not a skill key. The withdrawal
+  also takes the second sample with it: with one report, **whether the subset is
+  per-player or a shared per-window rotation is unmeasured.** A second copy-report from a
+  different account in the same window distinguishes the two.
 - **Class mode is exactly 1.5× practice.** All five target pairs give 1.500 to 4-dp
   rounding. Question 7 closed.
 - **Practice gain decreases as the target's value rises** — +0.3931 at value 1.00 down
@@ -237,14 +240,47 @@ only candidate left is the home dossier's `stats_table`, which makes the live-vs
 question decisive; 0.1.3's report auto-compares dossier values against the ledger's live
 readings so the verdict falls out of normal play.
 
+### Faction training jobs — the third award surface (measured in-bundle, 2026-08-11)
+
+Chasing the "whip" correction through `FactionPage-C7LZV8QP.js` turned up a system the
+write sweep had logged but never read: **faction jobs**, two types (`lobbying`,
+`training`), on the faction page's Jobs tab.
+
+- **Training jobs**: `POST /factions/{id}/jobs {job_type: 'training', target_key}`, and
+  the target selector is the client's **full 37-key list** (offset ~78900) — attributes
+  and skills both, **crime skills included**. Four slots: `teacher`, `student_1..3`
+  (77500). So a faction can train what `/train`'s personal subset does not offer.
+- **Resolved jobs declare their awards.** The result render prints `teacher gain +N` and
+  per-student `@username +gain`, 4-dp (85543, 86062), off `result_metadata` — which
+  arrives on the **`GET /factions/{id}/jobs`** response the app fetches whenever a member
+  views the Jobs tab. Declared, measured award data, readable passively — the same
+  quality as the train POST, one hop later.
+- Creating/joining/resolving these jobs **invalidates `['train']`** (78108), so faction
+  training interacts with the personal training system — slots, cooldowns, or gains;
+  which of those is unmeasured.
+- **Lobbying slots carry `role_key` only** (`whip`, etc., 72416) plus a
+  `contribution_snapshot.score`. The client nowhere maps a role to a skill, so "which
+  skill does the whip slot run on" is **not answerable statically** — server-side only,
+  or discoverable by comparing contribution scores against known sheets.
+
+xp-watch coverage implication: none of `/factions/*` is in the router's allowlist, so a
+faction training gain currently lands as an unexplained **passive** delta and a lobbying
+resolve is invisible. The 0.1.4 candidate: ingest the faction-jobs GET — training-job
+results as declared award events (education-style), plus scrubbed samples of the payload
+to map `result_metadata` and lobbying outcomes properly.
+
 ## Open questions
 
 1. **Do crime responses carry award fields the client discards?** The single most
    valuable unknown. One grinding session with xp-watch installed answers it.
 2. ~~**Does `/train`'s target list cover all 37 keys, or a trainable subset?**~~
-   **Answered 2026-08-11: a subset, and per-player** — 7 targets on the sampled account
-   (no crime skills), a different set including the off-taxonomy key `whip` on another.
-   The successor question: **what selects the set?** Jobs suspected.
+   **Answered 2026-08-11: a subset** — 7 targets of 37 on the one sampled account, no
+   crime skills among them. ~~And per-player, with an off-taxonomy `whip` on another
+   account~~ — withdrawn the same hour; the "second sample" was a faction lobbying slot's
+   `role_key`, not a train target. Successor questions: **what selects the subset**
+   (per-player vs shared rotation — a second same-window report distinguishes), and
+   whether **faction training jobs** (which can target all 37) are the intended
+   complement.
 3. **What is the assessment cadence behind `/user/progression`?** One sample now exists:
    real-world dates, `2026-08-11 (prev 2026-07-27)` — 15 days, not obviously periodic.
    **Is `stats_table.current` live or as-of-snapshot?** Now the single most valuable
