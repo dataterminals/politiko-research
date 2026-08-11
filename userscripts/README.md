@@ -19,7 +19,7 @@ bannable, so the disclosure block is the contract.
 | Comms Move | 0.1.0 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.2.1 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.2.2 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -30,6 +30,12 @@ bumping `@version`** — a script manager only acts on an increase.
 Panels drawn over the game are draggable and remember where you put them. `PANEL KIT` is
 copied verbatim into each tool rather than pulled from anywhere at runtime, so every script
 stays one auditable file.
+
+XP Watch's panel is also **resizable**, which is a local addition sitting *around* its
+verbatim `PANEL KIT v1` block rather than a change to it — changing the kit means bumping
+its version in all seven copies. If resizing proves worth having everywhere, that is the
+`PANEL KIT v2` candidate; the local implementation is deliberately small (a CSS
+`resize: both`, plus persistence and a double-click reset) so it ports cleanly.
 
 ---
 
@@ -266,7 +272,9 @@ username and no values from those samples.
 
 ## The panel
 
-**Alt+X**, or the `XP` button. Drag either anywhere; they remember. Sections: the latest
+**Alt+X**, or the `XP` button. Drag either anywhere; they remember. **Drag the panel's
+bottom-right corner to resize it** — that sticks too. Double-click the panel's title bar
+to put both the position and the size back to default. Sections: the latest
 deltas with their labels, per-skill session/all-time totals with last-known values, and
 per-action-endpoint attempts / outcomes / measured-XP-per-attempt.
 

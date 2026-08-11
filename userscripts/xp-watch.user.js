@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.1
+// @version      0.2.2
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -58,6 +58,7 @@
  *
  *   Storage:  localStorage keys prefixed `pkxp:` — your own readings, deltas,
  *             action events, person-scrubbed response samples, panel position
+ *             and size
  *
  *   Alerts:   none. No notifications, no sound, no title changes; the panel only
  *             renders while the tab is visible
@@ -92,7 +93,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -682,9 +683,14 @@
       background:#18181b;border:1px solid #3f3f46;color:#e4e4e7;font:700 10px/24px ui-monospace,monospace;
       text-align:center;letter-spacing:.08em;user-select:none}
     #pkxp-fab:hover{border-color:#71717a}
+    /* resize:both needs a non-visible overflow; .bd does the scrolling. The
+       min-* pair is the same "never strand the UI" rule PANEL KIT's fit()
+       enforces for position — a panel shrunk to nothing has no grab area
+       left, and double-clicking the header restores both. */
     #pkxp{position:fixed;right:16px;bottom:166px;z-index:99999;width:340px;max-height:70vh;display:flex;
       flex-direction:column;background:#0c0c0f;border:1px solid #3f3f46;border-radius:6px;
-      color:#d4d4d8;font:11px/1.5 ui-monospace,monospace;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+      color:#d4d4d8;font:11px/1.5 ui-monospace,monospace;box-shadow:0 8px 30px rgba(0,0,0,.5);
+      overflow:hidden;resize:both;min-width:260px;min-height:160px}
     #pkxp header{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #27272a;user-select:none}
     #pkxp header b{letter-spacing:.14em;font-size:10px;color:#fafafa}
     #pkxp header span{color:#71717a;font-size:10px}
@@ -876,7 +882,47 @@
       ui.panel = pos ?? undefined; writeJSON(K.ui, ui);
     });
     if (ui.panel) drag.apply(ui.panel);
-    panel.querySelector('header').addEventListener('dblclick', () => drag.reset());
+
+    // --- Resize (local to this tool; PANEL KIT v1 above stays verbatim) ------
+    // The browser's own resize grabber does the dragging. All we do is
+    // remember the result: the grabber writes inline width/height, so inline
+    // values that differ from what we stored can only have come from the user.
+    // Content re-renders never write them, which is what keeps auto-sizing
+    // intact until the first deliberate resize.
+    const applySize = () => {
+      if (!ui.size) return;
+      panel.style.width = ui.size.w;
+      panel.style.height = ui.size.h;
+      panel.style.maxHeight = 'none'; // the 70vh cap would fight a chosen height
+    };
+    applySize();
+    const rememberSize = () => {
+      const w = panel.style.width, h = panel.style.height;
+      if (!w && !h) return;                                      // still auto-sized
+      if (ui.size && ui.size.w === w && ui.size.h === h) return;  // our own restore
+      ui.size = { w, h };
+      writeJSON(K.ui, ui);
+      panel.style.maxHeight = 'none';
+      if (drag) drag.fit();  // a taller panel can push its own handle off-screen
+    };
+    // Two ways in, because neither alone is sufficient. ResizeObserver is the
+    // precise one but it is delivered on the rendering lifecycle, so a page
+    // that is not compositing never gets the callback. pointerup is the
+    // backstop: the grabber is a pointer gesture, so releasing it always lands
+    // here. rememberSize() is idempotent, so both firing costs nothing.
+    if (typeof ResizeObserver === 'function') new ResizeObserver(rememberSize).observe(panel);
+    panel.addEventListener('pointerup', rememberSize);
+
+    // Double-click the header: back to the default corner AND the default size.
+    // This is the recovery path for a panel resized into uselessness.
+    panel.querySelector('header').addEventListener('dblclick', () => {
+      drag.reset();
+      ui.size = undefined;
+      writeJSON(K.ui, ui);
+      panel.style.width = panel.style.height = '';
+      panel.style.maxHeight = '';
+      render();
+    });
 
     fabDrag = draggable(fab, fab, (pos) => {
       ui.fab = pos ?? undefined; writeJSON(K.ui, ui);

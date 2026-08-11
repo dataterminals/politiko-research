@@ -110,6 +110,21 @@ ok('render scheduler has a non-rAF backstop', /requestAnimationFrame\(run\);\s*\
 ok('carries PANEL KIT v1 verbatim marker', SRC.includes('PANEL KIT v1 — shared verbatim block'));
 ok('calls fit() after render', /if \(drag\) drag\.fit\(\);/.test(SRC));
 
+// Resize is a LOCAL addition; PANEL KIT v1 stays byte-identical to the copies
+// in every other tool (CLAUDE.md: changing it means bumping it everywhere).
+// These assertions are about the parts that strand the UI if they regress.
+ok('panel is resizable', /resize:both/.test(SRC));
+ok('resize has a non-visible overflow to work at all', /overflow:hidden;resize:both/.test(SRC));
+ok('minimum size keeps a grab area', /min-width:\d+px;min-height:\d+px/.test(SRC));
+ok('a chosen size drops the 70vh cap', SRC.includes("panel.style.maxHeight = 'none'"));
+ok('size is persisted under the ui key', /ui\.size = \{ w, h \};\s*\n\s*writeJSON\(K\.ui, ui\);/.test(SRC));
+ok('size is restored on mount', /panel\.style\.width = ui\.size\.w;/.test(SRC));
+ok('resize re-fits, so a grown panel cannot strand its own handle', /rememberSize = \(\)[\s\S]{0,500}drag\.fit\(\)/.test(SRC));
+ok('pointerup backstop exists (ResizeObserver needs a compositing page)',
+  SRC.includes("panel.addEventListener('pointerup', rememberSize)"));
+ok('double-click clears the stored size, not just the position',
+  /dblclick[\s\S]{0,240}ui\.size = undefined/.test(SRC));
+
 // The render path must be gated on visibility (no work from an unfocused tab).
 ok('render is visibility-gated', SRC.includes("document.visibilityState !== 'visible'"));
 
