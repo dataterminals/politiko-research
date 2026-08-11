@@ -78,6 +78,27 @@ view over data that already arrived.
 Sticky cooldown/energy readouts, denser tables, keyboard nav, readable timestamps,
 persistent column sorts. Unglamorous, high hit rate, near-zero risk.
 
+### XP tracker — **shipped 2026-08-11** as `xp-watch.user.js`
+Requested by a crew-mate on Discord (2026-08-10): the XP gained from **each individual
+action**, per skill it touched — explicitly *not* the period total the home screen already
+shows. Findings that shaped it: [`10-xp-surface.md`](10-xp-surface.md), measured from the
+2026-08-10 bundle pull. The short version: values are fractional floats (train gains print
+to 4 decimals); training is the **only** action whose response states its award
+(`gain` / `after_value`); education awards are declared in the catalog and land silently on
+completion; **no crime, combat, jail, or travel response carries any skill field the client
+reads**, and the game's own UI cannot show a crime's skill gain at all (its live own-stats
+query was deleted — two pages still invalidate the dead key). The proposal's
+`/api/attributes` lead was wrong: that endpoint is the energy/juice/hp bars, not skills.
+
+So the tool is a diff engine over readings the operator's own navigation produces
+(profile stats tab, train page — both refetch on focus by the app's TanStack defaults),
+attributing a window's residual to an action only when **exactly one** candidate sits in
+it, and refusing to average ambiguous windows into per-action stats. It also stores
+person-scrubbed raw samples of action responses, because the ws-watch precedent says the
+wire is probably wider than the reader — if crime responses do carry discarded award
+fields, the first grinding session surfaces them. Own-account data only, no alerts,
+PANEL KIT v1, zero added requests.
+
 ---
 
 ## 🟨 Needs the sanctioned API (Phase 0 gates all of these)

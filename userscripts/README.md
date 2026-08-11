@@ -19,6 +19,7 @@ bannable, so the disclosure block is the contract.
 | Comms Move | 0.1.0 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
+| XP Watch | 0.1.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -212,6 +213,83 @@ it comes back.
 
 ---
 
+# XP Watch
+
+Tracks what your stats and skills actually gained, action by action where the data honestly
+allows it. Built for one request: *"how much XP I'm receiving from different actions in
+whatever skills it's affecting — the individual gain from doing something"* — not the
+period totals the home page's dossier shows.
+
+It is **fully passive**. It reads responses the game already made, on pages you are
+actively viewing, and originates no requests of its own.
+
+## The one thing to understand before using it
+
+The game refreshes no skill data after a crime — its own UI cannot show you what a car
+theft trained (the client's live own-stats query was deleted; see
+[`docs/10-xp-surface.md`](../docs/10-xp-surface.md)). Your live sheet is fetched in
+exactly two places, both operator-driven:
+
+- **your own profile → STATS tab** — fetched when you open it, and again every time the
+  window regains focus while you're on it
+- **the train page** — same, for trainable targets
+
+So the workflow is a **sheet-sandwich**: look at your sheet, do the thing, look again.
+Every one of those fetches is a navigation the game performs because you asked for that
+page; the panel just diffs what arrives.
+
+## What a delta gets labelled
+
+| label | meaning |
+|---|---|
+| `train` | measured — the train response states its own `gain`, exact to 4 decimals |
+| `education` | a course completion's declared reward, matched to the catalog |
+| an endpoint | **exactly one** action sat in the window between two readings — honest per-action XP, and the per-action averages are built only from these |
+| `passive` | no action in the window; labelled `jailed`/`traveling` when the status poll saw one (street sense ticks in jail) |
+| `ambiguous ×N` | N actions in the window. Kept and shown, **never averaged into per-action stats** — grind blocks between two distant readings land here, which is correct |
+
+Want clean per-action numbers for a crime? Sandwich single attempts: sheet → one theft →
+alt-tab back to the sheet (the refocus refetches it) — one keypress-ish per measurement,
+same spirit as People Watch's roster walk.
+
+## The panel
+
+**Alt+X**, or the `XP` button. Drag either anywhere; they remember. Sections: the latest
+deltas with their labels, per-skill session/all-time totals with last-known values, and
+per-action-endpoint attempts / outcomes / measured-XP-per-attempt. Buttons: export
+(JSON), copy tsv (delta history), clear.
+
+## The second job: finding out what crime responses really carry
+
+No crime response contains any skill field **the client reads** — but both previous
+passive captures (see ws-watch) found the wire wider than the reader. So this tool keeps
+up to 3 person-scrubbed raw samples per action endpoint. If the server does send award
+fields the client discards, a normal grinding session will surface them in
+`__pkxw.samples()` — and per-action XP stops needing the diff engine at all. Usernames
+and credential-looking values are scrubbed before storage; key names survive so the
+discovery still works.
+
+## Console
+
+```js
+__pkxw.export()    // everything, as JSON
+__pkxw.deltas()    // the delta rows
+__pkxw.samples()   // raw action-response samples (scrubbed)
+__pkxw.ledger()    // full state
+__pkxw.clear()     // wipe it
+```
+
+## What it reads
+
+Full disclosure — reads, storage, network — is in the header comment at the top of
+[`xp-watch.user.js`](xp-watch.user.js). In short: it reads your own
+`/api/users/<you>/stats`, `/api/train`, `/api/education*`, `/api/user/status`,
+`/api/user/progression` responses and the responses of actions you submit, stores your
+own numbers under `pkxp:` keys in your browser, ignores other players' data entirely,
+and sends nothing anywhere.
+
+---
+
 ## Tests
 
 Run from the repository root:
@@ -225,6 +303,7 @@ node userscripts/tools/test-sizing.js
 node userscripts/tools/test-views.js
 node userscripts/tools/test-passive.js
 node userscripts/tools/test-bridge.js
+node userscripts/tools/test-xp.js
 ```
 
 Every suite slices the layer it covers straight out of the shipped script rather than
