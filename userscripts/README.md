@@ -19,7 +19,7 @@ bannable, so the disclosure block is the contract.
 | Comms Move | 0.1.0 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.2.3 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.2.4 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -306,12 +306,21 @@ So after any gain, two visits to home tell you which it is, printed in **copy re
 ## The second job: finding out what crime responses really carry
 
 No crime response contains any skill field **the client reads** — but both previous
-passive captures (see ws-watch) found the wire wider than the reader. So this tool keeps
-up to 3 person-scrubbed raw samples per action endpoint. If the server does send award
-fields the client discards, a normal grinding session will surface them in
-`__pkxw.samples()` — and per-action XP stops needing the diff engine at all. Usernames
-and credential-looking values are scrubbed before storage; key names survive so the
-discovery still works.
+passive captures (see ws-watch) found the wire wider than the reader, and so did this one.
+The tool keeps up to 3 scrubbed samples per action endpoint, and **copy report** prints
+their field names with numeric and boolean values (strings and objects stay names-only,
+since that's where usernames and flavour text live).
+
+That already paid off. Real payloads seen 2026-08-11:
+
+- **`/disobedience` carries `mastery`** — a progression-shaped number the game never
+  displays, and the leading candidate for a direct per-action XP award.
+- **Both carry a plain `success` boolean**, so failed attempts are now recorded as such
+  (`fail+hospitalized` is distinct from `fail`) — which makes "does failing still pay
+  XP?" a question you can just read off the actions table.
+- **`/actions/graffiti` carries a `breakdown`** with `roll`, `difficulty`,
+  `arrest_chance` and `mob_chance` — the server hands the client its own odds and the
+  realised dice roll, and the game shows you none of it.
 
 ## Console
 

@@ -395,6 +395,82 @@ a measured gain distinguish:
 The verdict prints in the copy-report along with the raw `change` values, so a single
 paste after any gain settles the first half.
 
+### The wire, measured at last — and `mastery` (2026-08-11)
+
+The first report carrying sampled action-response keys. **These are the real payloads**,
+and they settle the question this whole document was built around.
+
+```
+/disobedience     direction flavor hospitalized hospitalized_until jailed jailed_until
+                  mastery people_moved success
+/actions/graffiti arrested breakdown{arrest_chance, difficulty, mob_chance, roll} flavor
+                  hospitalized issue juice_spent location{…} mode people_moved side
+                  spray_can_spent success
+```
+
+Three consequences, in order of importance:
+
+**1. `mastery` exists on the disobedience response, and no bundle read could have found
+it.** The client's `ActivismPage` never renders it. It is the only skill-progression-shaped
+field on any action response in this repo's history, and it is the leading candidate for
+the direct per-action award the tracker was built to approximate. **Its value was already
+being stored** (the sample scrubber only strips person-shaped and credential-shaped keys,
+and `mastery` is neither) — but 0.2.3's report printed key names only, so the number never
+made it out. **0.2.4 prints numeric and boolean values in the digest**, so the next paste
+carries `mastery=…` and its relationship to the measured persuasion gain becomes
+checkable. If it *is* the award, per-action XP stops needing the diff engine for
+disobedience.
+
+**2. Both payloads carry a plain `success` boolean — and the bundle-derived outcome
+classifier was wrong.** `paint_landed` / `deface_cleared` looked like response fields in
+`GraffitiPage` but are **animation keys selected from `mode`**; they never matched
+anything on the wire. Corrected in 0.2.4, which now records `success` alongside the bust
+kind (`fail+hospitalized`, `success+jailed`) rather than collapsing them — because "does a
+failed action still award XP?" needs failure and punishment as separate facts.
+
+**3. `graffiti.breakdown` carries the dice.** `roll`, `difficulty`, `arrest_chance`,
+`mob_chance` — the server tells the client its own probabilities and the realised roll, and
+the client renders none of it. That is squarely the *pre-commit action calculator* from
+[`03-script-ideas.md`](03-script-ideas.md), and it means the calculator would not need to
+infer odds at all: they arrive with every attempt. Recorded here, not built.
+
+Also on the wire: `juice_spent`, `spray_can_spent` (consumable accounting), `people_moved`,
+`direction`, `issue`, `side`, `mode`, and a `location` object carrying
+`difficulty`, `lean`, `left_count`, `right_count`, `total_count`, `deface_available.L/R`,
+`risk_label`.
+
+### `change` is RUNNING — the arrows track live gains (2026-08-11)
+
+Measured, from the operator's fourth report: persuasion `current` +0.0100 and `change`
++0.0100 between two dossier reads, with the assessment dates unchanged. **The `change`
+column is a running total against a baseline, not a value frozen at assessment time.** The
+operator's in-game-year hypothesis therefore survives its first test; the caption
+("since the previous assessment") also survives. Distinguishing them needs the baseline.
+
+Sampled values at that moment, with `previous_date` = the day before:
+
+```
+street_sense +13.01 · persuasion +10.43 · heart +1.0401 · art +0.92
+stealth +0.35 · charisma +0.103 · business +0.10 · agility +0.0118
+```
+
+**A Fermi check that leans toward the ~1-day baseline, and is not proof.** Heart's +1.0401
+is ≈3 practice sessions at this account's current +0.3433, and the account has **1 slot per
+~12 h window** — so ~3 sessions is ~1.5 days of training, not 7. That fits a
+previous-assessment baseline and fits a rolling game year only if the account trained
+heart three times in a week and not otherwise. The operator would know which; the tool
+cannot.
+
+**The decisive test is free and needs no console.** Both readings are of the same quantity
+under two hypotheses that diverge the moment the assessment date rolls over:
+
+- **Baseline at `previous_date`** → when `snapshot_date` advances, every `change` **resets
+  toward zero** and starts accumulating again.
+- **Rolling game year (7 real days)** → no reset ever; old gains simply **drop out** as
+  they age past a week, so a number can fall while you gain nothing.
+
+Copy a report today and another after the date rolls; the `change values:` line answers it.
+
 ### Faction training jobs — the third award surface (measured in-bundle, 2026-08-11)
 
 Chasing the "whip" correction through `FactionPage-C7LZV8QP.js` turned up a system the
@@ -426,14 +502,18 @@ to map `result_metadata` and lobbying outcomes properly.
 
 ## Open questions
 
-1. **Do crime responses carry award fields the client discards?** The single most
-   valuable unknown. One grinding session with xp-watch installed answers it — and since
-   0.2.0 the copy-report prints a key-name digest of sampled responses, so the answer is
-   readable from a pasted report rather than a console.
-1b. **Does a failed action award skill XP?** Field hypothesis from a crew-mate whose
-   three failed graffiti showed no gain (though that reading was confounded — see the
-   second field lesson above). Testable now: sandwich single attempts, compare the
-   outcome tally against the attributed XP.
+1. ~~**Do crime responses carry award fields the client discards?**~~ **Partly answered
+   2026-08-11: `/disobedience` carries `mastery`**, which the client never renders —
+   found by the sampler, invisible to every bundle read. **What remains: is `mastery` the
+   XP award, and does anything equivalent ride the other actions?** `/actions/graffiti`
+   carries no award-shaped field at all, so if `mastery` is one, it is not universal. The
+   next paste carries its value (0.2.4 prints numbers), which is what makes it checkable
+   against the measured gain.
+1b. **Does a failed action award skill XP?** A crew-mate's three failed graffiti showed no
+   gain, but that reading was confounded (see the second field lesson). Now directly
+   testable: `success` is on the wire and 0.2.4 records it per attempt, split from the
+   punishment (`fail+hospitalized` ≠ `fail`), so the outcome tally sits beside the
+   attributed XP in the panel.
 2. ~~**Does `/train`'s target list cover all 37 keys, or a trainable subset?**~~
    **Answered 2026-08-11: a subset** — 7 targets of 37 on the one sampled account, no
    crime skills among them. ~~And per-player, with an off-taxonomy `whip` on another

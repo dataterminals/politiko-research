@@ -171,15 +171,24 @@ console.log('\n— router: a strict allowlist —');
   check('other origin api → still parsed by path only', c('https://politiko.io/api/train', 'GET'), { kind: 'train-sheet' });
 }
 
-console.log('\n— outcome classifier: known fields only, never guessed —');
+console.log('\n— outcome classifier: the MEASURED wire fields, never guessed —');
 {
   check('car theft jailed', E.outcomeOf('/actions/car-theft/resolve-timeout', { jailed: true }), 'bust');
   check('car theft complete', E.outcomeOf('/actions/car-theft/choice', { complete: true }), 'success');
   check('car theft mid-flow', E.outcomeOf('/actions/car-theft/start', { stage: 'chase' }), 'in-progress');
-  check('graffiti arrested', E.outcomeOf('/actions/graffiti', { arrested: true }), 'bust');
-  check('graffiti landed', E.outcomeOf('/actions/graffiti', { paint_landed: true }), 'success');
-  check('generic jailed flag', E.outcomeOf('/actions/deal-drugs', { jailed: true }), 'bust');
+  // Real 2026-08-11 graffiti payload shape: success + arrested/hospitalized.
+  check('graffiti success', E.outcomeOf('/actions/graffiti', { success: true, arrested: false, hospitalized: false }), 'success');
+  check('graffiti plain fail', E.outcomeOf('/actions/graffiti', { success: false, arrested: false, hospitalized: false }), 'fail');
+  // The distinction klyde's question needs: failing and being hospitalised are
+  // separate facts, and "did a failed action still pay XP" needs them apart.
+  check('graffiti fail + hospitalised', E.outcomeOf('/actions/graffiti', { success: false, hospitalized: true }), 'fail+hospitalized');
+  check('graffiti fail + arrested', E.outcomeOf('/actions/graffiti', { success: false, arrested: true }), 'fail+arrested');
+  check('disobedience success while jailed', E.outcomeOf('/disobedience', { success: true, jailed: true }), 'success+jailed');
+  check('bust without a success field', E.outcomeOf('/actions/deal-drugs', { jailed: true }), 'bust');
   check('unknown shape stays null', E.outcomeOf('/actions/deal-drugs', { message: 'sold' }), null);
+  // The misread that shipped in 0.1.0: these are animation keys in the bundle,
+  // not response fields. They must not resurrect as a success signal.
+  check('bundle animation keys are not outcome fields', E.outcomeOf('/actions/graffiti', { paint_landed: true }), null);
 }
 
 console.log('\n— scrub: keys survive, people and credentials do not —');
@@ -443,7 +452,23 @@ console.log('\n— 0.2.0: sample key digest in the report, values stay home —'
   ok('digest names the endpoint', r.includes('sampled /disobedience:'));
   ok('digest surfaces nested award-shaped keys', r.includes('xp_award.persuasion') && r.includes('xp_award.art'));
   ok('digest walks arrays', r.includes('witnesses[].username'));
-  ok('digest carries no values', !r.includes('0.4') && !r.includes('SENTINEL') && !r.includes('bob'));
+  // Numbers and booleans carry values (a bare `mastery` key is useless);
+  // strings and objects stay key-only, which is where people and prose live.
+  ok('numeric values are shown', r.includes('xp_award.persuasion=0.4'));
+  ok('booleans are shown', r.includes('jailed=false'));
+  ok('string values are NOT shown', r.includes('witnesses[].username') && !r.includes('bob'));
+  ok('credentials never appear', !r.includes('SENTINEL'));
+}
+{
+  // distinct values accumulate across the ring — the point of sampling is to
+  // see a field VARY, which is what identifies an award
+  const samples = {};
+  for (const [m, s] of [[0.02, true], [0.03, false], [0.02, true]]) {
+    E.recordSample(samples, '/disobedience', { mastery: m, success: s }, 1);
+  }
+  const r = E.buildReport(E.makeLedger(), samples, '9.9.9');
+  ok('distinct numeric values are collected', /mastery=0\.02,0\.03|mastery=0\.03,0\.02/.test(r));
+  ok('distinct booleans are collected', /success=(true,false|false,true)/.test(r));
 }
 
 console.log('\n— the copy-report button: paste-ready, console-free —');

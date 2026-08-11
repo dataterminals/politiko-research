@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.3
+// @version      0.2.4
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -93,7 +93,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.2.3';
+  const VERSION = '0.2.4';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -157,7 +157,12 @@
     return null;
   };
 
-  // Known outcome fields per endpoint family — measured off the 2026-08-10 bundles.
+  // Outcome fields, MEASURED ON THE WIRE 2026-08-11 from real graffiti and
+  // disobedience responses. The first version of this read them off the bundle
+  // and got it wrong: `paint_landed` / `deface_cleared` looked like response
+  // fields in GraffitiPage but are animation keys chosen from `mode`, so they
+  // never matched anything. Both real payloads carry a plain `success` boolean
+  // plus `arrested` / `hospitalized` / `jailed`, which is what this uses now.
   // Anything unrecognized stays null rather than guessed.
   const outcomeOf = (ep, data) => {
     if (!data || typeof data !== 'object') return null;
@@ -165,12 +170,15 @@
       return data.jailed ? 'bust' : data.complete ? 'success'
         : data.abandoned ? 'abandoned' : data.stage ? 'in-progress' : null;
     }
-    if (ep === '/actions/graffiti') {
-      return (data.arrested || data.hospitalized) ? 'bust'
-        : (data.paint_landed || data.deface_cleared) ? 'success' : null;
+    // Busts are recorded alongside success, not instead of it: "did a failed
+    // action still award XP?" needs the two facts separately.
+    const bust = data.arrested === true ? 'arrested'
+      : data.jailed === true ? 'jailed'
+        : data.hospitalized === true ? 'hospitalized' : null;
+    if (typeof data.success === 'boolean') {
+      return data.success ? (bust ? `success+${bust}` : 'success') : (bust ? `fail+${bust}` : 'fail');
     }
-    if (data.jailed === true || data.arrested === true) return 'bust';
-    return null;
+    return bust ? 'bust' : null;
   };
 
   // ===========================================================================
@@ -468,9 +476,13 @@
     const lines = [`xp-watch ${version} report`];
     if (L.trainMeta) {
       const t = Object.entries(L.trainMeta.targets);
-      const where = L.trainMeta.city_name
-        ? `${L.trainMeta.city_name}${L.trainMeta.city_theme ? ` (${L.trainMeta.city_theme})` : ''}`
-        : 'no city';
+      // Absent key vs null: a trainMeta stored before 0.2.0 has no city field at
+      // all, and reporting that as "no city" is a false datum in the map the
+      // crew is building. Only a fresh read can say "no city" (the game's own
+      // wording when you are between locations).
+      const where = L.trainMeta.city_name ? `${L.trainMeta.city_name}${L.trainMeta.city_theme ? ` (${L.trainMeta.city_theme})` : ''}`
+        : L.trainMeta.city_name === null ? 'no city'
+          : 'city not recorded — revisit the train page';
       lines.push(`train targets: ${t.length} @ ${where} · heart ${L.trainMeta.heart ?? '?'} · slots/window ${L.trainMeta.daily_slots ?? '?'}`);
       for (const [k, m] of t.sort((a, b) => a[0].localeCompare(b[0]))) {
         const v = L.last[k] ? L.last[k].v.toFixed(2) : '?';
@@ -499,23 +511,29 @@
     }
     const keys = Object.keys(L.last);
     lines.push(`readings held: ${keys.length} key${keys.length === 1 ? '' : 's'} · deltas recorded: ${L.deltas.length} · sample endpoints: ${Object.keys(samples).length}`);
-    // Key-name digest of the raw action samples, so a pasted report can reveal
-    // response fields the client never renders — values stay home.
+    // Digest of the raw action samples, so a pasted report can reveal response
+    // fields the client never renders. NUMBERS AND BOOLEANS CARRY THEIR VALUES:
+    // they are the mechanically interesting ones (a `mastery` or `roll` is
+    // useless as a bare key name) and they cannot identify anybody. Strings and
+    // objects stay key-only — that is where names and flavour text live.
     const flat = (o, p, d, acc) => {
       if (d > 3 || !o || typeof o !== 'object') return acc;
       for (const [k, v] of Object.entries(o)) {
         const key = p ? `${p}.${k}` : k;
-        acc.add(key);
-        if (Array.isArray(v)) { if (v.length && typeof v[0] === 'object') flat(v[0], `${key}[]`, d + 1, acc); }
+        const vals = acc.get(key) ?? acc.set(key, new Set()).get(key);
+        if (typeof v === 'number' && Number.isFinite(v)) vals.add(String(+v.toFixed(6)));
+        else if (typeof v === 'boolean') vals.add(String(v));
+        else if (Array.isArray(v)) { if (v.length && typeof v[0] === 'object') flat(v[0], `${key}[]`, d + 1, acc); }
         else if (v && typeof v === 'object') flat(v, key, d + 1, acc);
       }
       return acc;
     };
     for (const [ep, ring] of Object.entries(samples)) {
-      const seen = new Set();
+      const seen = new Map();
       for (const s of ring) { try { flat(JSON.parse(s.body), '', 0, seen); } catch { /* truncated sample */ } }
       if (seen.size) {
-        const list = [...seen].sort();
+        const list = [...seen].sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([k, v]) => (v.size ? `${k}=${[...v].slice(0, 4).join(',')}` : k));
         lines.push(`sampled ${ep}: ${list.slice(0, 40).join(' ')}${list.length > 40 ? ' …' : ''}`);
       }
     }
