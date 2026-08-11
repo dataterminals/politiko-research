@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.4
+// @version      0.2.5
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -93,7 +93,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.2.4';
+  const VERSION = '0.2.5';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -217,7 +217,8 @@
   //   residual ≈ 0                         → explained
   //   residual, exactly 1 action in window → attributed  (the per-action numbers)
   //   residual, no actions in window       → passive     (jail/travel if seen)
-  //   residual, 2+ actions in window       → ambiguous   (kept, never averaged)
+  //   residual, N actions of ONE endpoint  → action ×N   (total/N per attempt)
+  //   residual, 2+ DIFFERENT endpoints     → ambiguous   (kept, never averaged)
   //
   // Readings with UNCHANGED values still advance `last[key].t` — a reading that
   // shows no gain is evidence there was no gain, and it narrows future windows.
@@ -266,11 +267,18 @@
     if (trainPart !== 0) row(trainPart, { type: 'train', n: 0 });
     if (eduPart !== 0) row(eduPart, { type: 'education', n: 0 });
     if (Math.abs(residual) > EPS) {
-      if (actions.length === 1) {
-        row(residual, { type: 'action', ep: actions[0].ep, n: 1 });
-        const a = (L.actStats[actions[0].ep] ??= { n: 0, outcomes: {}, xp: {} });
+      const eps = [...new Set(actions.map((a) => a.ep))];
+      // A window holding several actions is only unattributable if they were
+      // DIFFERENT actions. Three disobediences in one window are three samples
+      // of one endpoint: the total belongs to it, and total/3 is a sound
+      // per-attempt average — the same arithmetic as n=1, with a better n.
+      // (Field case 2026-08-11: 3 disobediences → +0.06 persuasion and +0.06
+      // street_sense, which is +0.02 each and was being discarded as noise.)
+      if (eps.length === 1 && actions.length >= 1) {
+        row(residual, { type: 'action', ep: eps[0], n: actions.length });
+        const a = (L.actStats[eps[0]] ??= { n: 0, outcomes: {}, xp: {} });
         const x = (a.xp[key] ??= { sum: 0, n: 0 });
-        x.sum += residual; x.n += 1;
+        x.sum += residual; x.n += actions.length;
       } else if (actions.length === 0) {
         const note = win.find((e) => e.kind === 'status' && (e.to === 'jailed' || e.to === 'traveling'))?.to
           ?? (L.status === 'jailed' || L.status === 'traveling' ? L.status : null);
@@ -737,7 +745,10 @@
       : '<b>empty</b>';
 
   const attribText = (a) => {
-    if (a.type === 'action') return esc(a.ep.replace(/^\/actions\//, '').replace(/^\//, ''));
+    if (a.type === 'action') {
+      const name = esc(a.ep.replace(/^\/actions\//, '').replace(/^\//, ''));
+      return a.n > 1 ? `${name} ×${a.n} (avg)` : name;
+    }
     if (a.type === 'train') return 'train';
     if (a.type === 'education') return 'education';
     if (a.type === 'ambiguous') return `ambiguous ×${a.n}`;

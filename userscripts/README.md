@@ -19,7 +19,7 @@ bannable, so the disclosure block is the contract.
 | Comms Move | 0.1.0 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.2.4 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.2.5 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -259,10 +259,18 @@ the panel just diffs what arrives.
 | `passive` | no action in the window; labelled `jailed`/`traveling` when the status poll saw one (street sense ticks in jail) |
 | `ambiguous ×N` | N actions in the window. Kept and shown, **never averaged into per-action stats** — grind blocks between two distant readings land here, which is correct |
 
-Want clean per-action numbers for a crime? Sandwich single attempts: home → one theft →
-back to home — one navigation per measurement, same spirit as People Watch's roster walk.
-Because the dossier is full-width, a single sandwiched action reports **every** skill it
-moved, not just the ones your city happens to train.
+**Grinding one action type in a block is a valid measurement**, not a spoiled one. If
+every action between two readings is the same one, the total belongs to it and the
+per-attempt figure is total ÷ N — shown as `disobedience ×3 (avg)`. Only *mixing*
+different actions in a window costs you the split, and that shows as `ambiguous`.
+
+That's how the first number this tool ever measured came out of ordinary play: **+0.02
+persuasion and +0.02 street sense per civil disobedience.**
+
+Want one attempt pinned exactly? home → one theft → back to home — one navigation per
+measurement, same spirit as People Watch's roster walk. Because the dossier is
+full-width, a single sandwiched action reports **every** skill it moved, not just the
+ones your city happens to train.
 
 **copy report** (no console needed) produces a paste-ready summary for the crew: the
 train targets your current city offers with values and predicted gains, **stamped with

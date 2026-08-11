@@ -404,6 +404,35 @@ console.log('\n— 0.2.0: the home dossier is a live full-width reading source �
   ok('no self-referential comparison line remains', !r.includes('dossier vs live'));
 }
 
+console.log('\n— 0.2.5: N identical actions in one window are N samples, not noise —');
+{
+  // The real 2026-08-11 case: 3 disobediences between two readings, +0.06.
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'assessment' }, {
+    snapshot_date: '2026-08-11', stats_table: [{ key: 'persuasion', current: 10, change: 1 }],
+  }, 2000);
+  for (let i = 0; i < 3; i++) E.ingest(L, { kind: 'action', ep: '/disobedience' }, { success: true }, 3000 + i);
+  const rows = E.ingest(L, { kind: 'assessment' }, {
+    snapshot_date: '2026-08-11', stats_table: [{ key: 'persuasion', current: 10.06, change: 1.06 }],
+  }, 4000);
+  check('a uniform window is attributed, not discarded',
+    rows.map((r) => [r.key, +r.d.toFixed(4), r.attrib.type, r.attrib.ep, r.attrib.n]),
+    [['persuasion', 0.06, 'action', '/disobedience', 3]]);
+  check('per-attempt average is total/N', +(L.actStats['/disobedience'].xp.persuasion.sum
+    / L.actStats['/disobedience'].xp.persuasion.n).toFixed(4), 0.02);
+
+  // Mixed endpoints still cannot be split, and must not be averaged.
+  const M = E.makeLedger();
+  E.ingest(M, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(M, { kind: 'assessment' }, { snapshot_date: 'x', stats_table: [{ key: 'stealth', current: 5, change: 0 }] }, 2000);
+  E.ingest(M, { kind: 'action', ep: '/disobedience' }, {}, 3000);
+  E.ingest(M, { kind: 'action', ep: '/actions/graffiti' }, {}, 3001);
+  const mixed = E.ingest(M, { kind: 'assessment' }, { snapshot_date: 'x', stats_table: [{ key: 'stealth', current: 5.1, change: 0 }] }, 4000);
+  check('mixed endpoints stay ambiguous', mixed[0].attrib.type, 'ambiguous');
+  check('and enter no per-action average', M.actStats['/disobedience']?.xp?.stealth, undefined);
+}
+
 console.log('\n— 0.2.3: what IS the change column (the home page green arrows)? —');
 const dossier = (art, change) => ({
   snapshot_date: '2026-08-11', previous_date: '2026-08-04',

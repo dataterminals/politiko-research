@@ -439,6 +439,57 @@ Also on the wire: `juice_spent`, `spray_can_spent` (consumable accounting), `peo
 `difficulty`, `lean`, `left_count`, `right_count`, `total_count`, `deface_available.L/R`,
 `risk_label`.
 
+### `mastery` is not the award — and what the values actually mean (2026-08-11)
+
+The next report carried the values, and they walk back the previous section's headline
+within the hour. **`mastery=41` — an integer, identical across all three sampled
+disobediences.** An XP award varies per attempt and is small and fractional (the measured
+gain in the same window was +0.06 across three attempts). A constant integer is a
+*level or score*, almost certainly the player's mastery of the issue being protested.
+
+So: **`mastery` is a hidden progression stat the client never renders — still a real find,
+and still nothing any bundle read could have surfaced — but it is not the per-action XP
+award, and the diff engine remains the only measurement of that.** Recorded as a
+correction rather than deleted, because "the wire is wider than the reader" was right
+while "therefore this is the award" was a leap.
+
+Whether `mastery` *moves* is now the interesting question, and it needs only time: three
+samples at one instant cannot show a progression stat progressing.
+
+**The other values, all measured:**
+
+| field | reading |
+|---|---|
+| `people_moved` | **510843, −257229, 521687** — population-scale, and **signed**. A failed action moves the crowd *against* you. |
+| `breakdown.roll` vs `difficulty` | 40.03/45.25/44.96 against difficulty **12** — `roll` is a score beaten against a threshold, **not** a probability. All three succeeded. |
+| `arrest_chance`, `mob_chance` | 0.06 and 0.09 — these *are* probabilities (0–1). Two different numeric conventions in one payload. |
+| `juice_spent` | 4 per graffiti |
+| `spray_can_spent` | **1 — a count, not a boolean** |
+| `location.left_count` | **2 → 3 → 4 across the three attempts** — the wall's tally increments as you tag it, so the payload shows the world changing under you |
+| `location.lean` | −1 (signed, matching the left/right axis) |
+| `jailed` | true on one of three — a disobedience can jail you mid-run |
+
+### The measurement this produced, and the engine change it forced
+
+Between the two reports, exactly two stats moved: **street_sense +0.06 and persuasion
++0.06**, across **three disobediences** (one of which jailed the operator). Nothing else
+in the 37-key dossier moved.
+
+That is `+0.02 persuasion and +0.02 street_sense per civil disobedience` — the first
+per-action XP figure this project has ever measured, and the answer to the question the
+tool was requested for.
+
+It was also being **thrown away**. The engine only attributed a window holding exactly one
+action; three actions went to `ambiguous`, deliberately never averaged. But that rule was
+too strong: *three disobediences are three samples of one endpoint*. The total belongs to
+that endpoint and total ÷ 3 is a sound per-attempt average — identical arithmetic to n=1
+with a better n. **`xp-watch` 0.2.5 attributes any window whose actions share one
+endpoint** (`disobedience ×3 (avg)`), and keeps `ambiguous` strictly for windows mixing
+*different* actions, which genuinely cannot be split.
+
+Consequence for the operator: **grinding one action type in a block is now a valid
+measurement**, not a spoiled one. Only mixing action types costs precision.
+
 ### `change` is RUNNING — the arrows track live gains (2026-08-11)
 
 Measured, from the operator's fourth report: persuasion `current` +0.0100 and `change`
@@ -502,13 +553,12 @@ to map `result_metadata` and lobbying outcomes properly.
 
 ## Open questions
 
-1. ~~**Do crime responses carry award fields the client discards?**~~ **Partly answered
-   2026-08-11: `/disobedience` carries `mastery`**, which the client never renders —
-   found by the sampler, invisible to every bundle read. **What remains: is `mastery` the
-   XP award, and does anything equivalent ride the other actions?** `/actions/graffiti`
-   carries no award-shaped field at all, so if `mastery` is one, it is not universal. The
-   next paste carries its value (0.2.4 prints numbers), which is what makes it checkable
-   against the measured gain.
+1. ~~**Do crime responses carry award fields the client discards?**~~ **Answered
+   2026-08-11: no — not on either sampled endpoint.** `/disobedience` carries `mastery`
+   (a constant integer 41 = a hidden progression *level*, not an award; see the
+   correction above) and `/actions/graffiti` carries no award-shaped field at all. The
+   diff engine stays the only measurement of per-action XP. Still open for the other
+   ~20 action endpoints, and free to check: every sampled endpoint prints its fields.
 1b. **Does a failed action award skill XP?** A crew-mate's three failed graffiti showed no
    gain, but that reading was confounded (see the second field lesson). Now directly
    testable: `success` is on the wire and 0.2.4 records it per attempt, split from the
