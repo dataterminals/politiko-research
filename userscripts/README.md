@@ -12,7 +12,7 @@ bannable, so the disclosure block is the contract.
 
 | tool | version | raw link |
 |---|---|---|
-| People Watch | 1.2.1 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| People Watch | 1.3.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
 | Market Watch | 1.0.1 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
 | Time Watch | 0.4.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
 | Align Watch | 0.2.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
@@ -97,10 +97,39 @@ had clicked the player yourself, and the tap records what comes back.
 |---|---|
 | player | name, `◦` if they never engaged; click to open |
 | idle | time since last online — exact, not the game's rounding |
+| city | where they were, and whether they still are — see below |
 | social | social-issue actions they have logged; hover for the economic count too |
 | rank | their `rank_key` |
 | W-L | attacks won–lost, so "worst record" finds people who lose |
 | seen | how stale *your* copy of their profile is |
+
+### City, and the ⇢ mark
+
+Sort by it, or **group by city** to see the roster laid out by where everyone is.
+
+A city arrives from either of two places the game already sends, whichever is fresher:
+
+- **the profile you open** — `location`, one player at a time, same as every other
+  profile field
+- **roster pages** — `location_name`, **ten at a time, for free**, but only while the
+  server is showing locations (`locations_visible`). It was off when this was first
+  measured in July and it is the client's default-on when the field is absent, so it may
+  be off, on, or conditional for you. When it is off the column simply doesn't arrive and
+  the last profile reading stands. Page through People and see whether cities fill in.
+
+The mark matters. `status` distinguishes six states, one of which is `traveling`, and the
+roster restates it on every page you turn:
+
+| cell | means |
+|---|---|
+| `Miami` | in Miami as of the reading — hover for how old that is |
+| `Miami ⇢` | **in transit.** Miami is where they *left from*, not where they are |
+| `⇢ in transit` | travelling, and no city has ever been recorded for them |
+| `—` | no city recorded — open their profile, or page the roster |
+
+A traveller keeps their last city for grouping, because that's the only bucket the ledger
+can honestly put them in — but the row never prints a bare name that would read as
+current. Same rule as **active now**: the panel doesn't assert what it can't support.
 
 **Social actions** come from `alignment.social_count` — the same number the profile screen
 prints as "N actions" beside the compass. It is the only measure of activity *volume* the

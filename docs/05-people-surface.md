@@ -35,6 +35,55 @@ carry last-active, at any precision.
 four days, so it is account standing (the counterpart values are presumably banned /
 jailed / dead), not a liveness signal. It does not move when someone stops playing.
 
+#### The row is wider than this capture — read off `PeoplePage` in the 2026-08-03 bundle on 2026-08-14
+
+```
+row        location_name      string        rendered as `location_name ?? "Unknown"`
+```
+
+The roster carries the **city name**, not just the `in_city` boolean. Both the name and
+the `In city` badge sit behind one gate: `R = locations_visible ?? true`. The July capture
+recorded `locations_visible: false`, which is why neither reached the transcript — the
+client had them and rendered nothing.
+
+That resolves the inferred item below in the useful direction. The mode where locations
+are visible is not hypothetical; it is the client's **default when the field is absent**,
+and it hands you ten cities per roster page instead of one per profile opened.
+
+**`status` is a six-value enum**, and the client has held the full vocabulary all along —
+three label maps keyed by it, read off `ProfilePage` in the same bundle:
+
+| value | roster | profile | meaning |
+|---|---|---|---|
+| `active` | online | online | free to act, no sentence or detainment |
+| `jailed` | jailed | detained | currently detained |
+| `hospitalized` | hosp | hospitalized | in hospital |
+| `in_combat` | combat | in combat | in an active combat session |
+| `traveling` | travel | in transit | **travelling between locations** |
+| `dead` | dead | deceased | deceased |
+
+Only `"active"` was ever observed in the July capture, which is what made it look like a
+one-value field. It is the counterpart to `location_name`: the name says where, `status`
+says whether they are still there.
+
+#### The roster takes filter parameters — same file, same date
+
+`/api/people` is built by the client as:
+
+```
+page           number
+in_city        "true"    when the In-city filter is ticked
+jailed         "true"
+hospitalized   "true"
+q              string    free-text search — gated behind `insider === true`
+```
+
+This answers **"whether the roster supports sort or filter parameters"** in Still unknown:
+filters yes, sort no. Nothing here was probed — the parameter list was read out of the
+client's own URL builder. Note what that means under the envelope: these are filters *the
+game itself sends when you tick its checkboxes*, so they arrive for free while browsing.
+Constructing one ourselves would be originating a request, which is a different thing.
+
 ### `GET /api/users/<name>` — a profile
 
 Fires when you click a player. One request, one player.
@@ -117,10 +166,12 @@ first suggested the backend emits exact times everywhere rather than pre-rounded
 
 ## Inferred
 
-- **`status` is an enum**, but only `"active"` was ever observed across ~50 sampled rows
-  and two profiles. The other values are guesses from the game's own vocabulary.
-- **`locations_visible: false` implies a mode where it is true** — some condition, item,
-  or rank that reveals player locations on the roster. Nothing was probed to find out.
+- ~~**`status` is an enum**, but only `"active"` was ever observed.~~ **Answered
+  2026-08-14** — six values, read off the client's own label maps. See the table above.
+- ~~**`locations_visible: false` implies a mode where it is true.**~~ **Answered
+  2026-08-14** — it is the client's default when the field is absent, and it reveals a
+  `location_name` per row. What flips it server-side is still unknown, and still not
+  worth probing for.
 - `page_size` is fixed at 10 in every observed call. Whether the endpoint honours a
   larger value is unknown and was not tested — that would be probing.
 - `rank_key: "punchbag"` on both sampled players suggests it is the entry rank, and that
@@ -128,8 +179,11 @@ first suggested the backend emits exact times everywhere rather than pre-rounded
 
 ## Still unknown
 
-- **Whether the roster supports sort or filter parameters.** The UI may expose controls
-  that would make the whole build unnecessary. Worth looking at before anything else.
+- ~~**Whether the roster supports sort or filter parameters.**~~ **Answered 2026-08-14** —
+  it takes `in_city`, `jailed`, `hospitalized` and an insider-gated `q`, but **no sort
+  parameter**, so ranking by last-active still has to be built locally. See above.
+- **What flips `locations_visible` server-side.** An item, a rank, an insider flag, or a
+  world setting — the client only reads it. Not to be probed.
 - ~~**Whether the WebSocket carries presence.**~~ **Answered 2026-08-07 — it does.**
   `/ws/chat` pushes `{type:"presence", username, online}`, measured on the wire.
 

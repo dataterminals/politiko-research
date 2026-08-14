@@ -22,7 +22,8 @@ const S_SLICE = cut('  const ms = (iso) =>', '  // =============================
 
 /** rows() reads `people` and `ui` from the closure, so both are injected. */
 const mkRows = (people, ui, CFG) =>
-  new Function('people', 'ui', 'CFG', `${S_SLICE}\nreturn { rows, SORTS, COLUMNS, GROUPS, liveScore, derive };`)(people, ui, CFG);
+  new Function('people', 'ui', 'CFG',
+    `${S_SLICE}\nreturn { rows, SORTS, COLUMNS, GROUPS, liveScore, derive, cityText, cityTitle };`)(people, ui, CFG);
 
 /** goProfile is never called here — it only touches history/window, which are stubs. */
 const mkWalk = (people, roster, pathname) =>
@@ -174,6 +175,59 @@ console.log('\n— grouping —');
   check('corp reads corp_name', GROUPS.corp.of(r), 'Nyx Media');
   check('an empty membership groups as null, not ""', GROUPS.faction.of({ faction_name: '' }), null);
   check('a missing membership groups as null', GROUPS.corp.of({}), null);
+  check('city reads location', GROUPS.city.of({ location: 'Miami' }), 'Miami');
+  check('an unrecorded city groups as null', GROUPS.city.of({}), null);
+  // someone in transit still belongs to the city they left — it is the only bucket
+  // the ledger can honestly put them in, and the row carries the mark instead
+  check('a traveler groups under the city they left',
+    GROUPS.city.of({ location: 'Miami', status: 'traveling' }), 'Miami');
+}
+
+console.log('\n— city: the name, and how much of it is honest —');
+{
+  const CFG_C = { NEVER_STUCK_MS: 2 * HOUR, LIVE_TRUST_MS: 5 * 60_000 };
+  const p = (n, location, status) => ({
+    username: n, observedAt: now, is_online: false, combat: null, status,
+    location, locationAt: location ? now - 2 * HOUR : null,
+    last_online: new Date(now - HOUR).toISOString(),
+  });
+  const ledger = {
+    zeta: p('zeta', 'Austin', 'active'),
+    ana: p('ana', 'Miami', 'active'),
+    nomad: p('nomad', null, 'active'),
+    gone: p('gone', 'Miami', 'traveling'),
+  };
+  const ui = { sort: 'city', dir: 1, hideNpc: true, hideOnline: false, minIdleDays: 0 };
+  const m = mkRows(ledger, ui, CFG_C);
+
+  // unknown last in natural order, exactly like the count sorts put "never observed"
+  // below a genuine zero — a city we have never seen is not a place
+  check('cities sort A→Z with the unrecorded one last',
+    m.rows().map((x) => x.r.username), ['zeta', 'ana', 'gone', 'nomad']);
+  check('...ties inside a city break by name',
+    m.rows().filter((x) => x.d.city === 'Miami').map((x) => x.r.username), ['ana', 'gone']);
+  check('...reversed puts the unrecorded one first',
+    mkRows(ledger, { ...ui, dir: -1 }, CFG_C).rows().map((x) => x.r.username),
+    ['nomad', 'gone', 'ana', 'zeta']);
+
+  const d = Object.fromEntries(m.rows().map((x) => [x.r.username, x.d]));
+  check('a recorded city derives', d.ana.city, 'Miami');
+  check('an unrecorded city is null, not ""', d.nomad.city, null);
+  check('traveling is read off status', d.gone.traveling, true);
+  check('...and is false for everyone else', d.ana.traveling, false);
+  check('city age comes from locationAt', Math.round(d.ana.cityAgeMs / HOUR), 2);
+  check('no reading means no age', d.nomad.cityAgeMs, null);
+
+  // the whole point of the mark: a traveler is not in the city we last saw them in,
+  // so the cell must not print a bare name that reads as current
+  const { cityText, cityTitle } = m;
+  check('a settled player shows the bare city', cityText(d.ana), 'Miami');
+  check('a traveler is marked, not asserted', cityText(d.gone), 'Miami ⇢');
+  check('a traveler with no known city says so', cityText({ traveling: true, city: null }), '⇢ in transit');
+  check('an unrecorded city renders as a dash', cityText(d.nomad), '—');
+  check('the tooltip dates a settled reading', cityTitle(d.ana), 'Miami, as of 2h ago');
+  check('...and spells out what a transit reading means',
+    cityTitle(d.gone), 'in transit — Miami is where they were as of 2h ago');
 }
 
 console.log('\n— "active now" only claims what it can support —');

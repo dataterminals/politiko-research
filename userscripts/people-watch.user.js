@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — People Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      1.2.1
-// @description  Builds a local ledger of players' last-online times, ranks and combat records from the profiles you open, and sorts it least-active-first. Fully passive: it reads responses the game already made and originates nothing. Includes a next/back walk so filling the ledger by hand is one keypress per player.
+// @version      1.3.0
+// @description  Builds a local ledger of players' last-online times, cities, ranks and combat records from the profiles you open, and sorts it least-active-first. Fully passive: it reads responses the game already made and originates nothing. Includes a next/back walk so filling the ledger by hand is one keypress per player.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -34,6 +34,12 @@
  *
  *   Storage:  localStorage keys prefixed `pkpw:` — the observed player ledger, roster
  *             metadata, and panel settings. All local. Clearable from the panel.
+ *
+ *             As of 1.3.0 the ledger also keeps each player's city. Both sources are
+ *             fields the game already sends: `location` on a profile you opened, and
+ *             `location_name` on roster rows when the server is unlocking that column
+ *             (`locations_visible`). Neither adds a request, and nothing asks for a
+ *             location that was not already in a response on screen.
  *
  *   Alerts:   none. No notifications, no title flashing, no sound.
  *
@@ -123,16 +129,28 @@
     roster.totalPages = Number(data.total_pages) || roster.totalPages;
     roster.seenAt = Date.now();
     if (page) roster.pages[page] = Date.now();
+    // Whether the server is currently unlocking the roster's location column. The
+    // client defaults it to true when the field is absent, so match that rather than
+    // guessing. When it is on, one roster page yields ten cities for free; when it is
+    // off the rows simply carry no name and the last profile reading stands.
+    roster.locationsVisible = data.locations_visible ?? true;
 
     for (const r of data.people) {
       if (!r || typeof r.username !== 'string') continue;
       if (!roster.usernames.includes(r.username)) roster.usernames.push(r.username);
       const cur = people[r.username] || {};
+      const rosterCity = typeof r.location_name === 'string' && r.location_name
+        ? r.location_name
+        : null;
       people[r.username] = {
         ...cur,
         username: r.username,
         status: r.status ?? cur.status ?? null,
         in_city: r.in_city ?? cur.in_city ?? null,
+        // Same keep-the-old-value rule as membership below: an absent city means the
+        // server did not send one, not that they left town.
+        location: rosterCity ?? cur.location ?? null,
+        locationAt: rosterCity ? Date.now() : (cur.locationAt ?? null),
         rosterSeenAt: Date.now(),
       };
     }
@@ -168,6 +186,7 @@
       corp_name: data.corp_name ?? cur.corp_name ?? null,
       corp_role: data.corp_role ?? cur.corp_role ?? null,
       location: data.location ?? cur.location ?? null,
+      locationAt: data.location ? Date.now() : (cur.locationAt ?? null),
       observedAt: Date.now(),
     };
     if (!roster.usernames.includes(data.username)) roster.usernames.push(data.username);
@@ -303,8 +322,37 @@
       staleMs,
       live,
       liveNow: live === 3,
+      city: r.location || null,
+      cityAgeMs: r.locationAt ? Date.now() - r.locationAt : null,
+      traveling: r.status === 'traveling',
     };
   }
+
+  /**
+   * The city, and how much of it is honest. `traveling` is a status the roster restates
+   * on every page you turn, so it outranks the stored name: someone in transit is by
+   * definition not in the city you last saw them in, and printing a bare name there
+   * would be asserting something the ledger cannot support. The name is kept — it is
+   * still where they left from, and it is what grouping needs — but it is marked.
+   *
+   * Status vocabulary, read off the 2026-08-03 bundle: active, jailed, hospitalized,
+   * in_combat, traveling, dead.
+   */
+  const cityText = (d) => {
+    if (d.traveling) return d.city ? `${d.city} ⇢` : '⇢ in transit';
+    return d.city || '—';
+  };
+
+  const cityTitle = (d) => {
+    if (!d.city) {
+      return 'no city recorded — open their profile, or page the roster if the '
+           + 'server is showing locations';
+    }
+    const age = d.cityAgeMs == null ? 'an unknown time ago' : `${fmtDur(d.cityAgeMs)} ago`;
+    return d.traveling
+      ? `in transit — ${d.city} is where they were as of ${age}`
+      : `${d.city}, as of ${age}`;
+  };
 
   /**
    * How much the ledger can say about someone being active *right now*, which is not
@@ -377,11 +425,20 @@
       label: 'name', col: 'player',
       cmp: (a, b) => a.r.username.localeCompare(b.r.username),
     },
+    // '￿' sorts an unrecorded city after every real name, the same way the count
+    // sorts use -1 — "we have never seen where they are" is not a place, and it should
+    // not land in the middle of the alphabet
+    city: {
+      label: 'city', col: 'city',
+      cmp: (a, b) => (a.d.city ?? '￿').localeCompare(b.d.city ?? '￿')
+                  || a.r.username.localeCompare(b.r.username),
+    },
   };
 
   const COLUMNS = [
     { key: 'player', label: 'player', sort: 'name' },
     { key: 'idle', label: 'idle', sort: 'idle' },
+    { key: 'city', label: 'city', sort: 'city' },
     { key: 'social', label: 'social', sort: 'social' },
     { key: 'rank', label: 'rank', sort: 'rank' },
     { key: 'record', label: 'W-L', sort: 'record' },
@@ -397,6 +454,9 @@
     none: { label: 'no grouping', of: null },
     faction: { label: 'group by faction', of: (r) => r.faction_name || null, sub: (r) => r.faction_rank },
     corp: { label: 'group by corp', of: (r) => r.corp_name || null, sub: (r) => r.corp_role },
+    // Someone in transit still buckets under the city they left, which is the only
+    // place the ledger can honestly put them; the row itself carries the ⇢ mark.
+    city: { label: 'group by city', of: (r) => r.location || null },
   };
   const UNGROUPED = 'not recorded';
 
@@ -566,6 +626,7 @@
     .idle { color: #f87171; }
     .never { color: #fbbf24; }
     .dim { color: #71717a; }
+    .transit { color: #60a5fa; font-style: italic; }
     .note { padding: 6px 8px; color: #a1a1aa; border-top: 1px solid #27272a; font-size: 11px; }
     /* The button is the triangle — not a square with a triangle drawn on it. The
        outline and fill come from the SVG, and clip-path takes the corners out of the
@@ -913,31 +974,33 @@
 
     const buildRow = ({ r, d }) => {
       const tr = document.createElement('tr');
+      // Keyed rather than positional: the order here has to match COLUMNS, and an
+      // index-based version silently mislabels every cell after an inserted column.
       const cells = [
-        null,                                                     // built below, it is a link
-        d.liveNow ? '● online' : fmtDur(d.idleMs),
-        d.socialActs == null ? '—' : String(d.socialActs),
-        r.rank_key || '—',
-        d.record,
-        fmtDur(d.staleMs),
-      ];
-      cells.forEach((c, i) => {
-        const td = document.createElement('td');
-        if (i === 0) td.append(profileLink(r.username), document.createTextNode(d.neverStuck ? ' ◦' : ''));
-        else td.textContent = c;
-        if (i === 0 && d.neverStuck) td.className = 'never';
+        { link: true, cls: d.neverStuck ? 'never' : '' },
         // only claim "online" where the observation is fresh enough to support it;
         // a stale online flag is shown as plain idle time instead of a green light
-        if (i === 1) td.className = d.liveNow ? 'live' : 'idle';
-        if (i === 2) {
-          td.className = 'dim';
-          td.title = d.socialActs == null
+        { text: d.liveNow ? '● online' : fmtDur(d.idleMs), cls: d.liveNow ? 'live' : 'idle' },
+        { text: cityText(d), cls: d.traveling ? 'transit' : (d.city ? '' : 'dim'), title: cityTitle(d) },
+        {
+          text: d.socialActs == null ? '—' : String(d.socialActs),
+          cls: 'dim',
+          title: d.socialActs == null
             ? 'no alignment recorded — open their profile'
-            : `${d.socialActs} social · ${d.econActs ?? 0} economic actions`;
-        }
-        if (i === 5) td.className = 'dim';
+            : `${d.socialActs} social · ${d.econActs ?? 0} economic actions`,
+        },
+        { text: r.rank_key || '—' },
+        { text: d.record },
+        { text: fmtDur(d.staleMs), cls: 'dim' },
+      ];
+      for (const c of cells) {
+        const td = document.createElement('td');
+        if (c.link) td.append(profileLink(r.username), document.createTextNode(d.neverStuck ? ' ◦' : ''));
+        else td.textContent = c.text;
+        if (c.cls) td.className = c.cls;
+        if (c.title) td.title = c.title;
         tr.append(td);
-      });
+      }
       return tr;
     };
 
@@ -978,8 +1041,17 @@
     const note = document.createElement('div');
     note.className = 'note';
     const unseen = roster.usernames.filter((u) => !people[u]?.observedAt).length;
+    // Whether the roster is handing out cities decides how you fill the city column:
+    // ten per page just by browsing People, or one per profile you open. It is the
+    // server's call and it can change, so report what the last roster page actually
+    // said rather than assuming either way.
+    const cityNote = roster.locationsVisible == null
+      ? 'cities: profiles only until you load a roster page'
+      : roster.locationsVisible
+        ? 'cities: roster is showing them — page People to fill them in fast'
+        : 'cities: roster is hiding them — only profiles you open';
     note.textContent = `passive · ${unseen} known player(s) still unprofiled`
-      + ` · open one to record it · ◦ = never stuck`;
+      + ` · open one to record it · ◦ = never stuck · ${cityNote}`;
     panel.append(note);
 
     // the rows just changed the height, so re-place and re-check it is still reachable
