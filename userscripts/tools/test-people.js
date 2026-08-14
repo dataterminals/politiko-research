@@ -228,6 +228,39 @@ console.log('\n— city: the name, and how much of it is honest —');
   check('the tooltip dates a settled reading', cityTitle(d.ana), 'Miami, as of 2h ago');
   check('...and spells out what a transit reading means',
     cityTitle(d.gone), 'in transit — Miami is where they were as of 2h ago');
+  // never tell someone to open a profile to fix a seal that profiles cannot fix
+  check('an unrecorded city points at the note, not at busywork',
+    /open their profile/.test(cityTitle(d.nomad)), false);
+}
+
+console.log('\n— the city note: "not looked yet" is not "server sent nothing" —');
+{
+  // Blank cities have two completely different causes and the note must not merge
+  // them: one is answered by browsing, the other cannot be answered at all. This is
+  // the layer that decides whether a working tool reads as broken.
+  const CFG_N = { NEVER_STUCK_MS: 2 * HOUR, LIVE_TRUST_MS: 5 * 60_000 };
+  const mkNote = (people, roster) =>
+    new Function('people', 'roster', 'ui', 'CFG', `${S_SLICE}\nreturn cityNote;`)(
+      people, roster, {}, CFG_N)();
+
+  const withCity = { a: { username: 'a', observedAt: now, location: 'Miami' } };
+  const noCity = { a: { username: 'a', observedAt: now, location: null } };
+  const rosterOnly = { a: { username: 'a', rosterSeenAt: now } };
+
+  check('nothing read yet says so', mkNote(rosterOnly, { locationsVisible: null }),
+    'cities: none yet — open a profile or page the roster');
+  check('a sealed roster plus empty profiles reads as sealed',
+    mkNote(noCity, { locationsVisible: false }),
+    'cities: sealed — 1 profile(s) read, none carried one (hover)');
+  check('...and hedges when the roster has not said either way',
+    mkNote(noCity, { locationsVisible: null }),
+    'cities: none in 1 profile(s) read — likely sealed (hover)');
+  check('a visible roster with cities recorded points at the fast path',
+    mkNote(withCity, { locationsVisible: true }),
+    'cities: 1 recorded · roster is showing them — page People for ten at a time');
+  check('...and a hidden roster points at the slow one',
+    mkNote(withCity, { locationsVisible: false }),
+    'cities: 1 recorded · roster is hiding them — one per profile you open');
 }
 
 console.log('\n— "active now" only claims what it can support —');

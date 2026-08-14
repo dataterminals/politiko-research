@@ -78,6 +78,29 @@ hospitalized   "true"
 q              string    free-text search — gated behind `insider === true`
 ```
 
+#### Field check 2026-08-14: both location paths are shut
+
+Measured in ordinary play, not probed. Opening profiles returns **no `location` field at
+all** — the game's own stat box renders `UNAVAILABLE` over `[ signal lost ]`, which is
+exactly `V.location ?? "UNAVAILABLE"` with `sub: V.location ? "visible" : "[ signal lost ]"`
+falling through. people-watch 1.3.x recorded a city for zero of the profiles read.
+
+So location visibility is server-side and currently off on both paths, and it is **a
+world policy gate of the same family that seals the stats tab**. `GovernmentPage` carries
+20 policies keyed by name — Tax Structure, Abortion Rights, Animal Rights, Civil Rights,
+Healthcare, Drug Law, Free Speech, Gay Rights, Gun Control, Human Rights, Immigration,
+Police Regulation, **Privacy Rights**, Womens Rights, Corporate Law, Election Reform,
+Labor Laws, Military Spending, Nuclear Power, Pollution — each rendered on a 7-cell
+`grid-cols-7`, i.e. the −3..+3 axis the compass uses.
+
+**What is not knowable from the client:** the threshold. For stats and holdings the
+sealed view prints its own requirement (`privacy rights axis {n} · requires 3`, and
+`requires 2+`), and `privacy_rights_axis` appears in `ProfilePage` exactly twice — both
+of those. Location has no such string: the server simply omits the field and, on the
+roster, reports the outcome as the `locations_visible` boolean. So we can say location is
+gated and currently shut; we cannot say at what value it opens, and finding out by
+experiment is not available to us.
+
 This answers **"whether the roster supports sort or filter parameters"** in Still unknown:
 filters yes, sort no. Nothing here was probed — the parameter list was read out of the
 client's own URL builder. Note what that means under the envelope: these are filters *the
@@ -182,8 +205,15 @@ first suggested the backend emits exact times everywhere rather than pre-rounded
 - ~~**Whether the roster supports sort or filter parameters.**~~ **Answered 2026-08-14** —
   it takes `in_city`, `jailed`, `hospitalized` and an insider-gated `q`, but **no sort
   parameter**, so ranking by last-active still has to be built locally. See above.
-- **What flips `locations_visible` server-side.** An item, a rank, an insider flag, or a
-  world setting — the client only reads it. Not to be probed.
+- **At what value the Privacy Rights axis opens locations.** Narrowed 2026-08-14 to "a
+  world policy axis, currently shut on both paths" — but unlike stats (`requires 3`) and
+  holdings (`requires 2+`), the client never prints a threshold for location, so the
+  number is not readable from the bundle. Watching the Government page across a policy
+  change is the only honest way to learn it, and it costs nothing but patience.
+- **Whether location and the stats seal move together.** Both are Privacy Rights and both
+  are shut, so a single policy move may open the city column and the stat sheet at once —
+  which would make this the second tool waiting on the same vote. See
+  [`10-xp-surface.md`](10-xp-surface.md).
 - ~~**Whether the WebSocket carries presence.**~~ **Answered 2026-08-07 — it does.**
   `/ws/chat` pushes `{type:"presence", username, online}`, measured on the wire.
 

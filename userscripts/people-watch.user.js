@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — People Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      1.3.0
+// @version      1.3.1
 // @description  Builds a local ledger of players' last-online times, cities, ranks and combat records from the profiles you open, and sorts it least-active-first. Fully passive: it reads responses the game already made and originates nothing. Includes a next/back walk so filling the ledger by hand is one keypress per player.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -343,11 +343,47 @@
     return d.city || '—';
   };
 
-  const cityTitle = (d) => {
-    if (!d.city) {
-      return 'no city recorded — open their profile, or page the roster if the '
-           + 'server is showing locations';
+  /**
+   * Whether cities are arriving at all, which is the server's call and not ours.
+   *
+   * Two independent switches, and both were dark when this shipped (field-checked
+   * 2026-08-14): the roster envelope's `locations_visible`, and — separately — whether
+   * a profile payload carries `location` at all. When the profile is sealed the game's
+   * own stat box prints UNAVAILABLE / [ signal lost ], so a blank column here is the
+   * tool reporting the world state correctly, not failing to read it.
+   *
+   * The distinction the note has to preserve is "you have not looked yet" versus "you
+   * looked and the server sent nothing" — those need different things from the reader,
+   * and collapsing them into one message is how a working tool gets called broken.
+   */
+  const CITY_NOTE_HELP =
+    'A city can arrive two ways, both server-gated: `location_name` on roster rows '
+    + '(when locations_visible is on) and `location` on a profile. Politiko gates player '
+    + 'visibility behind government policy — the Privacy Rights axis, one of 20 policies '
+    + 'on a -3..+3 scale — the same family of gate that seals the profile stats tab. If '
+    + 'the game itself shows UNAVAILABLE / [ signal lost ] in a profile\'s location box, '
+    + 'nothing client-side can recover it; it opens when the world policy moves.';
+
+  const cityNote = () => {
+    const profiled = Object.values(people).filter((p) => p.observedAt);
+    const withCity = profiled.filter((p) => p.location).length;
+    if (withCity) {
+      return roster.locationsVisible
+        ? `cities: ${withCity} recorded · roster is showing them — page People for ten at a time`
+        : `cities: ${withCity} recorded · roster is hiding them — one per profile you open`;
     }
+    // Nothing recorded. Say which of the two reasons it is.
+    if (!profiled.length) return 'cities: none yet — open a profile or page the roster';
+    return roster.locationsVisible === false
+      ? `cities: sealed — ${profiled.length} profile(s) read, none carried one (hover)`
+      : `cities: none in ${profiled.length} profile(s) read — likely sealed (hover)`;
+  };
+
+  const cityTitle = (d) => {
+    // Deliberately does not say "open their profile": when the world seals locations
+    // that is advice which cannot work, and the foot of the panel already reports
+    // which of the two situations you are actually in.
+    if (!d.city) return 'no city recorded — see the note at the foot of the panel';
     const age = d.cityAgeMs == null ? 'an unknown time ago' : `${fmtDur(d.cityAgeMs)} ago`;
     return d.traveling
       ? `in transit — ${d.city} is where they were as of ${age}`
@@ -1041,17 +1077,9 @@
     const note = document.createElement('div');
     note.className = 'note';
     const unseen = roster.usernames.filter((u) => !people[u]?.observedAt).length;
-    // Whether the roster is handing out cities decides how you fill the city column:
-    // ten per page just by browsing People, or one per profile you open. It is the
-    // server's call and it can change, so report what the last roster page actually
-    // said rather than assuming either way.
-    const cityNote = roster.locationsVisible == null
-      ? 'cities: profiles only until you load a roster page'
-      : roster.locationsVisible
-        ? 'cities: roster is showing them — page People to fill them in fast'
-        : 'cities: roster is hiding them — only profiles you open';
+    note.title = CITY_NOTE_HELP;
     note.textContent = `passive · ${unseen} known player(s) still unprofiled`
-      + ` · open one to record it · ◦ = never stuck · ${cityNote}`;
+      + ` · open one to record it · ◦ = never stuck · ${cityNote()}`;
     panel.append(note);
 
     // the rows just changed the height, so re-place and re-check it is still reachable

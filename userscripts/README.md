@@ -12,7 +12,7 @@ bannable, so the disclosure block is the contract.
 
 | tool | version | raw link |
 |---|---|---|
-| People Watch | 1.3.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| People Watch | 1.3.1 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
 | Market Watch | 1.0.1 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
 | Time Watch | 0.4.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
 | Align Watch | 0.2.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
@@ -112,10 +112,33 @@ A city arrives from either of two places the game already sends, whichever is fr
 - **the profile you open** — `location`, one player at a time, same as every other
   profile field
 - **roster pages** — `location_name`, **ten at a time, for free**, but only while the
-  server is showing locations (`locations_visible`). It was off when this was first
-  measured in July and it is the client's default-on when the field is absent, so it may
-  be off, on, or conditional for you. When it is off the column simply doesn't arrive and
-  the last profile reading stands. Page through People and see whether cities fill in.
+  server is showing locations (`locations_visible`)
+
+### ⚠ Both are sealed right now (field-checked 2026-08-14)
+
+**Profiles return no `location` at all**, and the game's own profile screen says so — the
+location box reads `UNAVAILABLE` over `[ signal lost ]`. The roster's
+`locations_visible` was `false` when the surface was first measured in July.
+
+This is a **world government policy gate**, not a bug and not something the tool can work
+around. Politiko has 20 policies on a −3..+3 axis, one of which is **Privacy Rights** —
+the same family of gate that seals the profile stats tab, where the client spells out its
+thresholds (`requires 3` for stats, `requires 2+` for holdings). For location the server
+just omits the field rather than announcing a threshold, so **the exact number it opens at
+is not knowable from the client** — only that it is currently shut. Check the Government
+page for where the Privacy Rights axis actually sits.
+
+The column is therefore built and correct but blank, and the panel's footer says which
+situation you are in rather than pretending browsing will fix it:
+
+| footer | means |
+|---|---|
+| `cities: none yet` | you haven't opened a profile or loaded a roster page |
+| `cities: sealed — N profile(s) read, none carried one` | you looked; the server sent nothing |
+| `cities: N recorded · roster is showing them` | the fast path is open — page People |
+| `cities: N recorded · roster is hiding them` | profiles only, one at a time |
+
+If the axis moves, the column fills in on its own with no change to the script.
 
 The mark matters. `status` distinguishes six states, one of which is `traveling`, and the
 roster restates it on every page you turn:
