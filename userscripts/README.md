@@ -20,6 +20,7 @@ bannable, so the disclosure block is the contract.
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
 | XP Watch | 0.2.7 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| Raid Watch | 0.1.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -407,6 +408,94 @@ and sends nothing anywhere.
 
 ---
 
+# Raid Watch
+
+Records faction raids — the score curve, the event log, and who actually did the work.
+
+It is **fully passive**, and here that claim carries more weight than usual: the raid
+surface has four write endpoints sitting directly beside the two reads (`cease`,
+`surrender`, `accept-surrender`, `flag-override`). **This script cannot call any of them.**
+There is no arming switch and no seam where one could be added quietly;
+`tools/test-raid-passive.js` fails the build if any of those paths, any non-GET verb, or
+any self-rearming timer ever appears in the file.
+
+## Why this one is unusually cheap
+
+The faction page **polls its own raid list every five seconds** while you have it open —
+`/api/factions/<id>/raids?events_page=N&events_limit=5`, `refetchInterval: 5e3`. That is
+the game fetching, not us. Sitting on that page during a raid hands the tap a live feed of
+the whole fight at five-second resolution, for free.
+
+So there is nothing to *do*. Open the faction page and leave it open. The panel fills in.
+
+## What it's for
+
+The client renders `event_type.replaceAll('_', ' ')` and has **no label map, no colour map,
+no switch** — it prints whatever string the server sends. So unlike the player `status`
+enum, which was sitting in the bundle all along, **the raid event vocabulary cannot be read
+out of the client at all.** It can only be learned by watching raids happen.
+
+The **event types** tab is that tally: every distinct `event_type` seen, how often, the
+score and power it moved, how many of them actually scored, and how many different players
+produced it. That table is the research output.
+
+## The panel
+
+**Alt+R**, or the `RAID` button. Drag either anywhere; they remember.
+
+| tab | what it shows |
+|---|---|
+| event types | the vocabulary, with counts and summed deltas — the point of the tool |
+| log | every deduplicated event, newest first, with actor and target |
+| curve | two-line score chart for one raid, plus its power and commitment figures |
+| who | per-player contribution, ranked by score, from event attribution |
+| raids | every raid seen, its status, and whether a report was captured |
+
+## Two captures, worth different things
+
+- **A finished raid, from its report page.** `/raids/<id>/report` survives the raid and
+  carries the server's own `score_history` — authoritative, and it does not decay. This is
+  what answers *what are the event types*.
+- **A live raid, from the 5s poll.** Finer than the server's history, and every event as it
+  lands rather than five per page. This is what answers *how does scoring work*.
+
+The curve says which one it is drawing. A **sampled** curve is only as dense as the time you
+had the page open; a **report** curve is the server's own. And one reading is never drawn as
+a line — the game itself synthesises a single point when it has no history, and a
+one-point "curve" is a fiction worth naming.
+
+## Score samples are changes, not polls
+
+A sample is appended only when a score actually moves. Recording one per poll would bury
+twelve identical points a minute and turn the curve into a clock.
+
+## Console
+
+```js
+__pkrw.types()     // the event-type digest
+__pkrw.who()       // per-player contribution
+__pkrw.events()    // the deduplicated log
+__pkrw.raids()     // raids with their score samples
+__pkrw.digest()    // the paste-ready summary, no usernames
+__pkrw.export()    // everything, as JSON
+__pkrw.clear()     // wipe it
+```
+
+## What it reads
+
+Full disclosure is in the header comment at the top of
+[`raid-watch.user.js`](raid-watch.user.js). In short: it reads two GET responses the game
+already made, stores them under `pkrw:` keys in your browser, and sends nothing anywhere.
+
+**The event log and member rosters hold other players' usernames and their contribution to
+a fight.** That never leaves your browser and must not be committed. `copy digest` is the
+shareable output and carries **no usernames** by construction — vocabulary and totals only.
+
+Surface notes and what was inferred rather than measured:
+[`docs/11-faction-raid-surface.md`](../docs/11-faction-raid-surface.md).
+
+---
+
 ## Tests
 
 Run from the repository root:
@@ -421,6 +510,8 @@ node userscripts/tools/test-views.js
 node userscripts/tools/test-passive.js
 node userscripts/tools/test-bridge.js
 node userscripts/tools/test-xp.js
+node userscripts/tools/test-raid.js
+node userscripts/tools/test-raid-passive.js
 ```
 
 Every suite slices the layer it covers straight out of the shipped script rather than
@@ -433,9 +524,18 @@ true only until someone adds it back:
 - `test-market-passive` fences market-watch's deleted order-execution seam.
 - `test-passive` fences ws-watch, which replaces `window.WebSocket` and is therefore
   structurally one line away from being a bot. It also drives the tap's behaviour.
+- `test-raid-passive` fences raid-watch, which reads a surface whose write endpoints
+  surrender wars and impose flags. It fails on any mention of those paths, any non-GET
+  verb, and any timer body that touches the network — the two ways to build a poll are
+  `setInterval` and a `setTimeout` that re-arms, and both are barred.
 
-The two have nothing else in common; market-watch's was named `test-passive.js` when it
+They have nothing else in common; market-watch's was named `test-passive.js` when it
 lived in its own repository and was renamed on the way in.
+
+`test-placement` also checks that **`PANEL KIT v1` is byte-identical across all eight
+copies**. The convention was written down in CLAUDE.md from the start and enforced by
+nobody, which is how seven hand-maintained copies of a drag implementation quietly
+diverge. Now a mismatch fails the build and prints which files disagree.
 
 `test-people` covers people-watch's walk layer — where a keypress sends you, and which
 players `next unseen` is allowed to skip — plus the derived metrics. An off-by-one in the

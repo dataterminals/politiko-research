@@ -52,8 +52,9 @@ docs/     numbered findings + plan; 00 recon, 01 rules, 02 plan, 03 ideas,
 tools/    recon helpers (PowerShell)
 userscripts/  _template.user.js — passive-tap skeleton + WS TAP + PANEL KIT;
               people-watch, market-watch, time-watch, align-watch, comms-move,
-              time-bridge, ws-watch, xp-watch; README.md documents them; tools/
-              holds their tests. Every userscript ships from here — no separate repos
+              time-bridge, ws-watch, xp-watch, raid-watch; README.md documents them;
+              tools/ holds their tests. Every userscript ships from here — no separate
+              repos
 artifacts/    gitignored: downloaded bundles, HARs, captures
 ```
 

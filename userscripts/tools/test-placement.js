@@ -4,6 +4,7 @@
 // stay fully on screen no matter which corner the button was dragged into.
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'people-watch.user.js'), 'utf8');
 
 const cut = (from, to) => {
@@ -136,6 +137,40 @@ const onScreen = (s) => {
     s.placeFab();
     const h = px(s.panel.style.maxHeight);
     check(`height at y=${y} is bounded and usable`, h >= CFG.PANEL_MIN_H && h <= 900, true);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PANEL KIT v1 is copied verbatim into every tool that draws a panel, with no build
+// step and no @require, so each script stays one auditable file. CLAUDE.md states the
+// copies must stay byte-identical and that changing the kit means bumping its version
+// in all of them — but until now nothing checked, and a silent divergence between
+// seven copies is exactly the kind of drift you only find when one panel behaves
+// differently from the rest.
+// ---------------------------------------------------------------------------
+console.log('\n— PANEL KIT v1 is byte-identical everywhere —');
+{
+  const dir = path.join(__dirname, '..');
+  const carriers = fs.readdirSync(dir)
+    .filter((f) => f.endsWith('.user.js'))
+    .filter((f) => fs.readFileSync(path.join(dir, f), 'utf8').includes('const draggable = (node, handle, onMove)'));
+
+  check('every panel tool was found', carriers.length >= 6, true);
+
+  const seen = new Map();
+  for (const f of carriers) {
+    const lines = fs.readFileSync(path.join(dir, f), 'utf8').split(/\r?\n/);
+    const i = lines.findIndex((l) => l.includes('const draggable = (node, handle, onMove)'));
+    const body = lines.slice(i, i + 93).join('\n');
+    const key = crypto.createHash('md5').update(body).digest('hex').slice(0, 12);
+    if (!seen.has(key)) seen.set(key, []);
+    seen.get(key).push(f);
+  }
+
+  const variants = [...seen.entries()];
+  check(`all ${carriers.length} copies agree`, variants.length, 1);
+  if (variants.length > 1) {
+    for (const [hash, files] of variants) console.log(`        ${hash}  ${files.join(', ')}`);
   }
 }
 
