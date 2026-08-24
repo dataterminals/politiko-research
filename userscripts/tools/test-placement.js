@@ -195,7 +195,7 @@ console.log('\n— the drag handle survives a repaint —');
 
   // Known-affected and not yet fixed; these predate this check. Delete a name as it is
   // fixed — never add one to make the build green.
-  const KNOWN_BROKEN = new Set(['quick-jump.user.js']);
+  const KNOWN_BROKEN = new Set([]);
 
   const carriers = fs.readdirSync(dir)
     .filter((f) => f.endsWith('.user.js'))

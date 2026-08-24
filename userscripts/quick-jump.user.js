@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Quick Jump
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.0
+// @version      0.1.1
 // @description  A launcher for the 64 screens the sidebar cannot reach. Offers every parameterless route the game ships, and learns the ID-bearing ones — casinos above all — from responses the game already fetched while you played. Shows the casino's city gate next to the door so you never load a floor you cannot enter. Passive: zero added requests, and every jump is one you pressed a key for.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -67,7 +67,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const TAG = '[pk-quick-jump]';
   const log = (...a) => console.debug(TAG, ...a);
 
@@ -646,8 +646,9 @@
   // ===========================================================================
   // Mount / paint
   // ===========================================================================
-  let host = null, root = null, panelEl = null, bodyEl = null, fab = null, grip = null;
-  let panelDrag = null, fabDrag = null;
+  let host = null, root = null, panelEl = null, bodyEl = null, fab = null;
+  let hdEl = null, covEl = null, findEl = null, inputEl = null, noteEl = null;
+  let panelDrag = null, fabDrag = null, placed = false;
   let query = '', sel = 0, matches = [];
 
   const mount = () => {
@@ -667,9 +668,53 @@
     fab.addEventListener('click', () => { if (!fabDrag.dragged()) toggle(); });
     fab.addEventListener('dblclick', () => { ui.fab = null; saveUi(); fabDrag.reset(); });
 
+    // The panel's CHROME is built exactly once, and the drag binds to that one header.
+    //
+    // It used to be rebuilt inside paint(), which quietly broke dragging: paint() begins
+    // with replaceChildren(), so the header the kit was bound to got discarded on the
+    // first repaint and every later one was a fresh, unbound node. The FAB is bound
+    // separately just above and kept working, which is what made it read as a panel-only
+    // quirk rather than a wiring bug.
+    //
+    // The filter input is the same problem one layer down, and was already half-known:
+    // renderBody() exists precisely so typing does not go through paint() and drop the
+    // caret. Building it once here means even a paint() mid-type leaves it alone.
     panelEl = el('div', 'panel');
     panelEl.style.display = 'none';
+
+    hdEl = el('div', 'hd');
+    covEl = el('span', 'cov');
+    const close = el('button', 'act', '×');
+    close.addEventListener('click', () => toggle(false));
+    hdEl.append(el('b', null, 'Quick Jump'), covEl, el('span', 'sp'), close);
+
+    findEl = el('div', 'find');
+    inputEl = el('input');
+    inputEl.type = 'text';
+    inputEl.placeholder = 'filter — ↑↓ to pick, Enter to jump, Esc to close';
+    inputEl.addEventListener('input', () => { query = inputEl.value; sel = 0; renderBody(); });
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); toggle(false); return; }
+      if (e.key === 'Enter') { e.preventDefault(); if (matches[sel]) jump(matches[sel].href); return; }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!matches.length) return;
+        sel = (sel + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length;
+        renderBody();
+        bodyEl?.querySelector('.row.sel')?.scrollIntoView({ block: 'nearest' });
+      }
+    });
+    findEl.append(inputEl);
+
+    bodyEl = el('div', 'body');
+    noteEl = el('div', 'note');
+    panelEl.append(hdEl, findEl, bodyEl, noteEl);
     root.append(panelEl);
+
+    panelDrag = draggable(panelEl, hdEl, (pos) => { ui.panel = pos; saveUi(); });
+    hdEl.addEventListener('dblclick', () => {
+      ui.panel = null; saveUi(); panelDrag.reset(); placed = true;
+    });
   };
 
   const toggle = (force) => {
@@ -678,7 +723,7 @@
     ui.open = next;
     saveUi();
     paint();
-    if (ui.open) root?.querySelector('.find input')?.focus();
+    if (ui.open) inputEl?.focus();   // the input is a fixed node now, so no lookup needed
   };
 
   /**
@@ -827,50 +872,22 @@
     if (!root || !panelEl) return;
     panelEl.style.display = ui.open ? 'flex' : 'none';
     if (!ui.open) return;
-    panelEl.replaceChildren();
 
-    // header
-    const hd = el('div', 'hd');
-    hd.append(el('b', null, 'Quick Jump'));
     const nCorps = Object.keys(places.corps).length;
     const nCas = casinoCorps().length;
-    hd.append(el('span', 'cov', `${nCas} casino${nCas === 1 ? '' : 's'} · ${nCorps} corp${nCorps === 1 ? '' : 's'} known`));
-    hd.append(el('span', 'sp'));
-    const close = el('button', 'act', '×');
-    close.addEventListener('click', () => toggle(false));
-    hd.append(close);
-    panelEl.append(hd);
-    grip = hd;
 
-    // filter
-    const find = el('div', 'find');
-    const input = el('input');
-    input.type = 'text';
-    input.placeholder = 'filter — ↑↓ to pick, Enter to jump, Esc to close';
-    input.value = query;
-    // Only the body is re-rendered while you type. Rebuilding the whole panel would
-    // destroy this input on every keystroke and drop the caret to the end of it.
-    input.addEventListener('input', () => { query = input.value; sel = 0; renderBody(); });
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); toggle(false); return; }
-      if (e.key === 'Enter') { e.preventDefault(); if (matches[sel]) jump(matches[sel].href); return; }
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (!matches.length) return;
-        sel = (sel + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length;
-        renderBody();
-        bodyEl?.querySelector('.row.sel')?.scrollIntoView({ block: 'nearest' });
-      }
-    });
-    find.append(input);
-    panelEl.append(find);
+    // header: refresh what it SAYS, never who it is
+    covEl.textContent = `${nCas} casino${nCas === 1 ? '' : 's'} · ${nCorps} corp${nCorps === 1 ? '' : 's'} known`;
 
-    bodyEl = el('div', 'body');
+    // Assign only on a real difference. A paint() triggered by an ingest while you are
+    // mid-word would otherwise rewrite the input and send the caret to the end.
+    if (inputEl.value !== query) inputEl.value = query;
+
     renderBody();
-    panelEl.append(bodyEl);
 
     // footer
-    const note = el('div', 'note');
+    const note = el('div');
+    noteEl.replaceChildren(note);
     const bar = el('span');
     const mk = (label, fn) => { const b = el('button', 'act', label); b.style.marginRight = '4px'; b.addEventListener('click', fn); bar.append(b); return b; };
     mk('directory', () => jump('/corporations/directory'));
@@ -883,14 +900,12 @@
       nCas
         ? 'passive · casinos come from directory rows you already paged past · the gate is whatever that corp page last told you, so travel makes it stale'
         : 'passive · no casinos learned yet — open the corporation directory once and every casino in it lands here'));
-    panelEl.append(note);
 
-    // placement, then never leave the handle off-screen
-    if (!panelDrag) {
-      panelDrag = draggable(panelEl, grip, (pos) => { ui.panel = pos; saveUi(); });
-      grip.addEventListener('dblclick', () => { ui.panel = null; saveUi(); panelDrag.reset(); });
-    }
-    panelDrag.apply(ui.panel);
+    // Restore the saved position the first time the panel is actually on screen — at
+    // mount it is display:none, so the kit has no geometry to clamp or de-skew against.
+    // After that only fit() runs: apply() would fight a drag in progress, since ui.panel
+    // still holds the pre-drag position until the gesture ends.
+    if (!placed) { placed = true; panelDrag.apply(ui.panel); }
     panelDrag.fit();
   }
 
