@@ -106,6 +106,71 @@ window.HARNESS_FIXTURES = {
     ],
   },
 
+  'people-watch': {
+    label: 'People Watch',
+    hotkey: 'Alt+P',
+    source: 'docs/05-people-surface.md',
+    note: 'Fire the roster pages, scroll the table down, then fire a profile — the list '
+      + 'must stay exactly where you left it.',
+    calls: (() => {
+      const at = (ms) => new Date(Date.now() + ms).toISOString();
+      const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
+      const NAMES = ['ana', 'bo', 'cy', 'dev', 'eze', 'fen', 'gil', 'hana', 'ivo', 'jun',
+        'kai', 'lior', 'mira', 'noor', 'oz', 'pia', 'quin', 'rae', 'sol', 'tov',
+        'uma', 'vex', 'wren', 'xan', 'yaz', 'zia', 'ada', 'bex', 'caro', 'dot'];
+
+      // Enough rows that the table actually scrolls — the whole point of the fixture.
+      const page = (n) => ({
+        page: n, total: NAMES.length, total_pages: 3, locations_visible: false,
+        people: NAMES.slice((n - 1) * 10, n * 10).map((u, i) => ({
+          username: u, rank_key: 'street', is_online: i % 7 === 0,
+          last_online: at(-((n * 10 + i) % 19) * HOUR), status: 'idle',
+        })),
+      });
+
+      const profile = (u, over = {}) => ({
+        username: u, rank_key: 'street', is_online: false,
+        created_at: at(-40 * DAY), last_online: at(-6 * HOUR), status: 'idle',
+        attacks_won: 3, attacks_lost: 5,
+        alignment: { social_count: 12, economic_count: 4 },
+        ...over,
+      });
+
+      // Only PROFILED players get a table row — a roster page alone just teaches it a
+      // username. So the bulk of this fixture is profiles: enough of them that the table
+      // genuinely scrolls, which is the only way to see the thing being tested.
+      const bulk = NAMES.slice(0, 22).map((u, i) => ({
+        label: `profile: ${u}`,
+        path: `/api/users/${u}`,
+        body: profile(u, {
+          last_online: at(-(i * 5 + 1) * HOUR),
+          attacks_won: i % 6, attacks_lost: (i * 3) % 7,
+          alignment: { social_count: (i * 7) % 45, economic_count: i % 5 },
+          // a handful who signed up and left within the hour — the ◦ mark
+          ...(i % 9 === 4 ? { created_at: at(-30 * DAY - 39 * MIN), last_online: at(-30 * DAY) } : {}),
+        }),
+      }));
+
+      return [
+        { label: 'roster page 1', path: '/api/people?page=1', body: page(1) },
+        { label: 'roster page 2', path: '/api/people?page=2', body: page(2) },
+        { label: 'roster page 3', path: '/api/people?page=3', body: page(3) },
+        ...bulk,
+        {
+          label: 'mira again, freshly seen (scroll down first — you must not move)',
+          path: '/api/users/mira',
+          variant: 'refresh',
+          body: profile('mira', { alignment: { social_count: 41, economic_count: 9 } }),
+        },
+        {
+          label: 'something unrelated (must be ignored)',
+          path: '/api/stocks/holdings',
+          body: [{ id: 1, symbol: 'CAP', qty: 40 }],
+        },
+      ];
+    })(),
+  },
+
   'raid-watch': {
     label: 'Raid Watch',
     hotkey: 'Alt+R',

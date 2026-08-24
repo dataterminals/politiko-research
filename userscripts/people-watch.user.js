@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — People Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      1.3.1
+// @version      1.3.2
 // @description  Builds a local ledger of players' last-online times, cities, ranks and combat records from the profiles you open, and sorts it least-active-first. Fully passive: it reads responses the game already made and originates nothing. Includes a next/back walk so filling the ledger by hand is one keypress per player.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -908,6 +908,18 @@
     const withProfile = Object.values(people).filter((r) => r.observedAt).length;
     const total = roster.total ?? '?';
 
+    // Where you were in the table, before the table stops existing.
+    //
+    // A repaint throws the body away and builds a new one, which starts at scroll zero.
+    // That is fine when nothing is happening and ruinous when something is: opening a
+    // profile repaints twice — once from goProfile, once when the response lands — and
+    // opening profiles is the entire job. Working down a long ledger meant being thrown
+    // back to the top on every single one, with no way to find your place again.
+    //
+    // Restored at the very end, after placePanel, because that can change the panel's
+    // max height and so how far the body is able to scroll.
+    const keptScroll = panel.querySelector('.body')?.scrollTop ?? 0;
+
     // keep the grip: it carries the drag listeners, everything below it is disposable
     panel.replaceChildren(grip);
     gripCov.textContent = `${withProfile}/${total} profiled · ${known} known`;
@@ -1084,6 +1096,10 @@
 
     // the rows just changed the height, so re-place and re-check it is still reachable
     placePanel();
+
+    // and put you back where you were looking. Assigning past the end is clamped by the
+    // DOM, so a list that got shorter lands at its own bottom rather than nowhere.
+    if (keptScroll) body.scrollTop = keptScroll;
   }
 
   // ===========================================================================
