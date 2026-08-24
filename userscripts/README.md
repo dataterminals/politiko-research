@@ -20,8 +20,8 @@ bannable, so the disclosure block is the contract.
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
 | XP Watch | 0.2.7 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
-| Raid Watch | 0.1.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
-| Sleeper Watch | 0.1.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
+| Raid Watch | 0.1.1 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
+| Sleeper Watch | 0.1.1 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
 | Quick Jump | 0.1.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
@@ -36,9 +36,8 @@ stays one auditable file.
 
 XP Watch's panel is also **resizable**, which is a local addition sitting *around* its
 verbatim `PANEL KIT v1` block rather than a change to it — changing the kit means bumping
-its version in all nine copies (eight tools plus the template). If resizing proves worth
-having everywhere, that is the
-`PANEL KIT v2` candidate; the local implementation is deliberately small (a CSS
+its version in all ten copies (nine tools plus the template). If resizing proves worth
+having everywhere, that is the `PANEL KIT v2` candidate; the local implementation is deliberately small (a CSS
 `resize: both`, plus persistence and a double-click reset) so it ports cleanly.
 
 ---
@@ -499,6 +498,155 @@ Surface notes and what was inferred rather than measured:
 
 ---
 
+# Sleeper Watch
+
+Keeps the sleeper-recruitment timers alive after you leave the page, and gives you one
+click back to the lead when its window opens.
+
+It is **fully passive**. It reads responses the game already made, on pages you are
+actively viewing, and originates no requests of its own.
+
+## The problem it exists for
+
+You strike up a conversation. That sets an appointment about a day out, and the lead is
+workable for **one hour** when it arrives. Miss the hour and the card reads `missed`, the
+button never re-enables, and Drop is all that is left — everything you spent on that lead
+is gone.
+
+Three things make missing it the default rather than the exception:
+
+- **The countdown exists on one screen only.** `next_meeting_at` arrives in
+  `/api/actions/sleeper-recruitment` and in no other response anywhere in the client.
+  Navigate away and it is not stale, it is *absent*.
+- **The game will not remind you.** Its push notifications cover exactly four events —
+  jail release, hospital release, hospitalisation, travel arrival. A sleeper meeting is
+  not one of them.
+- **There is no second chance.** Every other timer in Politiko just makes you wait longer.
+  This one throws the thing away.
+
+So the tool holds the timestamp for you, and that costs nothing: **`next_meeting_at` is an
+absolute instant the server already handed you, so counting down to it needs no network at
+all.** One visit to the recruitment screen is enough; the clock runs from there.
+
+## What you get
+
+**A strip, inside the page you are already looking at**, whenever there is something to do:
+
+```
+● MEETING WINDOW OPEN
+  Ariel Voss · closes in 47m 12s            [go →]  [×]
+```
+
+It appears for an open window, for a new lead with no appointment yet, for a faction
+sleeper whose cooldown is up, and — in amber — fifteen minutes before a window opens. Drag
+it anywhere; it remembers. `×` dismisses that one event and nothing else, and a fresh
+appointment brings it back.
+
+**`go →` is the part that matters.** It navigates to the recruitment screen exactly as
+clicking Actions → Recruit Sleepers would, then does two things the game cannot: it sets
+the issue dropdown to **that lead's own issue**, and scrolls its card into view with an
+outline.
+
+That is not decoration. The page has **one** issue selector and every lead carries its own
+`issue`, so with two leads on different issues the dropdown is wrong for at least one of
+them — and a meeting can come back `lost`. The tool lines the shot up. **You press Talk
+about issue**, in the game's own UI. Nothing here presses anything.
+
+**And when you come back to the tab** it says once, plainly, what closed while you were
+gone rather than leaving you to notice:
+
+> ⚠ 1 window closed while you were away: Rae Okonkwo
+> A missed lead cannot be re-opened — the action stays disabled and only Drop is left.
+
+## The panel
+
+**Alt+S**, or the `SLP` button. Drag either anywhere; they remember. The button turns green
+with a count when something is actionable, amber when something is about to be.
+
+| tab | what it shows |
+|---|---|
+| leads | every live lead, urgency-ordered — open and closing soonest first, then new, then waiting, then missed. Countdown, wall-clock window, meeting count, issue (hover for the clue), `go →` per row |
+| sleepers | recruited sleepers with effect %, plus **advocate and embezzle cooldowns as countdowns** instead of the bare clock time the faction page prints |
+| research | what the ledger can say about the two questions the client cannot answer |
+
+The header carries `recruited/cap` and the energy cost per canvass, both straight from the
+server's own response.
+
+A window closing tonight shows a bare time; anything further out carries its day —
+`opens Mon 09:35 PM`. An appointment set a day ahead lands near the hour it was made, so a
+bare time on a 23-hour countdown reads as this evening, which is the exact misreading the
+tool exists to prevent.
+
+## The faction half
+
+Recruiting a sleeper and *using* one are different pages, and the second sits behind the
+`can_manage_sleepers` rank permission — so a player without that rank can run the whole
+recruitment loop forever and never see the button that makes it pay. `advocate` generates
+power, `embezzle` siphons cash, and each has its own cooldown.
+
+The faction page renders those as `advocate ready 3:45:12 PM` — a bare local time, no date,
+no countdown, and only on that page. Sleeper Watch counts them down beside the leads and
+offers `faction →`, which navigates there and opens the Sleepers tab. That tab is local
+component state with no URL, so there is no link to hand you instead.
+
+If you have never seen a cooldown, the panel says which situation you are in rather than
+showing an empty column.
+
+## The research tab
+
+Two of the surface's open questions are answerable by watching, and watching is free once
+the leads are being tracked:
+
+- **Does the issue have to match the clue?** Each lead renders a `clue` and an `issue`, and
+  `meet` sends whichever issue *you* picked. The obvious reading is that the right issue
+  advances the lead and the wrong one risks `outcome: 'lost'` — but the rule is server-side
+  and nothing client-side confirms it. So every meeting records the issue that was showing
+  in the selector against the issue the lead carries, and the tab counts match / differ /
+  unknown with the lost rate for each. **Below 20 observations it says so and declines to
+  mean anything.**
+- **What ends a lead?** The poll returns the whole list, so a lead that stops appearing has
+  ended. The tab buckets endings by the state the lead was last in — one that vanished
+  mid-window most likely converted, one that vanished after expiring was pruned — with the
+  average meeting count for each. The server never says which, so that state is the last
+  one observed, not a verdict.
+
+`copy digest` is the shareable output: counts only, no NPC names, no usernames.
+
+## Console
+
+```js
+__pksw.leads()      // live leads with state and time left
+__pksw.sleepers()   // recruited sleepers and their cooldowns
+__pksw.issues()     // the issue-match digest
+__pksw.endings()    // how leads ended
+__pksw.ledger()     // every meeting and ending observed
+__pksw.digest()     // the paste-ready summary, no names
+__pksw.export()     // everything, as JSON
+__pksw.clear()      // wipe it
+```
+
+## What it reads
+
+Full disclosure is in the header comment at the top of
+[`sleeper-watch.user.js`](sleeper-watch.user.js). In short: it reads three responses the
+game already made, plus the value showing in the page's own issue dropdown at the moment a
+meeting reply lands, stores everything under `pksw:` keys in your browser, and sends
+nothing anywhere.
+
+**No alert ever leaves the page.** No Notification API, no sound, no title flashing — the
+strip is drawn inside the tab you are already looking at, and the clock stops entirely
+while the tab is hidden. Because every countdown is recomputed from its absolute deadline
+rather than decremented, resuming after any pause is correct without a request.
+
+**Lead and sleeper records hold NPC display names, and the faction roster holds the
+usernames of whoever recruited them.** That never leaves your browser and must not be
+committed.
+
+Surface notes, and what is field-reported rather than read out of the client:
+[`docs/08-sleeper-surface.md`](../docs/08-sleeper-surface.md).
+
+---
+
 # Quick Jump
 
 A launcher for the screens the sidebar cannot reach. **Alt+J.**
@@ -611,6 +759,8 @@ node userscripts/tools/test-bridge.js
 node userscripts/tools/test-xp.js
 node userscripts/tools/test-raid.js
 node userscripts/tools/test-raid-passive.js
+node userscripts/tools/test-sleeper.js
+node userscripts/tools/test-sleeper-passive.js
 node userscripts/tools/test-quick-jump.js
 node userscripts/tools/test-quick-jump-passive.js
 ```
@@ -618,9 +768,9 @@ node userscripts/tools/test-quick-jump-passive.js
 Every suite slices the layer it covers straight out of the shipped script rather than
 copying it, so the tests cannot drift from what installs.
 
-Two of them are **fences** rather than behaviour tests — they read the shipped file and fail
-if something that could originate a request has reappeared, because "we removed it" stays
-true only until someone adds it back:
+Several are **fences** rather than behaviour tests — they read the shipped file and fail if
+something that could originate a request has reappeared, because "we removed it" stays true
+only until someone adds it back:
 
 - `test-market-passive` fences market-watch's deleted order-execution seam.
 - `test-passive` fences ws-watch, which replaces `window.WebSocket` and is therefore
@@ -629,6 +779,13 @@ true only until someone adds it back:
   surrender wars and impose flags. It fails on any mention of those paths, any non-GET
   verb, and any timer body that touches the network — the two ways to build a poll are
   `setInterval` and a `setTimeout` that re-arms, and both are barred.
+- `test-sleeper-passive` fences sleeper-watch, which sits beside five write endpoints —
+  canvass, meet, drop, advocate, embezzle — and whose whole product is a clock, so it
+  cannot ban repeating timers the way the raid fence does. It asserts the stronger
+  property instead: nothing anywhere in the file can originate a request, which makes any
+  timer safe whatever its period. It also **caps `.click()` at two**, both named, because
+  pressing the game's own Talk about issue button originates nothing itself — React does
+  it for you — and would sail past every network check in the file.
 - `test-quick-jump-passive` fences quick-jump, the only tool here whose job is to *move
   you*. Rather than ban navigation it pins it: exactly one `pushState` site, reachable
   only from a handler you triggered, with no timer able to reach it — a jump that

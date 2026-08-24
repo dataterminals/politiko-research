@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Raid Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.0
+// @version      0.1.1
 // @description  Records faction raids from responses the game already fetched: the raid list your faction page polls on its own every five seconds, its event log, and the post-mortem report. Builds the event-type vocabulary the client never spells out, charts the score curve, and ranks who actually did the work. Passive — zero added requests, and it never touches a raid action.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -62,7 +62,7 @@
   'use strict';
 
   const TAG = '[pkrw]';
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const log = (...a) => console.debug(TAG, ...a);
 
   // ===========================================================================
@@ -480,7 +480,9 @@
   // Panel
   // ===========================================================================
   let host = null, root = null, fab = null, panelEl = null;
-  let grip = null, panelDrag = null, fabDrag = null;
+  let hdEl = null, covEl = null, tabsEl = null, bodyEl = null, noteEl = null;
+  const tabBtn = {};
+  let panelDrag = null, fabDrag = null, placed = false;
 
   const CSS = `
     :host { all: initial; }
@@ -770,9 +772,44 @@
     fab.addEventListener('click', () => { if (!fabDrag.dragged()) toggle(); });
     fab.addEventListener('dblclick', () => { ui.fab = null; saveUi(); fabDrag.reset(); });
 
+    // The panel's CHROME is built exactly once, and the drag binds to that one header.
+    //
+    // It used to be rebuilt inside paint(), which quietly broke dragging: paint() begins
+    // with replaceChildren(), so the header the kit was bound to got discarded on the
+    // first repaint and every later one was a fresh, unbound node. This tool had it
+    // worst — the faction page polls its raid list every five seconds, so during the one
+    // situation the panel exists for, it stopped being draggable within seconds of being
+    // opened. The FAB is bound separately just above and kept working, which is what
+    // made it read as a panel-only quirk rather than a wiring bug.
+    //
+    // Only the body and footer are refilled now, so the handle is a stable node across a
+    // redraw and a repaint can never land mid-gesture.
     panelEl = el('div', 'panel');
     panelEl.style.display = 'none';
+
+    hdEl = el('div', 'hd');
+    covEl = el('span', 'cov');
+    const close = el('button', 'act', '×');
+    close.addEventListener('click', () => toggle(false));
+    hdEl.append(el('b', null, 'Raid Watch'), covEl, el('span', 'sp'), close);
+
+    tabsEl = el('div', 'tabs');
+    for (const [key, label] of TABS) {
+      const b = el('button', 'tab', label);
+      b.addEventListener('click', () => { ui.tab = key; saveUi(); paint(); });
+      tabBtn[key] = b;
+      tabsEl.append(b);
+    }
+
+    bodyEl = el('div', 'body');
+    noteEl = el('div', 'note');
+    panelEl.append(hdEl, tabsEl, bodyEl, noteEl);
     root.append(panelEl);
+
+    panelDrag = draggable(panelEl, hdEl, (pos) => { ui.panel = pos; saveUi(); });
+    hdEl.addEventListener('dblclick', () => {
+      ui.panel = null; saveUi(); panelDrag.reset(); placed = true;
+    });
   };
 
   const toggle = (force) => {
@@ -785,32 +822,19 @@
     if (!root || !panelEl) return;
     panelEl.style.display = ui.open ? 'flex' : 'none';
     if (!ui.open) return;
-    panelEl.replaceChildren();
 
-    // header
-    const hd = el('div', 'hd');
-    hd.append(el('b', null, 'Raid Watch'));
-    const cov = el('span', 'cov',
-      `${Object.keys(raids).length} raid(s) · ${Object.keys(events).length} event(s) · ${typeDigest().length} type(s)`);
-    hd.append(cov);
-    hd.append(el('span', 'sp'));
-    const close = el('button', 'act', '×');
-    close.addEventListener('click', () => toggle(false));
-    hd.append(close);
-    panelEl.append(hd);
-    grip = hd;
+    // header + tabs: refresh what they SAY, never who they are
+    covEl.textContent =
+      `${Object.keys(raids).length} raid(s) · ${Object.keys(events).length} event(s) · ${typeDigest().length} type(s)`;
+    for (const [key] of TABS) tabBtn[key].className = `tab${ui.tab === key ? ' on' : ''}`;
 
-    // tabs
-    const tabs = el('div', 'tabs');
-    for (const [key, label] of TABS) {
-      const b = el('button', `tab${ui.tab === key ? ' on' : ''}`, label);
-      b.addEventListener('click', () => { ui.tab = key; saveUi(); paint(); });
-      tabs.append(b);
-    }
-    panelEl.append(tabs);
+    // A five-second poll repaints this constantly during a raid, so don't throw away
+    // where you had scrolled to in the event log.
+    const scroll = bodyEl.scrollTop;
+    bodyEl.replaceChildren();
 
     // raid selector, where a tab is about one raid
-    const body = el('div', 'body');
+    const body = bodyEl;
     const raid = activeRaid();
     if ((ui.tab === 'curve') && raidList().length > 1) {
       const sel = el('select');
@@ -829,10 +853,11 @@
     else if (ui.tab === 'curve') renderCurve(body, raid);
     else if (ui.tab === 'who') renderWho(body);
     else renderRaids(body);
-    panelEl.append(body);
+    bodyEl.scrollTop = scroll;
 
     // actions
-    const note = el('div', 'note');
+    const note = el('div');
+    noteEl.replaceChildren(note);
     const bar = el('span');
     const mk = (label, fn) => { const b = el('button', 'act', label); b.style.marginRight = '4px'; b.addEventListener('click', () => fn(b)); bar.append(b); return b; };
     mk('copy digest', (b) => copyText(buildDigest(), b));
@@ -845,14 +870,12 @@
     note.append(bar);
     note.append(el('div', null,
       'passive · fills itself while your faction page is open — the game polls its own raid list every 5s · no raid action is ever sent'));
-    panelEl.append(note);
 
-    // placement, then never leave the handle off-screen
-    if (!panelDrag) {
-      panelDrag = draggable(panelEl, grip, (pos) => { ui.panel = pos; saveUi(); });
-      grip.addEventListener('dblclick', () => { ui.panel = null; saveUi(); panelDrag.reset(); });
-    }
-    panelDrag.apply(ui.panel);
+    // Restore the saved position the first time the panel is actually on screen — at
+    // mount it is display:none, so the kit has no geometry to clamp or de-skew against.
+    // After that only fit() runs: apply() would fight a drag in progress, since ui.panel
+    // still holds the pre-drag position until the gesture ends.
+    if (!placed) { placed = true; panelDrag.apply(ui.panel); }
     panelDrag.fit();
   }
 

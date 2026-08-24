@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Sleeper Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.0
+// @version      0.1.1
 // @description  Keeps the sleeper-recruitment timers alive after you leave the page. Reads the poll the recruitment screen already makes, remembers when each lead's meeting window opens, counts it down on every Politiko page, and hands you a one-click jump back with that lead's own issue pre-selected. Also counts down the faction advocate/embezzle cooldowns. Passive — zero added requests, and it never meets, canvasses, drops, advocates or embezzles.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -83,7 +83,7 @@
   'use strict';
 
   const TAG = '[pksw]';
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const log = (...a) => console.debug(TAG, ...a);
 
   // ===========================================================================
@@ -178,6 +178,22 @@
   };
 
   const clock = (t) => (t ? new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—');
+
+  /**
+   * A wall-clock instant, carrying its day whenever that is not today.
+   *
+   * This is not tidiness. An appointment set roughly a day out lands at close to the hour
+   * it was made, so a bare "09:30 PM" against a 23h countdown reads as this evening — the
+   * exact misreading the tool exists to prevent. Today stays bare because the hour that
+   * matters, the one-hour window, is always today by the time you are looking at it.
+   */
+  const when = (t) => {
+    if (!t) return '—';
+    const d = new Date(t);
+    return d.toDateString() === new Date().toDateString()
+      ? clock(t)
+      : `${d.toLocaleDateString([], { weekday: 'short' })} ${clock(t)}`;
+  };
 
   // ===========================================================================
   // The lead state machine — a deliberate mirror of the client's own.
@@ -730,7 +746,9 @@
   // Panel
   // ===========================================================================
   let host = null, root = null, fab = null, fabDot = null, panelEl = null, stripEl = null;
-  let grip = null, panelDrag = null, fabDrag = null, stripDrag = null;
+  let hdEl = null, covEl = null, tabsEl = null, bodyEl = null, noteEl = null;
+  const tabBtn = {};
+  let panelDrag = null, fabDrag = null, stripDrag = null, placed = false;
   let lastSig = null;          // board signature; a change means a full repaint is due
   let missedThisSession = [];  // what closed while nobody was looking
 
@@ -913,7 +931,7 @@
       if (st === 'open') left.classList.add('good');
       else if (st === 'waiting' && t.left != null && t.left < CFG.HEADS_UP_MS) left.classList.add('warn');
 
-      const when = el('td', 'dim mono', t.at ? `${t.to} ${clock(t.at)}` : '—');
+      const win = el('td', 'dim mono', t.at ? `${t.to} ${when(t.at)}` : '—');
       const meets = el('td', 'num', String(l.meeting_count ?? 0));
 
       const issue = el('td', 'dim', l.issue ?? '—');
@@ -923,7 +941,7 @@
       if (st !== 'missed') go.append(btn('go →', st === 'open' || st === 'new' ? 'go' : null, () => jumpToLead(l)));
       else go.append(el('span', 'dim', '—'));
 
-      return [name, state, left, when, meets, issue, go];
+      return [name, state, left, win, meets, issue, go];
     });
 
     body.append(table([
@@ -961,7 +979,7 @@
           if (!seen) return el('td', 'dim', '—');
           if (facReady(iso)) return el('td', 'good', 'ready');
           const c = countdownCell('td', 'mono warn', ms(iso));
-          c.title = `ready at ${clock(ms(iso))}`;
+          c.title = `ready at ${when(ms(iso))}`;
           return c;
         };
         const adv = mk(s.can_advocate_at, s.facSeen);
@@ -1044,7 +1062,7 @@
         { label: 'when' }, { label: 'lead' }, { label: 'clue' },
         { label: 'lead issue' }, { label: 'chosen' }, { label: 'outcome' },
       ], meets.slice(-40).reverse().map((r) => [
-        el('td', 'dim mono', clock(r.at)),
+        el('td', 'dim mono', when(r.at)),
         el('td', null, r.name ?? r.leadId),
         el('td', 'dim', r.clue ?? '—'),
         el('td', 'dim', r.leadIssue ?? '—'),
@@ -1198,9 +1216,41 @@
     stripDrag = draggable(stripEl, stripEl, (pos) => { ui.strip_pos = pos; saveUi(); });
     stripEl.addEventListener('dblclick', () => { ui.strip_pos = null; saveUi(); stripDrag.reset(); });
 
+    // The panel's CHROME is built exactly once, and the drag binds to that one header.
+    //
+    // It used to be rebuilt inside paint(), which quietly broke dragging: paint() begins
+    // with replaceChildren(), so the header the kit was bound to got discarded on the
+    // first repaint and every later one was a fresh, unbound node. The panel dragged
+    // until the first poll landed and then never again — and because the FAB is bound
+    // separately in here, it kept working, which made it look like a panel-only quirk.
+    //
+    // Only the body and footer are refilled now. That also keeps the drag handle a
+    // stable node across a redraw, so a repaint can never land mid-gesture.
     panelEl = el('div', 'panel');
     panelEl.style.display = 'none';
+
+    hdEl = el('div', 'hd');
+    covEl = el('span', 'cov');
+    hdEl.append(el('b', null, 'Sleeper Watch'), covEl, el('span', 'sp'),
+      btn('×', null, () => toggle(false)));
+
+    tabsEl = el('div', 'tabs');
+    for (const [key, label] of TABS) {
+      const t = el('button', 'tab', label);
+      t.addEventListener('click', () => { ui.tab = key; saveUi(); paint(); });
+      tabBtn[key] = t;
+      tabsEl.append(t);
+    }
+
+    bodyEl = el('div', 'body');
+    noteEl = el('div', 'note');
+    panelEl.append(hdEl, tabsEl, bodyEl, noteEl);
     root.append(panelEl);
+
+    panelDrag = draggable(panelEl, hdEl, (pos) => { ui.panel = pos; saveUi(); });
+    hdEl.addEventListener('dblclick', () => {
+      ui.panel = null; saveUi(); panelDrag.reset(); placed = true;
+    });
   };
 
   const toggle = (force) => {
@@ -1219,41 +1269,30 @@
     if (!panelEl) return;
     panelEl.style.display = ui.open ? 'flex' : 'none';
     if (!ui.open) return;
-    panelEl.replaceChildren();
 
     const b = board();
 
-    // header
-    const hd = el('div', 'hd');
-    hd.append(el('b', null, 'Sleeper Watch'));
-    hd.append(el('span', 'cov', [
+    // header + tabs: refresh what they SAY, never who they are
+    covEl.textContent = [
       `${b.rows.length} lead(s)`,
       meta.recruited_count != null && meta.sleeper_cap != null
         ? `${meta.recruited_count}/${meta.sleeper_cap} recruited` : null,
       meta.energy_cost != null ? `${meta.energy_cost} energy/canvass` : null,
-    ].filter(Boolean).join(' · ')));
-    hd.append(el('span', 'sp'));
-    hd.append(btn('×', null, () => toggle(false)));
-    panelEl.append(hd);
-    grip = hd;
+    ].filter(Boolean).join(' · ');
+    for (const [key] of TABS) tabBtn[key].className = `tab${ui.tab === key ? ' on' : ''}`;
 
-    // tabs
-    const tabs = el('div', 'tabs');
-    for (const [key, label] of TABS) {
-      const t = el('button', `tab${ui.tab === key ? ' on' : ''}`, label);
-      t.addEventListener('click', () => { ui.tab = key; saveUi(); paint(); });
-      tabs.append(t);
-    }
-    panelEl.append(tabs);
-
-    const body = el('div', 'body');
-    if (ui.tab === 'leads') renderLeads(body);
-    else if (ui.tab === 'sleepers') renderSleepers(body);
-    else renderResearch(body);
-    panelEl.append(body);
+    // A repaint can arrive on the tick while you are reading a long list, so don't
+    // throw away where you had scrolled to.
+    const scroll = bodyEl.scrollTop;
+    bodyEl.replaceChildren();
+    if (ui.tab === 'leads') renderLeads(bodyEl);
+    else if (ui.tab === 'sleepers') renderSleepers(bodyEl);
+    else renderResearch(bodyEl);
+    bodyEl.scrollTop = scroll;
 
     // footer — options, actions, and how stale the list underneath is
-    const note = el('div', 'note');
+    const note = el('div');
+    noteEl.replaceChildren(note);
 
     const opts = el('div');
     const opt = (label, key, title) => {
@@ -1287,13 +1326,12 @@
       + 'The countdowns are exact regardless: they run off the absolute timestamps the server already sent, '
       + 'so no request is needed to keep them honest. Passive · nothing here canvasses, meets, drops, '
       + 'advocates or embezzles.'));
-    panelEl.append(note);
 
-    if (!panelDrag) {
-      panelDrag = draggable(panelEl, grip, (pos) => { ui.panel = pos; saveUi(); });
-      grip.addEventListener('dblclick', () => { ui.panel = null; saveUi(); panelDrag.reset(); });
-    }
-    panelDrag.apply(ui.panel);
+    // Restore the saved position the first time the panel is actually on screen — at
+    // mount it is display:none, so the kit has no geometry to clamp or de-skew against.
+    // After that only fit() runs: apply() would fight a drag in progress, since ui.panel
+    // still holds the pre-drag position until the gesture ends.
+    if (!placed) { placed = true; panelDrag.apply(ui.panel); }
     panelDrag.fit();
   }
 

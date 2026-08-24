@@ -106,6 +106,66 @@ window.HARNESS_FIXTURES = {
     ],
   },
 
+  'raid-watch': {
+    label: 'Raid Watch',
+    hotkey: 'Alt+R',
+    source: 'docs/11-faction-raid-surface.md',
+    note: 'The faction page re-polls this every 5s, so fire the poll repeatedly — nothing '
+      + 'should accumulate, and the panel must stay draggable while it does.',
+    calls: (() => {
+      const at = (ms) => new Date(Date.now() + ms).toISOString();
+      const MIN = 60_000;
+      const raid = (over = {}) => ({
+        id: 7, status: 'active',
+        attacker_faction_id: 3, attacker_faction_name: 'RE:PUBLIC', defender_faction_name: 'Harbour Bloc',
+        attacker_score: 100, defender_score: 80, attacker_members: 4, defender_members: 6,
+        attacker_power_taken: 10, defender_power_taken: 25,
+        committed_power: 500, committed_cash: 1000, cycle_month: 'September',
+        created_at: at(-40 * MIN), last_scored_at: at(-2 * MIN), ...over,
+      });
+      const ev = (id, over = {}) => ({
+        id, event_type: 'raid_hit', actor_username: 'ana', target_username: 'bo',
+        score_delta: 5, power_delta: -2, created_at: at(-30 * MIN), ...over,
+      });
+      const P = '/api/factions/3/raids?events_page=1&events_limit=5';
+      return [
+        {
+          label: 'raid poll — fire me several times, nothing may accumulate',
+          path: P,
+          body: { raids: [raid()], events: [ev(1), ev(2, { event_type: 'power_drain', score_delta: 0 })] },
+        },
+        {
+          label: 'the score moves (one new sample, not one per poll)',
+          path: P,
+          variant: 'scored',
+          body: {
+            raids: [raid({ attacker_score: 140, defender_score: 92, last_scored_at: at(0) })],
+            events: [ev(1), ev(2, { event_type: 'power_drain', score_delta: 0 }),
+              ev(3, { event_type: 'sabotage', actor_username: 'cy', score_delta: 40 })],
+          },
+        },
+        {
+          label: 'a finished raid report (authoritative score_history)',
+          path: '/api/factions/3/raids/7/report',
+          body: {
+            raid: raid({ status: 'concluded' }),
+            score_history: [
+              { at: at(-40 * MIN), attacker: 0, defender: 0 },
+              { at: at(-20 * MIN), attacker: 60, defender: 45 },
+              { at: at(0), attacker: 140, defender: 92 },
+            ],
+            events: [ev(1), ev(3, { event_type: 'sabotage', actor_username: 'cy', score_delta: 40 })],
+          },
+        },
+        {
+          label: 'something unrelated (must be ignored)',
+          path: '/api/stocks/holdings',
+          body: [{ id: 1, symbol: 'CAP', qty: 40 }],
+        },
+      ];
+    })(),
+  },
+
   'sleeper-watch': {
     label: 'Sleeper Watch',
     hotkey: 'Alt+S',

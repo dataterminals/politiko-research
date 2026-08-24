@@ -174,5 +174,60 @@ console.log('\n— PANEL KIT v1 is byte-identical everywhere —');
   }
 }
 
+// ---------------------------------------------------------------------------
+// A drag handle has to outlive the redraw.
+//
+// PANEL KIT binds its pointer listeners to the handle NODE it is handed. A panel that
+// rebuilds its header inside paint() — `panelEl.replaceChildren()`, then a fresh `hd`,
+// then `grip = hd` — hands the kit a node that the very next repaint throws away. The
+// panel drags until the first poll lands, and then never again.
+//
+// It is a nasty one to catch by eye, for two reasons. The FAB is bound separately at
+// mount, so it keeps working and the whole thing reads as a panel-only quirk; and the
+// first drag after opening does work, because that paint is the one that bound it.
+//
+// The byte-identical check above does not help here — every copy of the kit is correct,
+// and the tool wires it to the wrong node.
+// ---------------------------------------------------------------------------
+console.log('\n— the drag handle survives a repaint —');
+{
+  const dir = path.join(__dirname, '..');
+
+  // Known-affected and not yet fixed; these predate this check. Delete a name as it is
+  // fixed — never add one to make the build green.
+  const KNOWN_BROKEN = new Set(['quick-jump.user.js']);
+
+  const carriers = fs.readdirSync(dir)
+    .filter((f) => f.endsWith('.user.js'))
+    .filter((f) => fs.readFileSync(path.join(dir, f), 'utf8').includes('const draggable = (node, handle, onMove)'));
+
+  const broken = [];
+  for (const f of carriers) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    for (const m of src.matchAll(/draggable\(\s*([\w$]+)\s*,\s*([\w$]+)\s*,/g)) {
+      const [, node, handle] = m;
+      if (node === handle) continue;                    // a bare FAB drags from itself
+      const wipe = src.indexOf(node + '.replaceChildren()');
+      if (wipe < 0) continue;                           // this panel is never cleared wholesale
+      // an assignment to the handle AFTER the node is emptied means it is rebuilt per paint
+      if (new RegExp('^\\s*' + handle + '\\s*=[^=]', 'm').test(src.slice(wipe))) {
+        broken.push({ file: f, wiring: `${node}/${handle}` });
+      }
+    }
+  }
+
+  const unexpected = broken.filter((b) => !KNOWN_BROKEN.has(b.file));
+  check('no tool rebuilds its drag handle inside the redraw',
+    unexpected.map((b) => `${b.file} (${b.wiring})`), []);
+
+  const still = [...new Set(broken.map((b) => b.file))].filter((f) => KNOWN_BROKEN.has(f)).sort();
+  if (still.length) console.log(`        known and still unfixed: ${still.join(', ')}`);
+
+  // If a listed tool starts passing, the entry is stale and must go — otherwise the list
+  // quietly becomes a place where fixed things are still called broken.
+  check('the known-broken list has no stale entries',
+    [...KNOWN_BROKEN].filter((f) => !broken.some((b) => b.file === f)), []);
+}
+
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);
