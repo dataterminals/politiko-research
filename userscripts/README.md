@@ -21,6 +21,8 @@ bannable, so the disclosure block is the contract.
 | WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
 | XP Watch | 0.2.7 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 | Raid Watch | 0.1.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
+| Sleeper Watch | 0.1.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
+| Quick Jump | 0.1.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -34,7 +36,8 @@ stays one auditable file.
 
 XP Watch's panel is also **resizable**, which is a local addition sitting *around* its
 verbatim `PANEL KIT v1` block rather than a change to it — changing the kit means bumping
-its version in all seven copies. If resizing proves worth having everywhere, that is the
+its version in all nine copies (eight tools plus the template). If resizing proves worth
+having everywhere, that is the
 `PANEL KIT v2` candidate; the local implementation is deliberately small (a CSS
 `resize: both`, plus persistence and a double-click reset) so it ports cleanly.
 
@@ -496,6 +499,102 @@ Surface notes and what was inferred rather than measured:
 
 ---
 
+# Quick Jump
+
+A launcher for the screens the sidebar cannot reach. **Alt+J.**
+
+## The problem it solves
+
+Politiko has **84 routes**. The sidebar has **20 entries**, and the `/settings/sidebar`
+screen only reorders and hides those twenty — there is no way to add anything to it.
+
+So a large part of the game is reachable only by remembering which page links to it. The
+worst case is the casino, which is five screens deep and gets no link at all from the nav:
+
+```
+Corporations → (footer link) → Directory → page until you find it
+             → its corp page → Enter casino → pick a game
+```
+
+That is not sloppy UI, it is the data model showing through: a casino is a **corporation
+of type `casino`** that owns a casino property, and the floor is a room inside that
+company. Quick Jump does not change that — it just remembers the way in.
+
+## How to use it
+
+**Alt+J** opens it, anywhere. Then either type, or click.
+
+- Typing filters everything at once — `house` finds The House's floor and all five of its
+  tables, `bank` finds the bank, `sleep` finds sleeper recruitment. **↑↓** moves, **Enter**
+  jumps, **Esc** closes.
+- **☆** pins a destination. Pinned rows sit at the top and get **Alt+1 … Alt+9**, so the
+  casino you actually play at is one chord away from anywhere in the game.
+- The **JUMP** button and the panel both drag, and remember where you put them.
+
+Every jump is a client-side route change — the same thing that happens when you click a
+link, with the walking removed.
+
+## The casino block
+
+Casinos get their own section, and each one shows **the gate next to the door**:
+
+| | |
+|---|---|
+| `open to you · 2m ago` | you are standing in a venue city — the floor will let you in |
+| `travel to Vegas / Reno · 12m ago` | it is real, you are in the wrong city, and those are the right ones |
+| `wagering suspended · 4m ago` | outstanding regulatory fine; audits still open |
+| `no venue — floor closed` | the corp has not acquired or leased a casino property |
+| `gate unknown` | never opened its corp page, so there is nothing to report |
+
+**The age is always shown, and it matters.** `current_city_access` is a snapshot from
+whenever that corp's page last loaded. Travel afterwards and the reading is stale — the
+script cannot know that without asking the server, which it will not do. An open gate read
+an hour ago is shown amber rather than green for exactly this reason.
+
+Without this, a shortcut to a casino would be worse than no shortcut: you would spend a
+page load to be told to travel.
+
+## How it learns
+
+It knows the 53 fixed routes immediately. Everything with an ID in it — casinos,
+corporations, factions — it learns from responses **the game already made** while you
+played:
+
+| you do this | it learns |
+|---|---|
+| page the corporation directory | every corp on that page, with its type — **this is the one that matters** |
+| open any corp's page | that corp, and its casino summary if it has one |
+| look at your own corp / faction | those |
+
+One visit to the directory populates every casino in the world permanently. If the panel
+is empty, that is the fix, and the footer says so with a button that goes there.
+
+**It never fetches the directory for you.** That would be scraping a page you are not
+viewing, which is the bright line in the scripting clause and is not worth crossing to save
+one click.
+
+## Craps is missing on purpose
+
+`/corporations/:id/casino/craps` is a live route and `CasinoCrapsPage` ships, but the
+lobby filters craps out of the only screen that would link to it. That is an operator
+decision expressed in code, so this tool honours it — craps is never offered, even when
+the server reports it live. `test-quick-jump-passive` fails the build if it reappears
+anywhere but the denylist. Same reasoning for `/property/:id`, whose behaviour is
+unverified: not shipped until somebody confirms it.
+
+## What it reads
+
+Full disclosure is in the header comment at the top of
+[`quick-jump.user.js`](quick-jump.user.js). In short: it reads a handful of GET responses
+the game already made, keeps names, IDs, types and venue cities under `pkqj:` keys in your
+browser, and sends nothing anywhere. It originates **zero** requests, and never reads any
+storage but its own.
+
+The route table it is built from, and the measurements behind the casino block:
+[`docs/12-navigation-surface.md`](../docs/12-navigation-surface.md).
+
+---
+
 ## Tests
 
 Run from the repository root:
@@ -512,6 +611,8 @@ node userscripts/tools/test-bridge.js
 node userscripts/tools/test-xp.js
 node userscripts/tools/test-raid.js
 node userscripts/tools/test-raid-passive.js
+node userscripts/tools/test-quick-jump.js
+node userscripts/tools/test-quick-jump-passive.js
 ```
 
 Every suite slices the layer it covers straight out of the shipped script rather than
@@ -528,6 +629,11 @@ true only until someone adds it back:
   surrender wars and impose flags. It fails on any mention of those paths, any non-GET
   verb, and any timer body that touches the network — the two ways to build a poll are
   `setInterval` and a `setTimeout` that re-arms, and both are barred.
+- `test-quick-jump-passive` fences quick-jump, the only tool here whose job is to *move
+  you*. Rather than ban navigation it pins it: exactly one `pushState` site, reachable
+  only from a handler you triggered, with no timer able to reach it — a jump that
+  schedules the next jump is a crawler. It also fails if the tool ever prefetches the
+  directory it depends on, or surfaces craps.
 
 They have nothing else in common; market-watch's was named `test-passive.js` when it
 lived in its own repository and was renamed on the way in.
@@ -544,3 +650,45 @@ walk means silently missing a player on a list you are stepping through by hand.
 `test-placement` covers the panel placement layer against a synthetic viewport: the button
 stays on screen and clear of the game's Comms dock, and the panel stays fully visible from
 whichever corner the button was dragged into.
+
+---
+
+## The bench
+
+`tools/harness/` renders a real panel against canned payloads, in a real browser, with no
+game anywhere near it.
+
+```bash
+python -m http.server 8146 --directory userscripts
+```
+
+Then open <http://localhost:8146/tools/harness/>. There is also a `panel-harness` entry in
+`.claude/launch.json` if you drive this from Claude Code.
+
+Pick a tool, click its fixtures, and the panel fills in as if you had been playing. A
+`?tool=` parameter switches tools; fixtures live in
+[`tools/harness/fixtures.js`](tools/harness/fixtures.js), keyed by script basename, and
+adding a tool means adding an entry.
+
+**Why it exists.** Every tool here draws a panel over a live game we are told to be careful
+with — one account, no alts, and every authenticated page view spends real risk. Rendering a
+panel used to mean loading politiko.io and playing until the state you wanted showed up.
+Now it means clicking a button.
+
+**It cannot reach the network.** `fetch`, `WebSocket` and `XMLHttpRequest` are replaced with
+inert stubs *before* the tool script is injected, so a tool running on the bench cannot
+contact politiko.io even if it tried. That is the point rather than a convenience — a bench
+you have to trust is worth less than one that is incapable.
+
+It also **logs every attempt in red**: a fetch with no fixture, an XHR, or a `send()` on a
+socket. So the bench doubles as a live check on the property every disclosure block in this
+repo claims, which is the one thing the static fences cannot observe — they read the file,
+this watches it run.
+
+The unit tests and the fences still do the real work; the bench catches what they
+structurally cannot. Writing quick-jump it found three: nested `<button>` elements, a
+re-render that reset the filter caret on every keystroke, and a first-run search for
+"casino" that returned a bare "nothing matches" — the one query a new user is most likely
+to type. Its fixtures are also the right home for edge cases worth *seeing*: firing a
+casino body at a haulage corp is one click, and the panel either lists a warehouse under
+Casino or it does not.

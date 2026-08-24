@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>panel harness — politiko-research</title>
+<!--
+  A bench for the panels in ../../ — load one, feed it canned payloads, drive it.
+
+  WHY THIS EXISTS
+  Every tool in this repo draws a panel over a live game we are told to be careful with:
+  one account, no alts, and every authenticated page view spends real risk (CLAUDE.md,
+  hard rule 3). Rendering a panel used to mean loading politiko.io. It no longer does.
+
+  WHAT IT CANNOT DO
+  Reach the network. fetch, WebSocket and XMLHttpRequest are all replaced with inert
+  stubs BEFORE the tool script is injected, so a tool running in here cannot contact
+  politiko.io even if it tried. That is not a convenience, it is the point: the harness
+  is only trustworthy if it is incapable of doing the thing the rules forbid.
+
+  It also LOGS any attempt. A passive tool that tries to send on a socket, or to fetch a
+  path with no fixture, turns the log red — so the bench doubles as a live check on the
+  property every disclosure block in this repo claims.
+-->
+<style>
+  :root { color-scheme: dark; }
+  body { background:#0a0a0c; color:#a1a1aa; font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+         margin:0; padding:20px 22px 60px; }
+  h1 { font-size:13px; color:#e4e4e7; letter-spacing:.14em; text-transform:uppercase; margin:0 0 2px; }
+  h2 { font-size:10px; color:#52525b; letter-spacing:.14em; text-transform:uppercase;
+       margin:22px 0 6px; font-weight:500; }
+  p { max-width:70ch; margin:6px 0; }
+  a { color:#60a5fa; }
+  code { color:#d4d4d8; }
+  .warn { border:1px solid #78350f; background:#1c1207; color:#fbbf24; padding:8px 11px;
+          border-radius:3px; max-width:70ch; font-size:11.5px; }
+  button { background:#18181b; color:#d4d4d8; border:1px solid #3f3f46; border-radius:3px;
+           padding:5px 10px; font:11px ui-monospace,monospace; cursor:pointer; margin:0 3px 4px 0; }
+  button:hover { border-color:#71717a; color:#f4f4f5; }
+  button.primary { border-color:#166534; color:#4ade80; }
+  select { background:#18181b; color:#e4e4e7; border:1px solid #3f3f46; border-radius:3px;
+           padding:4px 6px; font:11px ui-monospace,monospace; }
+  pre { background:#101013; border:1px solid #27272a; border-radius:3px; padding:9px 11px;
+        font-size:11px; max-height:300px; overflow:auto; margin:0; }
+  .ln { white-space:pre-wrap; }
+  .nav { color:#4ade80; } .rx { color:#a1a1aa; } .bad { color:#f87171; } .dim { color:#52525b; }
+</style>
+</head>
+<body>
+
+<h1>panel harness</h1>
+<p class="dim">a bench for the userscripts in this repo — <strong>this is not the game</strong></p>
+
+<div class="warn">
+  Nothing on this page can reach politiko.io. <code>fetch</code>, <code>WebSocket</code> and
+  <code>XMLHttpRequest</code> are replaced with inert stubs before the tool loads, and every
+  call the tool makes is answered from <code>fixtures.js</code> or logged as a miss.
+</div>
+
+<h2>tool</h2>
+<div>
+  <select id="tool"></select>
+  <button onclick="reloadWith()">load</button>
+  <button onclick="localStorage.clear(); location.reload()">wipe its storage &amp; reload</button>
+  <span id="hot" class="dim"></span>
+</div>
+
+<h2>feed it</h2>
+<div id="calls"></div>
+<div id="note" class="dim"></div>
+
+<h2>log</h2>
+<pre id="log"></pre>
+
+<script src="fixtures.js"></script>
+<script>
+// ---------------------------------------------------------------------------
+// log
+// ---------------------------------------------------------------------------
+const logEl = document.getElementById('log');
+const say = (text, cls) => {
+  const d = document.createElement('div');
+  d.className = `ln ${cls || ''}`;
+  d.textContent = `${new Date().toISOString().slice(11, 23)}  ${text}`;
+  logEl.prepend(d);
+};
+
+// ---------------------------------------------------------------------------
+// which tool
+// ---------------------------------------------------------------------------
+const FIXTURES = window.HARNESS_FIXTURES || {};
+const params = new URLSearchParams(location.search);
+const toolName = params.get('tool') && FIXTURES[params.get('tool')]
+  ? params.get('tool')
+  : Object.keys(FIXTURES)[0];
+const spec = FIXTURES[toolName] || { label: toolName, calls: [] };
+
+const sel = document.getElementById('tool');
+for (const key of Object.keys(FIXTURES)) {
+  sel.append(new Option(`${FIXTURES[key].label} (${key})`, key));
+}
+sel.value = toolName;
+function reloadWith() { location.search = `?tool=${encodeURIComponent(sel.value)}`; }
+
+document.getElementById('hot').textContent = spec.hotkey ? `  ${spec.hotkey} opens it` : '';
+document.getElementById('note').textContent = spec.note || '';
+
+// ---------------------------------------------------------------------------
+// the cage — installed BEFORE the tool script is injected
+// ---------------------------------------------------------------------------
+const ORIGIN = 'https://politiko.io';
+const byPath = new Map();
+for (const c of spec.calls) if (!byPath.has(c.path)) byPath.set(c.path, c.body);
+const override = new Map(); // variant selected by a button click, wins for one call
+
+window.fetch = async (input) => {
+  const url = String(typeof input === 'string' ? input : (input && input.url) || '');
+  const path = url.replace(ORIGIN, '');
+  const body = override.has(path) ? override.get(path) : byPath.get(path);
+  override.delete(path);
+  if (body === undefined) {
+    say(`fetch MISS  ${path}  — no fixture; returned {}`, 'bad');
+  } else {
+    say(`fetch  ${path}`, 'rx');
+  }
+  return new Response(JSON.stringify(body ?? {}), {
+    status: 200, headers: { 'content-type': 'application/json' },
+  });
+};
+
+// A tool that opens a socket here gets a dead one. Statics are real because the game
+// reads WebSocket.OPEN, and a stub without them breaks the subclass in ws-watch.
+window.WebSocket = class HarnessSocket extends EventTarget {
+  static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
+  constructor(url) {
+    super();
+    this.url = String(url); this.readyState = 1;
+    this.onopen = this.onmessage = this.onclose = this.onerror = null;
+    say(`socket opened (dead)  ${this.url.split('?')[0]}`, 'rx');
+    queueMicrotask(() => { this.onopen && this.onopen({ type: 'open' }); });
+  }
+  send(data) { say(`SOCKET SEND ATTEMPTED — ${String(data).slice(0, 120)}`, 'bad'); }
+  close() { this.readyState = 3; this.onclose && this.onclose({ type: 'close', code: 1000, wasClean: true }); }
+};
+Object.assign(window.WebSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 });
+
+// XHR: the tools wrap open/send, so leaving the real ones in place would let a wrap
+// pass a request straight through to the network. These are the ones they wrap.
+XMLHttpRequest.prototype.open = function (method, url) {
+  this.__harnessUrl = String(url); this.__harnessMethod = method;
+};
+XMLHttpRequest.prototype.send = function () {
+  say(`XHR ATTEMPTED — ${this.__harnessMethod} ${this.__harnessUrl}`, 'bad');
+};
+
+// ---------------------------------------------------------------------------
+// observe navigation the way React Router 7 does — see docs/12-navigation-surface.md
+// ---------------------------------------------------------------------------
+const origPush = history.pushState;
+history.pushState = function (state, t, url) {
+  say(`pushState → ${url}   idx=${state && state.idx}  key=${state && state.key}`, 'nav');
+  return origPush.call(this, state, t, url);
+};
+window.addEventListener('popstate', (e) => say(`  ↳ popstate, state.idx=${e.state && e.state.idx}`, 'nav'));
+
+// ---------------------------------------------------------------------------
+// buttons
+// ---------------------------------------------------------------------------
+const callsEl = document.getElementById('calls');
+spec.calls.forEach((c) => {
+  const b = document.createElement('button');
+  b.textContent = c.label;
+  b.title = c.path;
+  b.onclick = () => { if (c.variant) override.set(c.path, c.body); fetch(ORIGIN + c.path); };
+  callsEl.append(b);
+});
+if (spec.calls.length) {
+  const all = document.createElement('button');
+  all.className = 'primary';
+  all.textContent = '▸ fire all, in order';
+  all.onclick = async () => { for (const c of spec.calls) { if (!c.variant) await fetch(ORIGIN + c.path); } };
+  callsEl.prepend(all);
+}
+
+// ---------------------------------------------------------------------------
+// finally, the tool itself
+// ---------------------------------------------------------------------------
+say(`harness ready — loading ${toolName}.user.js`, 'dim');
+const s = document.createElement('script');
+s.src = `../../${toolName}.user.js`;
+s.onerror = () => say(`could not load ../../${toolName}.user.js`, 'bad');
+document.head.append(s);
+</script>
+</body>
+</html>

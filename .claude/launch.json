@@ -4,6 +4,12 @@
     {
       "name": "time-wire",
       "url": "http://localhost:8142"
+    },
+    {
+      "name": "panel-harness",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8146", "--directory", "userscripts"],
+      "port": 8146
     }
   ]
 }
