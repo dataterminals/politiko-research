@@ -30,7 +30,7 @@ const mk = () => {
     return { clamp3, px, py, word, short, hue, norm, issueOf, catOf, labelOf, ISSUE, POLICY,
              ORDER, FIPS, CITY_FIPS, BUCKETS, COARSE, leanOfMeter, leanOfCounts,
              leanOfDominance, pollMean, axes, meanOfPeople, radius, spread,
-             data, ui, LAYERS, pointOf, freshOf, rowsState, rowsPublic, rowsStreet,
+             ROUTE, data, ui, LAYERS, pointOf, freshOf, rowsState, rowsPublic, rowsStreet,
              rowsMedia, peopleRows, cityKeys, cityName, cityKey, consume, seenKey };
   `)(
     { data: 'pkww:data', ui: 'pkww:ui' },
@@ -427,6 +427,57 @@ console.log('\n— the panel\'s own bookkeeping —');
   const street = w.freshOf(w.LAYERS.find((l) => l.key === 'street'), null);
   check('a layer with no reading has no age', law, null);
   check('...and one with a reading does', typeof street, 'number');
+}
+
+// ---------------------------------------------------------------------------
+// Every jump button has to land on a route the game actually ships.
+//
+// This block exists because it did not. Opinion polling ANSWERS on
+// `/api/actions/poll` and LIVES at `/actions/opinion-poll`, and the panel's route was
+// derived from the endpoint — so the one button on the tab whose whole job is "go here
+// to get this reading" went to a 404. Nothing in the file could have noticed: the href
+// is a string, the navigation succeeds, and the game renders its not-found page.
+//
+// The fix is not a longer list of literals, it is checking against a list somebody
+// maintains. quick-jump's CATALOG is the router's own parameterless routes, lifted from
+// the entry bundle and kept current because that tool's whole product is those links.
+// ---------------------------------------------------------------------------
+console.log('\n— every jump lands on a real route —');
+{
+  const QJ = fs.readFileSync(path.join(__dirname, '..', 'quick-jump.user.js'), 'utf8');
+  const i = QJ.indexOf('  const CATALOG = [');
+  const j = QJ.indexOf('\n  ];', i);
+  if (i < 0 || j < 0) throw new Error('quick-jump CATALOG markers not found');
+  const catalog = new Set(
+    [...QJ.slice(i, j).matchAll(/\['(\/[^']*)',/g)].map((m) => m[1]),
+  );
+  check('the catalogue was read', catalog.size > 30, true);
+
+  // The routes the panel offers, as the shipped file declares them.
+  const w = mk();
+  const routes = Object.entries(w.ROUTE)
+    .map(([k, v]) => [k, typeof v === 'function' ? v('someone') : v]);
+  check('every route is a string', routes.filter(([, v]) => typeof v !== 'string'), []);
+
+  // `/` is the home page and `/profile/<name>` is parameterised; neither is in a
+  // catalogue of parameterless destinations, so both are named here rather than waved
+  // through by a pattern that would also wave through a typo.
+  const EXEMPT = { home: '/', profile: '/profile/someone' };
+  const bad = routes.filter(([k, v]) => (k in EXEMPT ? EXEMPT[k] !== v : !catalog.has(v)));
+  check('every other route is one quick-jump lists', bad.map(([k, v]) => `${k} -> ${v}`), []);
+
+  // The specific one, named, so the regression cannot come back quietly.
+  check('opinion polling is under actions, and is not the API path',
+    [w.ROUTE.poll, catalog.has('/actions/poll')], ['/actions/opinion-poll', false]);
+
+  // And nothing in the panel may hand jumpBtn a bare string: that is how the first one
+  // got past. Every href has to come from ROUTE.
+  const SRC_JUMPS = [...SRC.matchAll(/jumpBtn\([^,]+,\s*([^,]+),/g)].map((m) => m[1].trim());
+  check('no jump button carries a literal path',
+    SRC_JUMPS.filter((a) => !a.startsWith('ROUTE.') && a !== 'href'), []);
+  const SRC_GAPS = [...SRC.matchAll(/gaps\.push\(\[[^,]+,\s*([^,]+),/g)].map((m) => m[1].trim());
+  check('...and neither does a gap row',
+    SRC_GAPS.filter((a) => !a.startsWith('ROUTE.')), []);
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

@@ -49,6 +49,20 @@ profile/:username             property/:id                  protests/:id
 trades/:id                    :slug
 ```
 
+### A route is not its endpoint — noted 2026-08-26
+
+Worth stating plainly, because a tool got it wrong: **the client route and the API path
+that serves it are not the same string, and the difference is not systematic.** Opinion
+polling answers on `/api/actions/poll` and lives at **`/actions/opinion-poll`**. Graffiti
+happens to match (`/actions/graffiti` both ways); polling does not.
+
+A link derived from an endpoint therefore fails silently — the navigation succeeds, the
+router matches nothing, and the game renders its own not-found page. `world-watch` 0.2.1
+sends every href it offers through one `ROUTE` table, and `tools/test-world.js` checks
+that table against `quick-jump`'s `CATALOG`, which is this document's route list kept in
+code. Any tool that links into the game should do the same rather than keeping a private
+copy of these strings.
+
 ## The sidebar, and what it cannot do
 
 The sidebar is a fixed array of **20 items** in the entry bundle, every one of them a

@@ -124,7 +124,11 @@ number, and it gates three separate surfaces.
 
 ### `POST /api/actions/poll` — the public, one issue at a time
 
-`OpinionPollPage`. `GET /api/actions/poll/issues` returns `{ issues: string[] }` and
+`OpinionPollPage`, at route **`/actions/opinion-poll`** — which is *not* the endpoint's
+path, and is the one place in this file where the two diverge enough to break a link. See
+[`12-navigation-surface.md`](12-navigation-surface.md).
+
+`GET /api/actions/poll/issues` returns `{ issues: string[] }` and
 carries no data of its own — the numbers only come back from a poll you ran.
 
 Four methods, and they differ in what the **response** contains, not only in accuracy:

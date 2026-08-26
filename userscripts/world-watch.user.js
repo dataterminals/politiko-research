@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — World Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.0
+// @version      0.2.1
 // @description  Plots the game world on the same political compass the game draws for your character — the law, public opinion, the street, the media and the citizens you have seen, as five separate readings — and breaks the same thing down city by city. Reads only responses the app already fetched. Passive; zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -176,6 +176,22 @@
     '39': 'OH', '40': 'OK', '41': 'OR', '42': 'PA', '44': 'RI', '45': 'SC', '46': 'SD',
     '47': 'TN', '48': 'TX', '49': 'UT', '50': 'VT', '51': 'VA', '53': 'WA', '54': 'WV',
     '55': 'WI', '56': 'WY',
+  };
+
+  // Client ROUTES, not API paths — and the difference is a trap this tool already fell
+  // into once. Opinion polling answers on `/api/actions/poll` but lives at
+  // `/actions/opinion-poll`; deriving the route from the endpoint sent every "fill this
+  // row" button to a 404. Every href the panel offers comes from here, and
+  // tools/test-world.js checks each one against quick-jump's CATALOG, which is the
+  // maintained copy of the router's own list (docs/12-navigation-surface.md).
+  const ROUTE = {
+    home: '/',
+    government: '/government',
+    poll: '/actions/opinion-poll',
+    protests: '/protests',
+    travel: '/travel',
+    graffiti: '/actions/graffiti',
+    profile: (name) => `/profile/${encodeURIComponent(name)}`,
   };
 
   // ===========================================================================
@@ -931,12 +947,12 @@
     // What is missing, and the one click that would fix it. This is the whole
     // acquisition story: every row fills from a screen you were going to open anyway.
     const gaps = [];
-    if (!data.gov) gaps.push(['Government', '/government', 'fills the law']);
-    if (!Object.keys(data.polls).length) gaps.push(['Polls', '/actions/poll', 'fills the public']);
-    if (!Object.keys(data.protests).length) gaps.push(['Protests', '/protests', 'fills the street']);
-    if (!data.campaigns.length) gaps.push(['Home', '/', 'fills the media']);
-    if (!Object.keys(data.people).length && data.self) gaps.push(['Your profile', `/profile/${encodeURIComponent(data.self)}`, 'first citizen']);
-    if (!Object.keys(data.dom).length) gaps.push(['Travel', '/travel', 'fills the map']);
+    if (!data.gov) gaps.push(['Government', ROUTE.government, 'fills the law']);
+    if (!Object.keys(data.polls).length) gaps.push(['Polls', ROUTE.poll, 'fills the public']);
+    if (!Object.keys(data.protests).length) gaps.push(['Protests', ROUTE.protests, 'fills the street']);
+    if (!data.campaigns.length) gaps.push(['Home', ROUTE.home, 'fills the media']);
+    if (!Object.keys(data.people).length && data.self) gaps.push(['Your profile', ROUTE.profile(data.self), 'first citizen']);
+    if (!Object.keys(data.dom).length) gaps.push(['Travel', ROUTE.travel, 'fills the map']);
     if (gaps.length) {
       out.append(h2('nothing here yet'));
       const jrow = el('div', 'pkww-jump');
@@ -1002,8 +1018,8 @@
     if (!keys.length) {
       out.append(el('p', 'pkww-dim', 'No city has been named yet. The Travel screen lists every one of them; the home page names one per media campaign.'));
       const jrow = el('div', 'pkww-jump');
-      jrow.append(jumpBtn('Travel', '/travel', 'lists the world\'s cities and the state map'));
-      jrow.append(jumpBtn('Home', '/', 'names cities via media campaigns'));
+      jrow.append(jumpBtn('Travel', ROUTE.travel, 'lists the world\'s cities and the state map'));
+      jrow.append(jumpBtn('Home', ROUTE.home, 'names cities via media campaigns'));
       out.append(jrow);
       return;
     }
@@ -1204,8 +1220,8 @@
       out.append(nt);
     }
     const jrow = el('div', 'pkww-jump');
-    jrow.append(jumpBtn('Opinion Polls', '/actions/poll', 'one issue per poll, and it costs energy'));
-    jrow.append(jumpBtn('Government', '/government', 'all 20 policy axes at once'));
+    jrow.append(jumpBtn('Opinion Polls', ROUTE.poll, 'one issue per poll, and it costs energy'));
+    jrow.append(jumpBtn('Government', ROUTE.government, 'all 20 policy axes at once'));
     out.append(jrow);
   };
 
@@ -1213,15 +1229,15 @@
   // SOURCES
   // ---------------------------------------------------------------------------
   const SOURCES = [
-    ['/api/government', 'the law · 20 policy axes, chambers, court', '/government', 'Government'],
-    ['/api/actions/poll', 'the public · one issue per poll', '/actions/poll', 'Polls'],
-    ['/api/protests', 'the street · live meters', '/protests', 'Protests'],
-    ['/api/protests/state-dominance', 'the map · every US state', '/travel', 'Travel'],
-    ['/api/home/media-campaigns', 'the media · per city, per issue', '/', 'Home'],
-    ['/api/home/active-protest', 'the street · one protest, named and placed', '/', 'Home'],
+    ['/api/government', 'the law · 20 policy axes, chambers, court', ROUTE.government, 'Government'],
+    ['/api/actions/poll', 'the public · one issue per poll', ROUTE.poll, 'Polls'],
+    ['/api/protests', 'the street · live meters', ROUTE.protests, 'Protests'],
+    ['/api/protests/state-dominance', 'the map · every US state', ROUTE.travel, 'Travel'],
+    ['/api/home/media-campaigns', 'the media · per city, per issue', ROUTE.home, 'Home'],
+    ['/api/home/active-protest', 'the street · one protest, named and placed', ROUTE.home, 'Home'],
     ['/api/factions/{id}/jobs', 'the law again · the lobbying screen carries the axes', null, null],
-    ['/api/actions/graffiti', 'walls · the city you are in', '/actions/graffiti', 'Graffiti'],
-    ['/api/locations', 'the world\'s cities', '/travel', 'Travel'],
+    ['/api/actions/graffiti', 'walls · the city you are in', ROUTE.graffiti, 'Graffiti'],
+    ['/api/locations', 'the world\'s cities', ROUTE.travel, 'Travel'],
     ['/api/users/{id}', 'citizens · one profile at a time', null, null],
     ['/api/user/status', 'your name and current city', null, null],
   ];
