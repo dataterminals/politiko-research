@@ -12,7 +12,7 @@ bannable, so the disclosure block is the contract.
 
 | tool | version | raw link |
 |---|---|---|
-| People Watch | 1.4.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| People Watch | 1.5.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
 | Market Watch | 1.0.1 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
 | Time Watch | 0.5.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
 | Align Watch | 0.3.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
@@ -96,22 +96,61 @@ So the loop is:
 1. **Open the People tab and page through it.** Every page is captured for free — that's
    `known` climbing, and it's what the walk below needs.
 2. **Open profiles.** Each one you open is recorded permanently, at full precision.
-3. **Walk the roster.** On any profile page the panel grows a walk bar:
+3. **Walk it.** On any profile page the panel grows a walk bar:
 
    | control | does |
    |---|---|
-   | `‹ [` | previous player in the roster |
+   | `‹ [` | previous player in the walk order |
    | `] ›` | next player |
    | `next unseen ›` | skip ahead to someone with no profile yet |
+   | `⋮ roster` / `⋮ list` | which order those keys follow — click it, or press `\` |
+   | `⟳` | *list only* — re-take the walk's copy of the list |
 
-   The `[` and `]` keys do the same thing without the panel open, so a pass through the
-   roster is one keypress per player. They are ignored while you are typing, so chat
-   still works.
+   The `[` and `]` keys do the same thing without the panel open, so a pass is one
+   keypress per player. They are ignored while you are typing, so chat still works.
+   There are two orders to walk and they are for different jobs — see below.
 4. **Read the table.** Sort **most idle**, set **≥7d idle**, tick **hide npc** and
    **hide online**. Player names are links — click one to jump straight there.
 
 Each step is a normal navigation. The game fetches that profile exactly as it would if you
 had clicked the player yourself, and the tap records what comes back.
+
+## Two ways to walk
+
+`⋮ roster` / `⋮ list` in the walk bar decides what `[` and `]` mean. `\` toggles it from the
+keyboard, and the choice is remembered.
+
+| | `⋮ roster` | `⋮ list` |
+|---|---|---|
+| the order | the game's own pagination | whatever the panel is showing: your sort, your filters, your grouping, top to bottom |
+| who is in it | every username seen on a roster page | only players you have already profiled |
+| what it's for | filling the ledger | working a shortlist you built |
+
+Roster order is the default, and it is the one that gets the ledger filled — it is the only
+order containing players you have never opened. List order is for afterwards: sort **most
+idle**, group **by city**, tick **hide online**, and `]` walks you down the people in one
+city who have not logged in for a week, in the order you are looking at them. The row you
+are standing on is marked in the table and scrolled into view as you go.
+
+`next unseen ›` always walks the roster, whichever way the toggle is set. The list holds no
+unprofiled players by definition, so asking it for one is an empty question, and the control
+that fills the ledger should not quietly stop working because you sorted the table.
+
+### The list moves; your place does not
+
+Sort by **freshest data** and every profile you open jumps to the top, which would make `]`
+bounce between two names forever. Tick **hide online** and opening someone who is online
+drops them out from under you, leaving the next keypress nothing to count from. Even **most
+idle** drifts on its own, because idle time is measured against now.
+
+So the walk takes a copy of the order and counts along the copy. It re-takes the copy when
+you change a control that decides the order — a different sort, a filter, the grouping — or
+when you step back into the list from roster order, because those are you asking for a
+different list. Anything else that moves the table leaves your place alone, and `⟳` turns
+yellow to say the table has moved on without you. Press it when you want those changes
+folded in; ignore it and keep walking if you don't.
+
+Nothing about this is stored: a walk does not outlive a reload.
 
 ## The table
 
@@ -837,9 +876,16 @@ are all states you would otherwise have to reproduce by hand — growing away fr
 a `74vh` cap quietly outranking a chosen height, a restore reading back as a user gesture, a
 minimise shrinking the panel to nothing.
 
-`test-people` covers people-watch's walk layer — where a keypress sends you, and which
-players `next unseen` is allowed to skip — plus the derived metrics. An off-by-one in the
-walk means silently missing a player on a list you are stepping through by hand.
+`test-people` covers people-watch's walk layer — where a keypress sends you, which order it
+follows, and which players `next unseen` is allowed to skip — plus the derived metrics. An
+off-by-one in the walk means silently missing a player on a list you are stepping through by
+hand.
+
+The list-order walk is pinned down harder than the roster one, because the roster is a fixed
+order and the list is not: it re-sorts as profiles land and as time passes. So the suite
+drives the table out from under a walk in progress and asserts the keypress still means "the
+row below the one I am on" — and separately that the walk order is the *painted* order,
+grouping and row cap included, rather than something that merely agrees with it by hand.
 
 `test-placement` covers the panel placement layer against a synthetic viewport: the button
 stays on screen and clear of the game's Comms dock, and the panel stays fully visible from

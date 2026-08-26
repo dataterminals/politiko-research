@@ -23,13 +23,19 @@ const S_SLICE = cut('  const ms = (iso) =>', '  // =============================
 /** rows() reads `people` and `ui` from the closure, so both are injected. */
 const mkRows = (people, ui, CFG) =>
   new Function('people', 'ui', 'CFG',
-    `${S_SLICE}\nreturn { rows, SORTS, COLUMNS, GROUPS, liveScore, derive, cityText, cityTitle };`)(people, ui, CFG);
+    `${S_SLICE}\nreturn { rows, display, displayOrder, SORTS, COLUMNS, GROUPS, liveScore, derive, cityText, cityTitle };`)(people, ui, CFG);
 
-/** goProfile is never called here — it only touches history/window, which are stubs. */
-const mkWalk = (people, roster, pathname) =>
-  new Function('people', 'roster', 'location', 'history', 'window', 'paint',
-    `${W_SLICE}\nreturn { step, nextUnseen, currentProfile, walkOrder, mod };`)(
-    people, roster, { pathname }, { pushState() {} }, { dispatchEvent() {} }, () => {});
+/**
+ * goProfile is never called here — it only touches history/window, which are stubs.
+ *
+ * `ui` and `displayOrder` are injected because 1.5.0 gave the walk two orders to choose
+ * between, and the second one is the table's, which is built further down the file than
+ * this slice reaches. The defaults keep every roster-order case reading as it did.
+ */
+const mkWalk = (people, roster, pathname, ui = { walk: 'roster' }, displayOrder = () => []) =>
+  new Function('people', 'roster', 'location', 'history', 'window', 'paint', 'ui', 'displayOrder', 'save',
+    `${W_SLICE}\nreturn { step, walkAt, nextUnseen, currentProfile, walkOrder, listOrder, resyncWalk, walkStale, swapWalk, mod, WALK };`)(
+    people, roster, { pathname }, { pushState() {} }, { dispatchEvent() {} }, () => {}, ui, displayOrder, () => {});
 
 const mkDerive = (CFG) => new Function('CFG', `${D_SLICE}\nreturn { derive, ms };`)(CFG);
 
@@ -321,6 +327,147 @@ console.log('\n— metrics —');
   check('missing last_online yields null idle, not NaN', d.idleMs, null);
   check('missing combat record still renders', d.record, '0-0');
   check('never-stuck is false when there is nothing to compare', d.neverStuck, false);
+}
+
+// ---------------------------------------------------------------------------
+// The second walk order, added in 1.5.0: the panel's own list.
+//
+// Worth pinning down harder than the roster walk was, because the roster is a fixed
+// order and the list is not — it re-sorts under you as profiles land and as time
+// passes. Everything below is really one question: does a keypress still mean "the row
+// below the one I am on" after the table has moved?
+// ---------------------------------------------------------------------------
+console.log('\n— walk: which order the keys follow —');
+{
+  const roster = rosterOf('ana', 'bo', 'cy');
+  const ui = { walk: 'roster' };
+  const w = mkWalk(seen('ana', 'bo', 'cy'), roster, '/profile/ana', ui, () => ['cy', 'ana']);
+  check('roster mode steps along the roster', w.step(1), 'bo');
+  ui.walk = 'list';
+  check('list mode steps along the panel', w.step(1), 'cy');
+  check('the position is read off whichever order is live', w.walkAt(), 1);
+}
+{
+  const ui = { walk: 'roster' };
+  const w = mkWalk({}, rosterOf('ana'), '/profile/ana', ui, () => []);
+  w.swapWalk();
+  check('swapping flips roster to list', ui.walk, 'list');
+  w.swapWalk();
+  check('...and list back to roster', ui.walk, 'roster');
+}
+{
+  const ui = { walk: 'list' };
+  const w = mkWalk(seen('ana', 'bo'), rosterOf('ana', 'bo'), '/profile/ana', ui, () => []);
+  check('an empty list has nowhere to step', w.step(1), null);
+  check('...and no position to report', w.walkAt(), -1);
+}
+{
+  // hide online, ≥7d idle, a group you are not in: plenty of ways to be looking at
+  // someone the list does not contain
+  const ui = { walk: 'list' };
+  const w = mkWalk(seen('ana', 'bo', 'cy'), rosterOf('ana', 'bo', 'cy'), '/profile/bo', ui,
+    () => ['ana', 'cy']);
+  check('standing outside the list starts you at the top of it', w.step(1), 'ana');
+  check('...and the readout says you are not in it', w.walkAt(), -1);
+}
+{
+  // the control that fills the ledger must not stop working because you sorted the table
+  const ui = { walk: 'list' };
+  const w = mkWalk(seen('ana'), rosterOf('ana', 'bo', 'cy'), '/profile/ana', ui, () => ['ana']);
+  check('next unseen still walks the roster in list mode', w.nextUnseen(), 'bo');
+}
+
+console.log('\n— walk: the list moves, your place does not —');
+{
+  // sort by freshest data and every profile you open jumps to the top. Counting along
+  // the live order would make ] mean "back to the one I just came from", forever.
+  const roster = rosterOf('ana', 'bo', 'cy');
+  let live = ['ana', 'bo', 'cy'];
+  const ui = { walk: 'list', sort: 'fresh', dir: 1, group: 'none' };
+  const w = mkWalk(seen('ana', 'bo', 'cy'), roster, '/profile/bo', ui, () => live.slice());
+
+  check('the first step reads the list as it stands', w.step(1), 'cy');
+  live = ['bo', 'ana', 'cy'];                    // opening bo made bo the freshest
+  check('the table moving does not move your place', w.step(1), 'cy');
+  check('...and the walk knows it is behind the table', w.walkStale(live), true);
+
+  w.resyncWalk();
+  check('resync takes a fresh copy', w.step(1), 'ana');
+  check('...and is no longer behind', w.walkStale(live), false);
+}
+{
+  // changing a control that decides the order is asking for a different list, so the
+  // copy is rebuilt without being asked
+  const roster = rosterOf('ana', 'bo', 'cy');
+  let live = ['ana', 'bo', 'cy'];
+  const ui = { walk: 'list', sort: 'idle', dir: 1, group: 'none' };
+  const w = mkWalk(seen('ana', 'bo', 'cy'), roster, '/profile/ana', ui, () => live.slice());
+
+  check('takes the list as it stands', w.step(1), 'bo');
+  live = ['cy', 'bo', 'ana'];
+  ui.dir = -1;                                   // you flipped the order yourself
+  check('flipping the order rebuilds the copy', w.step(1), 'cy');
+
+  live = ['bo', 'cy', 'ana'];
+  ui.minIdleDays = 7;                            // ...as does changing a filter
+  check('changing a filter rebuilds it too', w.step(1), 'bo');
+
+  // and leaving the list for roster order and coming back is asking for it again. This
+  // one cannot ride on the signature: roster order never looks at the copy, so nothing
+  // would notice the signature change while you were away.
+  live = ['ana', 'cy', 'bo'];
+  w.swapWalk();                                  // out to roster order
+  w.swapWalk();                                  // ...and back into the list
+  check('stepping back into the list takes a fresh copy', w.step(1), 'cy');
+}
+{
+  // a stale walk is only a thing in list mode
+  const ui = { walk: 'roster' };
+  const w = mkWalk(seen('ana'), rosterOf('ana', 'bo'), '/profile/ana', ui, () => ['ana']);
+  w.step(1);
+  check('roster order is never reported behind', w.walkStale(['bo']), false);
+}
+
+console.log('\n— the list the walk follows is the list you can see —');
+{
+  const D_CFG = { NEVER_STUCK_MS: 2 * HOUR, LIVE_TRUST_MS: 5 * 60_000, LIST_CAP: 400 };
+  const who = (n, over) => ({
+    username: n, observedAt: now, is_npc: false, is_online: false,
+    last_online: new Date(now - 3 * HOUR).toISOString(),
+    created_at: new Date(now - 30 * 24 * HOUR).toISOString(),
+    combat: { attacks_won: 1, attacks_lost: 1 }, ...over,
+  });
+  const ledger = {
+    ana: who('ana', { faction_name: 'Blue' }),
+    bo: who('bo', { faction_name: 'Red' }),
+    cy: who('cy', { faction_name: 'Red' }),
+    di: who('di'),                                // no membership recorded
+  };
+  const base = { hideNpc: true, hideOnline: false, minIdleDays: 0, sort: 'name', dir: 1 };
+  const mk = (over) => mkRows(ledger, { ...base, ...over }, D_CFG);
+
+  {
+    const r = mk({ group: 'none' });
+    check('ungrouped, the walk order is rows() flattened',
+      r.displayOrder(), r.rows().map((x) => x.r.username));
+    check('ungrouped is one nameless bucket',
+      r.display().map((g) => g.name), [null]);
+  }
+  {
+    // grouping reorders the table, so it has to reorder the walk by the same amount
+    const r = mk({ group: 'faction' });
+    check('buckets: biggest first, unrecorded last',
+      r.display().map((g) => [g.name, g.members.length]),
+      [['Red', 2], ['Blue', 1], ['not recorded', 1]]);
+    check('the walk follows the buckets, not the raw sort',
+      r.displayOrder(), ['bo', 'cy', 'ana', 'di']);
+  }
+  {
+    // the table stops drawing at the cap, so the walk has to stop counting there —
+    // otherwise ] eventually sends you to a row that is not on screen
+    const r = mkRows(ledger, { ...base, group: 'none' }, { ...D_CFG, LIST_CAP: 2 });
+    check('the walk stops at the same cap the table draws', r.displayOrder(), ['ana', 'bo']);
+  }
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — People Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      1.4.0
-// @description  Builds a local ledger of players' last-online times, cities, ranks and combat records from the profiles you open, and sorts it least-active-first. Fully passive: it reads responses the game already made and originates nothing. Includes a next/back walk so filling the ledger by hand is one keypress per player.
+// @version      1.5.0
+// @description  Builds a local ledger of players' last-online times, cities, ranks and combat records from the profiles you open, and sorts it least-active-first. Fully passive: it reads responses the game already made and originates nothing. Includes a next/back walk so filling the ledger by hand is one keypress per player — along the roster, or along the panel's own sorted and filtered list.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -75,8 +75,10 @@
     LIVE_TRUST_MS: 5 * 60_000,
 
     HOTKEY: 'p',                // Alt+P toggles the panel
-    WALK_PREV: '[',             // on a profile page, step back through the roster
+    WALK_PREV: '[',             // on a profile page, step back along the walk order
     WALK_NEXT: ']',             // ...and forward
+    WALK_SWAP: '\\',            // ...and flip which order that is — the key sits right beside them
+    LIST_CAP: 400,              // rows the table draws; the walk counts along the same ones
     PANEL_W: 560,
     PANEL_MIN_H: 160,
     FAB_SIZE: 42,           // a triangle carries less visual weight than a square of the same box
@@ -104,9 +106,13 @@
   /** @type {Record<string, any>} username -> observed profile */
   let people = readJSON(K.people, {});
   let roster = readJSON(K.roster, { total: null, totalPages: null, usernames: [], seenAt: 0, pages: {} });
-  let ui = readJSON(K.ui, { sort: 'idle', dir: 1, group: 'none', hideOnline: false, hideNpc: true, minIdleDays: 0, open: false, fab: null, panel: null, size: null });
+  let ui = readJSON(K.ui, { sort: 'idle', dir: 1, group: 'none', hideOnline: false, hideNpc: true, minIdleDays: 0, walk: 'roster', open: false, fab: null, panel: null, size: null });
   if (ui.dir !== -1) ui.dir = 1;   // an older stored ui has no dir at all
   if (typeof ui.group !== 'string') ui.group = 'none';
+  // there was only one walk order before 1.5.0, so that is what a stored ui without the
+  // field meant — and roster is the right thing to land on if the value is ever junk,
+  // because it is the only order that can reach a player you have not profiled
+  if (ui.walk !== 'list') ui.walk = 'roster';
 
   let saveTimer = null;
   const save = () => {
@@ -258,8 +264,70 @@
     try { return m ? decodeURIComponent(m[1]) : null; } catch { return m ? m[1] : null; }
   };
 
-  /** roster order — the order the game itself paginated them in */
-  const walkOrder = () => roster.usernames;
+  /**
+   * Two orders to walk, and they answer different questions.
+   *
+   *   roster — every username the game has paginated past you, in its order. It is the
+   *            only one containing players you have never profiled, so it is the order
+   *            that fills the ledger. Until 1.5.0 it was the only one there was.
+   *   list   — exactly what the panel is showing: your sort, your filters, your
+   *            grouping, top to bottom. By construction it holds only players you have
+   *            already profiled, because an unprofiled one has nothing to rank. It is
+   *            for working a shortlist you built — "the twelve most idle in Napoli" —
+   *            rather than for filling the ledger.
+   *
+   * `displayOrder` lives down with the table, because it has to *be* the painted order
+   * rather than agree with it by hand. Nothing here runs before boot, so reaching
+   * forward for it resolves fine.
+   */
+  const WALK = { roster: 'roster', list: 'list' };
+
+  /**
+   * The list moves under you, and that is the whole difficulty with walking it.
+   *
+   * Sort by "freshest data" and every profile you open jumps to the top, so ] from the
+   * top lands back on the one you just came from — a two-name loop that never advances.
+   * Tick "hide online" and opening someone who is online drops them out from under you,
+   * leaving the next keypress no position to count from and throwing you to row one.
+   * Even "most idle" drifts on its own, because idle time is measured against now.
+   *
+   * So the walk takes a copy of the order and counts along the copy. The copy is rebuilt
+   * when you change a control that decides the order — a different sort, a filter, the
+   * grouping — because at that point you have asked for a different list, and again when
+   * you step back into the list from roster order. Anything else that moves the table
+   * underneath you leaves your place alone, and the walk bar's ⟳ folds those changes in
+   * when you want them.
+   *
+   * This is the same problem 1.3.2 fixed for the scroll position, one layer down.
+   *
+   * In memory only: a walk does not outlive a reload, and none of it is stored.
+   */
+  let walkSnap = null;
+  // Deliberately not ui.walk. Roster order never consults the copy, so nothing would
+  // observe the signature changing while you were away from the list and it would come
+  // back looking untouched — leaving and returning is handled in swapWalk, where it
+  // actually happens.
+  const listSig = () => [ui.sort, ui.dir, ui.group,
+    ui.hideNpc ? 1 : 0, ui.hideOnline ? 1 : 0, ui.minIdleDays || 0].join('|');
+  const listOrder = () => {
+    const sig = listSig();
+    if (!walkSnap || walkSnap.sig !== sig) walkSnap = { sig, order: displayOrder() };
+    return walkSnap.order;
+  };
+  const resyncWalk = () => { walkSnap = null; };
+  const sameOrder = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+  /** true when the table has moved since the walk took its copy of it */
+  const walkStale = (live) => ui.walk === WALK.list && !!walkSnap && !sameOrder(walkSnap.order, live);
+
+  const walkOrder = () => (ui.walk === WALK.list ? listOrder() : roster.usernames);
+  const swapWalk = () => {
+    ui.walk = ui.walk === WALK.list ? WALK.roster : WALK.list;
+    // Stepping into the list takes it as it stands. This costs you nothing: your place
+    // is read off the profile you are standing on rather than off the copy, so all it
+    // decides is whether what comes *next* is current — and it should be.
+    if (ui.walk === WALK.list) resyncWalk();
+    save(); paint();
+  };
 
   const goProfile = (name) => {
     if (!name) return;
@@ -268,7 +336,7 @@
     paint();
   };
 
-  /** one place along the roster from whoever is on screen; wraps at the ends */
+  /** one place along the walk order from whoever is on screen; wraps at the ends */
   const step = (dir) => {
     const order = walkOrder();
     if (!order.length) return null;
@@ -276,9 +344,19 @@
     return i < 0 ? order[0] : order[mod(i + dir, order.length)];
   };
 
-  /** the next player with no profile yet — the only ones a walk actually gains from */
+  /** where the profile on screen sits in the walk order, or -1 for "not in it" */
+  const walkAt = () => walkOrder().indexOf(currentProfile());
+
+  /**
+   * The next player with no profile yet — the only ones a walk actually gains from.
+   *
+   * Always roster order, whichever way the walk is set. The panel's list is profiled
+   * players by definition, so asking it for an unprofiled one is asking an empty
+   * question; this is the control that fills the ledger, and it should not quietly stop
+   * working because you sorted the table.
+   */
   const nextUnseen = (dir = 1) => {
-    const order = walkOrder();
+    const order = roster.usernames;
     if (!order.length) return null;
     const start = Math.max(0, order.indexOf(currentProfile()));
     for (let k = 1; k <= order.length; k++) {
@@ -512,6 +590,37 @@
     if (ui.dir === -1) out.reverse();
     return out;
   }
+
+  /**
+   * The painted order, grouping and cap included: one list of buckets, in the order the
+   * table lays them out. paint() renders from this and the walk counts along it, so
+   * "next" cannot come to mean something other than "the row below". A null bucket name
+   * is the ungrouped case — rows, no header.
+   */
+  function display() {
+    const capped = rows().slice(0, CFG.LIST_CAP);
+    const grouping = (GROUPS[ui.group] || GROUPS.none).of;
+    if (!grouping) return [{ name: null, members: capped }];
+
+    const buckets = new Map();
+    for (const item of capped) {
+      const key = grouping(item.r) ?? UNGROUPED;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(item);
+    }
+    // biggest group first, and whoever we have no membership for goes last —
+    // it is the bucket that means "unknown", so it should not lead
+    return [...buckets.entries()]
+      .sort((a, b) => {
+        if (a[0] === UNGROUPED) return 1;
+        if (b[0] === UNGROUPED) return -1;
+        return b[1].length - a[1].length || a[0].localeCompare(b[0]);
+      })
+      .map(([name, members]) => ({ name, members }));
+  }
+
+  /** just the names, flattened — what the walk steps along in list mode */
+  const displayOrder = () => display().flatMap((g) => g.members.map((it) => it.r.username));
 
   // ===========================================================================
   // Panel
@@ -758,6 +867,9 @@
     th, td { text-align: left; padding: 3px 8px; border-bottom: 1px solid #18181b; white-space: nowrap; }
     th { position: sticky; top: 0; background: #09090b; color: #a1a1aa; font-weight: 500; font-size: 11px; }
     tr:hover td { background: #18181b; }
+    /* the profile you are standing on, so the row and the page agree on where you are */
+    tr.here td { background: #17171c; box-shadow: inset 2px 0 0 #dc2626; }
+    tr.here:hover td { background: #1f1f26; }
     a.plink { color: inherit; text-decoration: none; cursor: pointer;
       border-bottom: 1px dotted #3f3f46; }
     a.plink:hover { color: #fafafa; border-bottom-color: #a1a1aa; }
@@ -1032,7 +1144,9 @@
     if (!ui.open) return;
     panelResize.apply(ui.size); // display:none had no geometry to restore against
 
-    const list = rows();
+    // Built once, used twice: the table paints from it and the walk counts along it.
+    const groups = display();
+    const liveOrder = groups.flatMap((g) => g.members.map((it) => it.r.username));
     const known = roster.usernames.length;
     const withProfile = Object.values(people).filter((r) => r.observedAt).length;
     const total = roster.total ?? '?';
@@ -1056,9 +1170,13 @@
     // The walk bar, only while you are standing on a profile.
     const here = currentProfile();
     if (here) {
+      const listMode = ui.walk === WALK.list;
+      const which = listMode ? 'the list' : 'the roster';
       const order = walkOrder();
-      const idx = order.indexOf(here);
-      const unseen = order.filter((u) => !people[u]?.observedAt).length;
+      const idx = walkAt();
+      // counted off the roster either way: the list holds no unprofiled players at all,
+      // so counting its unseen would print zero forever and mean nothing
+      const unseen = roster.usernames.filter((u) => !people[u]?.observedAt).length;
 
       const bar = document.createElement('div');
       bar.className = 'bar';
@@ -1072,15 +1190,46 @@
         return b;
       };
 
-      bar.append(jump(`‹ ${CFG.WALK_PREV}`, step(-1), 'previous player in the roster'));
-      bar.append(jump(`${CFG.WALK_NEXT} ›`, step(1), 'next player in the roster'));
-      bar.append(jump('next unseen ›', nextUnseen(), 'skip ahead to a player with no profile yet'));
+      bar.append(jump(`‹ ${CFG.WALK_PREV}`, step(-1), `previous player in ${which}`));
+      bar.append(jump(`${CFG.WALK_NEXT} ›`, step(1), `next player in ${which}`));
+      bar.append(jump('next unseen ›', nextUnseen(),
+        'skip ahead to a player with no profile yet — roster order, whichever way the walk is set'));
+
+      // Which order the bracket keys follow. One button, two states, and the key beside
+      // them on the keyboard does the same thing without the panel open.
+      const src = document.createElement('button');
+      src.textContent = listMode ? '⋮ list' : '⋮ roster';
+      if (listMode) src.className = 'on';
+      src.title = (listMode
+        ? `${CFG.WALK_PREV} and ${CFG.WALK_NEXT} follow the panel's list — your sort, your filters,`
+          + ' your grouping, top to bottom.\nOnly players you have already profiled are in it.'
+        : `${CFG.WALK_PREV} and ${CFG.WALK_NEXT} follow the roster — every username the game has`
+          + ' shown you, in its order.\nIt is the only order that reaches players you have not'
+          + ' profiled yet.')
+        + `\n\nClick, or press ${CFG.WALK_SWAP}, to switch.`;
+      src.onclick = swapWalk;
+      bar.append(src);
+
+      // Only meaningful in list mode: roster order does not reshuffle underneath you.
+      if (listMode) {
+        const stale = walkStale(liveOrder);
+        const sync = document.createElement('button');
+        sync.textContent = '⟳';
+        if (stale) sync.className = 'dry';
+        sync.title = stale
+          ? 'the table has moved since the walk took its copy — click to walk the list as it stands now'
+          : 'the walk is following the list as it stands';
+        sync.onclick = () => { resyncWalk(); paint(); };
+        bar.append(sync);
+      }
 
       const where = document.createElement('span');
       where.className = 'dim';
-      where.textContent = idx >= 0
-        ? `${idx + 1}/${order.length} · ${unseen} unseen`
-        : `@${here} is not in the roster yet · ${unseen} unseen`;
+      where.textContent = !order.length
+        ? (listMode ? 'nothing in the list to walk' : 'no roster pages seen yet')
+        : idx >= 0
+          ? `${idx + 1}/${order.length} · ${unseen} unseen`
+          : `@${here} is not in ${which} · ${unseen} unseen`;
       bar.append(where);
 
       panel.append(bar);
@@ -1151,6 +1300,7 @@
 
     const buildRow = ({ r, d }) => {
       const tr = document.createElement('tr');
+      if (r.username === here) tr.className = 'here';
       // Keyed rather than positional: the order here has to match COLUMNS, and an
       // index-based version silently mislabels every cell after an inserted column.
       const cells = [
@@ -1181,35 +1331,19 @@
       return tr;
     };
 
-    const capped = list.slice(0, 400);
-    const grouping = (GROUPS[ui.group] || GROUPS.none).of;
-
-    if (!grouping) {
-      for (const item of capped) tb.append(buildRow(item));
-    } else {
-      const buckets = new Map();
-      for (const item of capped) {
-        const key = grouping(item.r) ?? UNGROUPED;
-        if (!buckets.has(key)) buckets.set(key, []);
-        buckets.get(key).push(item);
-      }
-      // biggest group first, and whoever we have no membership for goes last —
-      // it is the bucket that means "unknown", so it should not lead
-      const ordered = [...buckets.entries()].sort((a, b) => {
-        if (a[0] === UNGROUPED) return 1;
-        if (b[0] === UNGROUPED) return -1;
-        return b[1].length - a[1].length || a[0].localeCompare(b[0]);
-      });
-      for (const [name, members] of ordered) {
+    // The buckets display() already handed the walk, so "next" and "the row below"
+    // cannot come apart.
+    for (const g of groups) {
+      if (g.name != null) {
         const head = document.createElement('tr');
         head.className = 'grp';
         const td = document.createElement('td');
         td.colSpan = COLUMNS.length;
-        td.textContent = `${name} · ${members.length}`;
+        td.textContent = `${g.name} · ${g.members.length}`;
         head.append(td);
         tb.append(head);
-        for (const item of members) tb.append(buildRow(item));
       }
+      for (const item of g.members) tb.append(buildRow(item));
     }
     table.append(tb);
     body.append(table);
@@ -1229,6 +1363,11 @@
     // and put you back where you were looking. Assigning past the end is clamped by the
     // DOM, so a list that got shorter lands at its own bottom rather than nowhere.
     if (keptScroll) body.scrollTop = keptScroll;
+
+    // Walking the list means the list should follow you down it. `nearest` is a no-op
+    // when the row is already on screen, so an ordinary repaint does not yank the view
+    // around — it moves only when a step has gone past the edge of what you can see.
+    if (ui.walk === WALK.list) body.querySelector('tr.here')?.scrollIntoView({ block: 'nearest' });
   }
 
   // ===========================================================================
@@ -1245,6 +1384,7 @@
       if (e.altKey || e.ctrlKey || e.metaKey || typing(e.target) || !currentProfile()) return;
       if (e.key === CFG.WALK_PREV) { e.preventDefault(); goProfile(step(-1)); }
       else if (e.key === CFG.WALK_NEXT) { e.preventDefault(); goProfile(step(1)); }
+      else if (e.key === CFG.WALK_SWAP) { e.preventDefault(); swapWalk(); }
     });
     // the walk bar only exists on profile routes, so repaint when the route moves
     for (const m of ['pushState', 'replaceState']) {
@@ -1259,6 +1399,9 @@
     people: () => people,
     roster: () => roster,
     rows,
+    display,
+    walkOrder,
+    resync: () => { resyncWalk(); paint(); return walkOrder(); },
     unseen: () => roster.usernames.filter((u) => !people[u]?.observedAt),
     resetFab: () => { ui.fab = defaultFabPos(); saveNow(); placeFab(); return ui.fab; },
     clear: () => { people = {}; roster = { total: null, totalPages: null, usernames: [], seenAt: 0, pages: {} }; saveNow(); paint(); return 'cleared'; },
