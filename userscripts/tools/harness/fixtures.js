@@ -366,4 +366,408 @@ window.HARNESS_FIXTURES = {
     })(),
   },
 
+  'world-watch': {
+    label: 'World Watch',
+    source: 'docs/13-world-politics-surface.md',
+    note: 'Fire "status" and "locations" first — they are what lets the rest be placed in a '
+      + 'city. Each of the other buttons fills one row of the WORLD tab, so you can watch the '
+      + 'compass acquire its five markers one screen at a time, which is exactly how it fills '
+      + 'in play. Fire the campaigns and protest polls twice: nothing may double-count.',
+    calls: (() => {
+      const policy = (policy_name, axis, description) => ({
+        policy_id: policy_name, policy_name, axis, description,
+      });
+      const profile = (username, social_axis, economic_axis, over = {}) => ({
+        username, role: 'user', status: 'active', is_npc: false,
+        alignment: { social_axis, social_count: 24, economic_axis, economic_count: 11 },
+        ...over,
+      });
+      const at = (ms) => new Date(Date.now() + ms).toISOString();
+
+      return [
+        {
+          label: 'status (who + where)',
+          path: '/api/user/status',
+          body: {
+            username: 'you', status: 'active', current_location_id: 2,
+            current_location: { id: 2, key: 'new-york', name: 'New York', kind: 'domestic' },
+          },
+        },
+        {
+          label: 'locations (the world is six cities)',
+          path: '/api/locations',
+          body: [
+            { id: 1, key: 'san-francisco', name: 'San Francisco', kind: 'domestic' },
+            { id: 2, key: 'new-york', name: 'New York', kind: 'domestic' },
+            { id: 3, key: 'washington-dc', name: 'Washington DC', kind: 'domestic' },
+            { id: 4, key: 'austin', name: 'Austin', kind: 'domestic' },
+            { id: 5, key: 'portland', name: 'Portland', kind: 'domestic' },
+            { id: 6, key: 'tijuana', name: 'Tijuana', kind: 'overseas' },
+          ],
+        },
+        {
+          // All twenty, because the panel's headline claim is "13 social, 7 economic" and
+          // a nineteen-policy fixture would let an off-by-one through unnoticed.
+          label: 'government — all 20 policies, both chambers, the court',
+          path: '/api/government',
+          body: {
+            president: { name: 'President Hoppe', alignment: 2, favorability: 18, term_number: 3 },
+            house: [
+              { alignment: -3, count: 12 }, { alignment: -2, count: 108 }, { alignment: -1, count: 60 },
+              { alignment: 0, count: 90 }, { alignment: 1, count: 55 }, { alignment: 2, count: 95 },
+              { alignment: 3, count: 15 },
+            ],
+            senate: [
+              { alignment: -2, count: 18 }, { alignment: -1, count: 12 }, { alignment: 0, count: 20 },
+              { alignment: 1, count: 22 }, { alignment: 2, count: 28 },
+            ],
+            supreme_court: [
+              { id: 1, name: 'J. Alder', alignment: 3 }, { id: 2, name: 'J. Brand', alignment: 2 },
+              { id: 3, name: 'J. Cowan', alignment: 2 }, { id: 4, name: 'J. Doss', alignment: 1 },
+              { id: 5, name: 'J. Ekwe', alignment: 0 }, { id: 6, name: 'J. Fenn', alignment: -1 },
+              { id: 7, name: 'J. Grieve', alignment: -2 }, { id: 8, name: 'J. Hale', alignment: -2 },
+              { id: 9, name: 'J. Iyer', alignment: -3 },
+            ],
+            next_congressional_election: 'Y7 D310',
+            next_presidential_election: 'Y8 D040',
+            policies: [
+              policy('Free Speech', -1, 'Broad protections, narrow exceptions.'),
+              policy('Police Regulation', 2), policy('Civil Rights', -1),
+              policy('Immigration', 3, 'Entry is capped and enforcement is funded.'),
+              policy('Drug Law', 1), policy('Abortion Rights', 0), policy('Animal Rights', -2),
+              policy('Healthcare', -3), policy('Gay Rights', 1), policy('Gun Control', 2),
+              policy('Human Rights', 1), policy('Privacy Rights', 2), policy('Womens Rights', 0),
+              policy('Corporate Law', 3), policy('Election Reform', -1), policy('Labor Laws', 2),
+              policy('Military Spending', 3), policy('Nuclear Power', 0), policy('Pollution', -2),
+              policy('Tax Structure', 1),
+            ],
+          },
+        },
+        {
+          label: 'government — a 21st policy the client has never heard of',
+          path: '/api/government',
+          variant: 'unknown-policy',
+          body: {
+            policies: [policy('Tax Structure', 1), policy('Space Program', 3)],
+            house: [], senate: [], supreme_court: [],
+          },
+        },
+        {
+          label: 'home · media campaigns (fire me twice)',
+          path: '/api/home/media-campaigns',
+          body: [
+            { corporation_id: 30, corporation_name: 'Dead Letter Media', city_name: 'New York', issue: 'Immigration', alignment: 3, fans: 92_400 },
+            { corporation_id: 31, corporation_name: 'Beacon Press', city_name: 'New York', issue: 'Immigration', alignment: -3, fans: 11_000 },
+            { corporation_id: 32, corporation_name: 'Ledger', city_name: 'Austin', issue: 'Taxes', alignment: -2, fans: 4_100 },
+            { corporation_id: 33, corporation_name: 'Vanguard Weekly', city_name: 'San Francisco', issue: 'Corporations', alignment: -3, fans: 26_000 },
+          ],
+        },
+        {
+          label: 'home · the one active protest (no meter — must not read as a deadlock)',
+          path: '/api/home/active-protest',
+          body: { id: 99, issue: 'Abortion', city_name: 'Portland' },
+        },
+        {
+          label: 'protests · New York (fire me twice)',
+          path: '/api/protests?location_id=2',
+          body: [
+            {
+              id: 11, issue: 'gun-control', meter: -62, left_count: 9, right_count: 3,
+              left_power: 14.2, right_power: 4.4, meter_rate: -0.019, forecast_shift: -1,
+              end_ts: at(45 * 60_000), participants: [{ username: 'you', side: 'left' }], recent_events: [],
+            },
+            {
+              id: 12, issue: 'Taxes', meter: 41, left_count: 2, right_count: 7,
+              left_power: 3.1, right_power: 11.9, end_ts: at(90 * 60_000),
+              participants: [], recent_events: [],
+            },
+          ],
+        },
+        {
+          label: 'protests · Portland (the home page\'s protest, now with a meter)',
+          path: '/api/protests?location_id=5',
+          body: [
+            {
+              id: 99, issue: 'abortion', meter: -18, left_count: 4, right_count: 3,
+              end_ts: at(20 * 60_000), participants: [], recent_events: [],
+            },
+          ],
+        },
+        {
+          label: 'travel · state dominance (every state at once)',
+          path: '/api/protests/state-dominance',
+          body: [
+            { state_fips: '06', dominant_side: 'left', dominance_score: 58, active_protests: 3, total_count: 1840, is_contested: false },
+            { state_fips: 36, dominant_side: 'right', dominance_score: 81, active_protests: 2, total_count: 960, is_contested: true },
+            { state_fips: '48', dominant_side: 'right', dominance_score: 22, active_protests: 1, total_count: 310, is_contested: true },
+            { state_fips: '41', dominant_side: 'left', dominance_score: 12, active_protests: 1, total_count: 140, is_contested: true },
+            { state_fips: '11', dominant_side: 'right', dominance_score: 44, active_protests: 1, total_count: 520, is_contested: false },
+            { state_fips: '53', dominant_side: 'left', dominance_score: 33, active_protests: 0, total_count: 0, is_contested: false },
+          ],
+        },
+        {
+          label: 'graffiti · the walls of the city you are in',
+          path: '/api/actions/graffiti',
+          body: {
+            city_name: 'New York',
+            locations: [
+              { key: 'rail-yard', name: 'Rail Yard', left_count: 22, right_count: 6, total_count: 28, difficulty: 2 },
+              { key: 'overpass', name: 'Ninth Street Overpass', left_count: 9, right_count: 11, total_count: 20, difficulty: 3 },
+              { key: 'depot', name: 'Depot Wall', left_count: 4, right_count: 1, total_count: 5, difficulty: 1 },
+            ],
+            spray_can_count: 3, juice_cost: 5,
+          },
+        },
+        {
+          label: 'poll · Taxes, professional firm (seven buckets)',
+          path: '/api/actions/poll',
+          body: {
+            issue: 'Taxes', method: 'professional', mood: 'right-leaning',
+            salience: 'hot', volatility: 'moderate', extreme_tag: null,
+            far_left: 4, center_left: 6, slight_left: 10, neutral: 18,
+            slight_right: 22, center_right: 30, far_right: 10,
+            cooldown_until: at(5 * 60_000),
+          },
+        },
+        {
+          label: 'poll · Gun Control, street poll (three blocs, must read as coarse)',
+          path: '/api/actions/poll',
+          variant: 'coarse',
+          body: {
+            issue: 'Gun Control', method: 'street', mood: 'left-leaning',
+            left_bloc: 61, center: 18, right_bloc: 21, cooldown_until: at(5 * 60_000),
+          },
+        },
+        {
+          label: 'poll · Healthcare, focus group',
+          path: '/api/actions/poll',
+          variant: 'healthcare',
+          body: {
+            issue: 'Healthcare', method: 'focus_group', mood: 'deadlocked',
+            salience: 'boiling', volatility: 'high', best_target: 'Slight Right',
+            persuasion_angle: 'costs, not coverage',
+            far_left: 18, center_left: 14, slight_left: 12, neutral: 14,
+            slight_right: 12, center_right: 16, far_right: 14,
+            cooldown_until: at(5 * 60_000),
+          },
+        },
+        { label: 'profile · alix', path: '/api/users/alix', body: profile('alix', 1.4, -2.1) },
+        { label: 'profile · brann', path: '/api/users/brann', body: profile('brann', -2.2, -0.4) },
+        { label: 'profile · carra', path: '/api/users/carra', body: profile('carra', 0.6, 2.4) },
+        { label: 'profile · dov', path: '/api/users/dov', body: profile('dov', -1.1, 1.8) },
+        {
+          // The city column is sealed behind Privacy Rights today, so the panel has to
+          // read correctly with no `location` at all — and correctly the day one arrives.
+          label: 'profile · erran, WITH a city (the day Privacy Rights unseals it)',
+          path: '/api/users/erran',
+          variant: 'placed',
+          body: profile('erran', 2.6, 1.2, { location: 'New York' }),
+        },
+        {
+          label: 'profile · sealed alignment (must be ignored, not plotted at 0,0)',
+          path: '/api/users/quiet',
+          variant: 'sealed',
+          body: { username: 'quiet', role: 'user', status: 'active', alignment: null },
+        },
+        {
+          label: 'something unrelated (must be ignored)',
+          path: '/api/stocks/holdings',
+          body: [{ id: 1, symbol: 'CAP', qty: 40 }],
+        },
+      ];
+    })(),
+  },
+
+  'gov-watch': {
+    label: 'Gov Watch',
+    source: 'docs/14-government-motion-surface.md',
+    note: 'This one is a DIFF engine, so a single call proves almost nothing — fire "all" to lay '
+      + 'the baseline, then the variant buttons to move the government under it. The variants are '
+      + 'ordered as a story: three axes drift, a cycle rolls over, a justice is replaced, and the '
+      + 'president falls under 10% approval. Every row on MOTION should carry a window, and here '
+      + 'they will all be seconds wide because the harness fires them seconds apart.',
+    calls: (() => {
+      // GovernmentPage's own twenty names, in its own order. The axis values are invented;
+      // the names and the 13/7 split are the client's.
+      const NAMES = [
+        'Tax Structure', 'Abortion Rights', 'Animal Rights', 'Civil Rights', 'Healthcare',
+        'Drug Law', 'Free Speech', 'Gay Rights', 'Gun Control', 'Human Rights', 'Immigration',
+        'Police Regulation', 'Privacy Rights', 'Womens Rights', 'Corporate Law',
+        'Election Reform', 'Labor Laws', 'Military Spending', 'Nuclear Power', 'Pollution',
+      ];
+      const BASE = [1, -2, -1, -2, -1, 0, -3, -2, 2, -1, 1, 2, 3, -2, 2, 0, -1, 2, 1, -2];
+      const policies = (over = {}) => NAMES.map((policy_name, i) => ({
+        policy_id: policy_name, policy_name,
+        axis: over[policy_name] !== undefined ? over[policy_name] : BASE[i],
+        // A policy with an axis and no prose is legal — the client prints "No position set" —
+        // so two of them ship without one on purpose.
+        description: i % 9 === 4 ? undefined : `The federal position on ${policy_name.toLowerCase()}.`,
+      }));
+
+      // Only the axis is read from this feed, so the shape is deliberately thinner than
+      // /api/government's — a tool that needed `description` here would break in play.
+      const jobPolicies = (over = {}) => NAMES.map((policy_name, i) => ({
+        policy_name, axis: over[policy_name] !== undefined ? over[policy_name] : BASE[i],
+      }));
+
+      const members = (shift = {}) => {
+        const out = [];
+        for (let s = 1; s <= 12; s++) {
+          out.push({
+            id: 100 + s, chamber: 'house', seat_number: s,
+            alignment: shift[100 + s] !== undefined ? shift[100 + s] : [-2, -1, 0, 1, 2, -3][s % 6],
+            incumbent: s % 4 !== 0,
+          });
+        }
+        for (let s = 1; s <= 8; s++) {
+          out.push({
+            id: 200 + s, chamber: 'senate', seat_number: s,
+            alignment: shift[200 + s] !== undefined ? shift[200 + s] : [1, 2, -2, 0, -1][s % 5],
+            incumbent: true,
+          });
+        }
+        return out;
+      };
+
+      const court = (over = {}) => [
+        { id: 'j1', name: 'Alvarez', alignment: -2 }, { id: 'j2', name: 'Boone', alignment: -1 },
+        { id: 'j3', name: 'Chandra', alignment: 0 }, { id: 'j4', name: 'Doyle', alignment: 1 },
+        { id: 'j5', name: 'Eze', alignment: 2 }, { id: 'j6', name: 'Fitzgerald', alignment: 2 },
+        { id: 'j7', name: 'Grant', alignment: 3 }, { id: 'j8', name: 'Hollis', alignment: -3 },
+        { id: 'j9', name: 'Ibarra', alignment: 1 },
+      ].filter((j) => over.drop !== j.id).map((j) => (over[j.id] !== undefined ? { ...j, alignment: over[j.id] } : j))
+        .concat(over.add ? [over.add] : []);
+
+      const gov = (over = {}) => ({
+        president: over.president ?? { name: 'President Hoppe', alignment: 2, favorability: 31, term_number: 3 },
+        house: over.house ?? [
+          { alignment: -3, count: 12 }, { alignment: -2, count: 108 }, { alignment: -1, count: 60 },
+          { alignment: 0, count: 90 }, { alignment: 1, count: 55 }, { alignment: 2, count: 95 },
+          { alignment: 3, count: 15 },
+        ],
+        senate: over.senate ?? [
+          { alignment: -2, count: 22 }, { alignment: -1, count: 14 }, { alignment: 0, count: 18 },
+          { alignment: 1, count: 16 }, { alignment: 2, count: 26 }, { alignment: 3, count: 4 },
+        ],
+        supreme_court: court(over.court ?? {}),
+        policies: policies(over.policies ?? {}),
+        next_congressional_election: over.cong ?? 'March 12, Y9',
+        next_presidential_election: over.pres ?? 'November 3, Y10',
+      });
+
+      const jobs = (over = {}) => ({
+        next_cycle_month: over.cycle ?? '4',
+        election_reform_axis: over.reform ?? 0,
+        policies: jobPolicies(over.policies ?? {}),
+        congress_members: members(over.members ?? {}),
+        jobs: over.jobs ?? [
+          {
+            id: 91, job_type: 'lobbying', target_policy_name: 'Healthcare', direction: 'left',
+            chamber: 'house', target_member_id: 103, status: 'recruiting', cycle_month: null,
+            committed_power: 4200, committed_cash: 25000,
+            slots: [{ role_key: 'fixer', assigned_user_id: 7, assigned_username: 'you', contribution_snapshot: { score: 12.5 } }],
+            result_metadata: null,
+          },
+          {
+            id: 92, job_type: 'training', status: 'recruiting', slots: [], result_metadata: null,
+          },
+        ],
+      });
+
+      return [
+        {
+          label: 'status (who)',
+          path: '/api/user/status',
+          body: { username: 'you', status: 'active', current_location_id: 2 },
+        },
+        {
+          label: 'government — baseline (20 policies, chambers, 9 justices)',
+          path: '/api/government',
+          body: gov(),
+        },
+        {
+          label: 'faction jobs — baseline (cycle 4, 20 members, 1 lobbying job)',
+          path: '/api/factions/3/jobs',
+          body: jobs(),
+        },
+
+        // ---- the variants below MOVE the government; fire them after the baseline ----
+        {
+          label: '① jobs: three axes drift (live feed, seconds-wide window)',
+          path: '/api/factions/3/jobs',
+          variant: 'drift',
+          body: jobs({ policies: { Healthcare: -2, 'Gun Control': 1, 'Tax Structure': 2 }, reform: 1 }),
+        },
+        {
+          label: '② jobs: cycle rolls 4 → 5 (this is what the CYCLE tab projects from)',
+          path: '/api/factions/3/jobs',
+          variant: 'roll',
+          body: jobs({
+            cycle: '5', reform: 1,
+            policies: { Healthcare: -2, 'Gun Control': 1, 'Tax Structure': 2 },
+            jobs: [{
+              id: 91, job_type: 'lobbying', target_policy_name: 'Healthcare', direction: 'left',
+              chamber: 'house', target_member_id: 103, status: 'resolved', cycle_month: '4',
+              committed_power: 4200, committed_cash: 25000, slots: [],
+              result_metadata: { outcome: 'axis_moved', score: 74, winner_job_id: 91 },
+            }],
+          }),
+        },
+        {
+          label: '③ jobs: two house seats realign, one goes open',
+          path: '/api/factions/3/jobs',
+          variant: 'seats',
+          body: jobs({ cycle: '5', members: { 101: 1, 105: -3 } }),
+        },
+        {
+          // 1.4 is the case the game cannot draw: GovernmentPage clamps without rounding,
+          // so no cell is raised and factionUtils would label it R++. The panel must print
+          // the raw number and say so.
+          label: '④ jobs: a FRACTIONAL axis arrives (the game renders this blank)',
+          path: '/api/factions/3/jobs',
+          variant: 'fractional',
+          body: jobs({ cycle: '5', policies: { 'Free Speech': -1.4, Pollution: 0.5 } }),
+        },
+        {
+          label: '⑤ government: a justice is replaced and two others move',
+          path: '/api/government',
+          variant: 'court',
+          body: gov({ court: { drop: 'j3', add: { id: 'j10', name: 'Okonkwo', alignment: -2 }, j7: 1, j8: -2 } }),
+        },
+        {
+          label: '⑥ government: approval falls 31% → 8% (impeachment line)',
+          path: '/api/government',
+          variant: 'impeach',
+          body: gov({ president: { name: 'President Hoppe', alignment: 2, favorability: 8, term_number: 3 } }),
+        },
+        {
+          label: '⑦ government: a new president takes office (one row, not four)',
+          path: '/api/government',
+          variant: 'succession',
+          body: gov({
+            president: { name: 'President Vance-Okoro', alignment: -1, favorability: 54, term_number: 1 },
+            cong: 'March 12, Y10',
+          }),
+        },
+        {
+          label: '⑧ government: the House shifts left by 20 seats',
+          path: '/api/government',
+          variant: 'chamber',
+          body: gov({
+            house: [
+              { alignment: -3, count: 18 }, { alignment: -2, count: 122 }, { alignment: -1, count: 60 },
+              { alignment: 0, count: 90 }, { alignment: 1, count: 55 }, { alignment: 2, count: 80 },
+              { alignment: 3, count: 10 },
+            ],
+          }),
+        },
+        {
+          label: 'something unrelated (must be ignored)',
+          path: '/api/factions/3/treasury/summary',
+          body: { cash: 918_000, weekly_income: 42_000 },
+        },
+      ];
+    })(),
+  },
+
 };

@@ -52,6 +52,19 @@ plotted, and — since alignment is a running average — what one more ±3 acti
 Alignment-affecting actions submitted since the last reading are logged and projected as a
 range. Zero added requests. Findings: [`07-alignment-surface.md`](07-alignment-surface.md).
 
+### World compass — **shipped 2026-08-26** as `world-watch.user.js`
+The compass exists for a player and for nothing else, but the client files **all twenty of
+its political issues under the same two axes**, and five different populations carry a
+signed −3..+3 number on those issues: the law (20 policy axes), the public (opinion-poll
+blocs), the street (protest control meters), the media (per-city corporate campaigns), and
+the citizens (other players' own alignments). So the world can be plotted on the game's own
+chart without asking the server for anything it was not already going to send — and the
+same five split city by city, alongside the per-state map the Travel screen polls anyway.
+Zero added requests; every row fills from a screen you were going to open, and the panel
+names which screen fills which row. What it will not do is average the five into one
+number: they disagree, and a sixth figure with no source is not an improvement. Findings:
+[`13-world-politics-surface.md`](13-world-politics-surface.md).
+
 ### Time bridge — **shipped 2026-08-07** as `time-bridge.user.js`
 Time Watch reads the clock; the [Time Wire](https://dataterminals.github.io/PolitikoTimeWire/)
 planner wants that reading; they are different origins, so neither can reach the other's

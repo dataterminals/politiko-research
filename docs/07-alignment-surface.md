@@ -79,6 +79,15 @@ vertical one authority/liberty. So the words map cleanly onto a player's **econo
 and not onto the social one. Anything that stamps "Communist" on a social axis of −3 is
 inventing a label the game never applies.
 
+> **The shipped client disagrees with the shipped wiki — found 2026-08-26.**
+> `GovernmentPage` carries its own word map for the same seven integers, and it is not the
+> one above: **Tankie · Progressive · Moderate Left · Moderate · Moderate Right ·
+> Conservative · Fascist**, with the short codes `L++ L+ Mod- Mod Mod+ R+ R++`. The
+> renderer is what a player actually sees, so that is the list to print. It also has
+> colours at **±4** that the word list has no entry for. See
+> [`13-world-politics-surface.md`](13-world-politics-surface.md), which covers the same
+> two axes for everything in the world that is not a player.
+
 ### How a player's alignment is computed
 
 The wiki states, in prose, that a player's alignment is a **running average** of social and

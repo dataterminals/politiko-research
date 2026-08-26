@@ -15,7 +15,7 @@ bannable, so the disclosure block is the contract.
 | People Watch | 1.5.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
 | Market Watch | 1.0.1 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
 | Time Watch | 0.5.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
-| Align Watch | 0.3.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
+| Align Watch | 0.4.1 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
 | Comms Move | 0.1.1 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.3.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
@@ -810,6 +810,111 @@ The route table it is built from, and the measurements behind the casino block:
 
 ---
 
+# World Watch
+
+The political compass, drawn for the world instead of for you — and then again for each
+city.
+
+## The idea in one paragraph
+
+Politiko draws a compass on exactly one screen: your profile. But it also files **every one
+of its twenty political issues under one of those same two axes** — 13 social, 7 economic —
+and five completely different populations carry a signed −3..+3 number on those issues.
+The law does, as twenty policy axes. The public does, as opinion-poll blocs. The street
+does, as protest control meters. The media does, as corporate campaigns with a city and a
+reach. And the citizens do, on both axes at once, every time you open somebody's profile.
+So the world can be put on the game's own chart without asking the server for anything it
+was not already going to send.
+
+## What you get
+
+Four tabs.
+
+**WORLD** — the compass with up to five markers on it, one per population, plus a legend
+giving each one's two axis figures, how many readings went into them, and how old the
+freshest is. Click a glyph to hide that layer. Under it, **power**: the president, both
+chambers and the court as seat-weighted left/right rulers, because a legislator carries a
+single score and has no business being plotted as a point.
+
+| | | reads |
+|---|---|---|
+| ◆ | the law | the 20 policy axes, from Government |
+| ● | the public | opinion polls, one issue per poll you run |
+| ▲ | the street | live protest meters, weighted by heads |
+| ■ | the media | per-city campaigns, weighted by fans |
+| ✕ | the citizens | profiles you opened — plus a dot per player |
+
+**CITIES** — pick a city and the same chart is redrawn for it, with the national reading
+behind each marker as a dashed ring, so the gap *is* that city's own politics. Below:
+the walls (graffiti's own citywide L/R pulse), the state it sits in from the map the Travel
+screen polls anyway, and the whole state table sorted by activity.
+
+**ISSUES** — all twenty, in a table: what the law says, what the public thinks, what the
+street is doing, what the media is pushing. This is where the axis figures come from, so it
+is the tab to look at when a number surprises you.
+
+**SOURCES** — every endpoint it reads, when each last arrived, a jump button to the screen
+that would refresh it, and what is held locally with the caps on each.
+
+## Where the numbers come from, and which half is ours
+
+The split — which issue belongs to which axis — is **the game's**, read out of
+`ActivismPage`'s own table. Averaging within an axis and plotting the pair is **ours**, and
+the game never does it. The panel says so on the WORLD tab and prints the sample size
+beside every figure, so a point built from two readings cannot pass for one built from
+twenty.
+
+Two things it deliberately refuses to do:
+
+- **It will not average the five into one world number.** They disagree — that is the
+  interesting part — and a sixth figure with no source would bury it.
+- **It will not refresh.** Refreshing means asking, and asking is the line this repo does
+  not cross. Every figure is as old as the last time you looked at the screen carrying it,
+  and every row prints its own age.
+
+## How it fills up
+
+Nothing here needs a special trip. Each row fills from a screen you were going to open:
+
+| open this | and you get |
+|---|---|
+| the home page | the media layer, and one placed protest |
+| Government | all twenty policy axes, both chambers, the court |
+| Travel | the city list, and the whole state map (it re-reads every 15 s while you sit there) |
+| a protests screen | the street layer for that city |
+| Graffiti | the walls of the city you are standing in |
+| Opinion Polls | one issue's public opinion, per poll you pay for |
+| anybody's profile | one more citizen |
+
+When a layer has nothing yet, the panel says which screen would fill it and offers a button
+that goes there — the same client-side navigation as clicking the game's own link, on your
+click and never on a timer.
+
+## The one thing that is currently blank on purpose
+
+Citizens cannot be placed in a city. A profile only carries `location` while the **Privacy
+Rights** policy leaves it unsealed, and as of the last field check it does not — for
+anybody. Every profile you open still counts toward the world reading; only the city column
+is empty, and the panel says it is empty by policy rather than by luck. If that policy ever
+moves, the column fills on its own with no change to the tool.
+
+## What it reads
+
+Full disclosure is in the header comment at the top of
+[`world-watch.user.js`](world-watch.user.js). In short: eleven GET/POST **responses** the
+game already made — never a request body, never a header, never your token — stored under
+`pkww:` keys in your browser, and nothing sent anywhere. It originates **zero** requests.
+
+It does store other players' alignments, because a compass of the world is a compass of its
+people and there is no other way to have one. What it keeps per player is exactly what the
+profile screen already showed you: the name, two axis values, two sample counts, and when
+you saw it. Nothing else from the profile is touched.
+
+The measurements it is built on, and the line between what the game computes and what this
+tool does: [`docs/13-world-politics-surface.md`](../docs/13-world-politics-surface.md).
+
+---
+
 ## Tests
 
 Run from the repository root:
@@ -830,6 +935,8 @@ node userscripts/tools/test-sleeper.js
 node userscripts/tools/test-sleeper-passive.js
 node userscripts/tools/test-quick-jump.js
 node userscripts/tools/test-quick-jump-passive.js
+node userscripts/tools/test-world.js
+node userscripts/tools/test-world-passive.js
 ```
 
 Every suite slices the layer it covers straight out of the shipped script rather than
@@ -858,13 +965,21 @@ only until someone adds it back:
   only from a handler you triggered, with no timer able to reach it — a jump that
   schedules the next jump is a crawler. It also fails if the tool ever prefetches the
   directory it depends on, or surfaces craps.
+- `test-world-passive` fences world-watch, the widest reader here — eleven endpoints, one
+  of them other people's profiles. Its own three temptations get their own checks: the
+  panel lists rows it does not have yet, which is one line from "just fetch Government on
+  boot"; every figure it prints is stale by design, which a refresh timer would quietly
+  make false; and its disclosure block names eleven paths, which is only true on the day it
+  is written. So the last block **reads the endpoints the code recognises and fails if the
+  header does not name every one of them** — adding an endpoint means documenting it, or
+  the build stops.
 
 They have nothing else in common; market-watch's was named `test-passive.js` when it
 lived in its own repository and was renamed on the way in.
 
-`test-placement` also checks that **`PANEL KIT v2` is byte-identical across all ten
+`test-placement` also checks that **`PANEL KIT v2` is byte-identical across all eleven
 copies**. The convention was written down in CLAUDE.md from the start and enforced by
-nobody, which is how ten hand-maintained copies of a drag implementation quietly
+nobody, which is how eleven hand-maintained copies of a drag implementation quietly
 diverge. Now a mismatch fails the build and prints which files disagree. It slices the block
 marker-to-marker rather than by line count, because v1 was 93 lines and v2 is not — a
 hardcoded length stops covering the tail the moment the kit grows.
@@ -890,6 +1005,18 @@ grouping and row cap included, rather than something that merely agrees with it 
 `test-placement` covers the panel placement layer against a synthetic viewport: the button
 stays on screen and clear of the game's Comms dock, and the panel stays fully visible from
 whichever corner the button was dragged into.
+
+`test-world` covers world-watch's filing and its ingest, in that order of importance. The
+filing first, because everything the panel prints is a mean over issues split by axis, so a
+single mis-filed issue moves the compass for a reason nobody can see: it checks all twenty
+against both names the client ships for them, and that the split really is 13 and 7. Then
+the ingest, by feeding real payload shapes through the same `consume()` the tap calls —
+which is what catches the ones that read as correct. A protest the home page names but has
+no meter for must not plot as a perfect deadlock. A re-read of the home page must not stack
+a second copy of the campaigns already there. A state whose last protest ended has no lean
+rather than a stale winner. And the assertion that pays for itself: the lean is computed
+from the **stored** record, not the wire row, because the first version of that function
+took the wire shape and every state on the map drew a blank in a way that looked deliberate.
 
 ---
 

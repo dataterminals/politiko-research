@@ -29,7 +29,7 @@ const mk = () => {
     ${SLICE}
     return { clamp3, px, py, word, short, hue, norm, issueOf, catOf, labelOf, ISSUE, POLICY,
              ORDER, FIPS, CITY_FIPS, BUCKETS, COARSE, leanOfMeter, leanOfCounts,
-             leanOfDominance, pollMean, axes, meanOfPeople, radius,
+             leanOfDominance, pollMean, axes, meanOfPeople, radius, spread,
              data, ui, LAYERS, pointOf, freshOf, rowsState, rowsPublic, rowsStreet,
              rowsMedia, peopleRows, cityKeys, cityName, cityKey, consume, seenKey };
   `)(
@@ -117,14 +117,17 @@ console.log('\n— left is negative, everywhere —');
   near('an even wall is the centre', w.leanOfCounts(7, 7), 0);
   check('no counts is no reading, not a centred one', w.leanOfCounts(0, 0), null);
 
+  // Note the shape: this takes the STORED record, not the wire row. The panel only ever
+  // has the stored one, and the first version of this took the wire shape — every state
+  // on the map drew a blank and both of them looked deliberate.
   near('a left-dominant state is negative',
-    w.leanOfDominance({ dominant_side: 'left', dominance_score: 60, active_protests: 2 }), -1.8);
+    w.leanOfDominance({ side: 'left', score: 60, active: 2 }), -1.8);
   near('a right-dominant state is positive',
-    w.leanOfDominance({ dominant_side: 'right', dominance_score: 100, active_protests: 1 }), 3);
+    w.leanOfDominance({ side: 'right', score: 100, active: 1 }), 3);
   check('a state with no active protest has no lean',
-    w.leanOfDominance({ dominant_side: 'left', dominance_score: 90, active_protests: 0 }), null);
+    w.leanOfDominance({ side: 'left', score: 90, active: 0 }), null);
   check('a sideless row has no lean',
-    w.leanOfDominance({ dominant_side: null, dominance_score: 90, active_protests: 3 }), null);
+    w.leanOfDominance({ side: null, score: 90, active: 3 }), null);
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +181,19 @@ console.log('\n— the aggregator —');
   check('a player missing an axis is not half-counted',
     w.meanOfPeople([{ s: 1 }, { s: 3, e: 1 }]).sn, 1);
   near('radius is the distance from dead centre', w.radius({ s: 3, e: 4 }), 5);
+  check('a half-read point has no radius', w.radius({ s: 3, e: null }), null);
+
+  // The headline of the WORLD tab is not where the five sit, it is how far apart they
+  // are — so the pair it names has to be the genuinely widest one, not the first found.
+  const far = w.spread([
+    { s: 0, e: 0, label: 'a' }, { s: 1, e: 1, label: 'b' }, { s: -3, e: 3, label: 'c' },
+  ]);
+  near('the spread is the widest pair', far.d, Math.hypot(4, 2));
+  check('...and it names them', [far.a.label, far.b.label], ['b', 'c']);
+  check('a single point has no spread', w.spread([{ s: 1, e: 1 }]), null);
+  check('...and neither does nothing', w.spread([]), null);
+  check('half-read points are not paired with anything',
+    w.spread([{ s: 1, e: null }, { s: 2, e: 2 }]), null);
 }
 
 // ---------------------------------------------------------------------------
@@ -354,6 +370,10 @@ console.log('\n— ingest: the media, the walls, the map —');
   check('a numeric FIPS is padded to the two-digit form the map uses',
     Object.keys(w.data.dom).sort(), ['06', '36']);
   check('contested survives', w.data.dom['36'].contested, true);
+  // The check that matters: what the panel actually draws is the lean of the record it
+  // stored, not of the row that arrived.
+  near('a stored state still has a lean', w.leanOfDominance(w.data.dom['06']), -1.2);
+  near('...and so does the other one', w.leanOfDominance(w.data.dom['36']), 2.4);
 }
 
 // ---------------------------------------------------------------------------

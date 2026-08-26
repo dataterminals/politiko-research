@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — World Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.0
+// @version      0.2.0
 // @description  Plots the game world on the same political compass the game draws for your character — the law, public opinion, the street, the media and the citizens you have seen, as five separate readings — and breaks the same thing down city by city. Reads only responses the app already fetched. Passive; zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -157,9 +157,12 @@
     ['slight_right', 1], ['center_right', 2], ['far_right', 3]];
   const COARSE = [['left_bloc', -2], ['center', 0], ['right_bloc', 2]];
 
-  // TravelPage hardcodes the world's cities and their coordinates. Six of them, five in
-  // the United States and one overseas. The FIPS codes are the ANSI ones the state map
-  // is drawn from (us-atlas), so they are how /protests/state-dominance keys its rows.
+  // TravelPage hardcodes a coordinate for six city keys and silently skips any location
+  // it has no coordinate for — so this is the six the map can DRAW, not a claim that the
+  // world has six. Cities are learned from /api/locations and from any response that
+  // names one; a key missing here simply gets no state, which is the right outcome for a
+  // city we have never heard of. The FIPS codes are the ANSI ones the state map is drawn
+  // from (us-atlas), so they are how /protests/state-dominance keys its rows.
   const CITY_FIPS = {
     'san-francisco': '06', 'portland': '41', 'washington-dc': '11',
     'new-york': '36', 'austin': '48',
@@ -214,12 +217,17 @@
     return (l + r) > 0 ? clamp3((r - l) / (l + r) * 3) : null;
   };
 
-  /** state-dominance rows: a side plus a 0..100 score, so the same −3..+3 rescale */
+  /**
+   * A stored state-dominance record — `{side, score, active}` — on the same −3..+3
+   * rescale. A state the server reports with no active protest has no lean rather than
+   * a centred one: `dominant_side` persists after the last protest ends, and drawing a
+   * stale winner as a live reading is the difference between a map and a memory.
+   */
   const leanOfDominance = (row) => {
-    if (!row || !row.dominant_side || !(row.active_protests > 0)) return null;
-    const sign = row.dominant_side === 'left' ? -1 : row.dominant_side === 'right' ? 1 : 0;
+    if (!row || !row.side || !(row.active > 0)) return null;
+    const sign = row.side === 'left' ? -1 : row.side === 'right' ? 1 : 0;
     if (!sign) return null;
-    return clamp3(sign * Math.abs(Number(row.dominance_score) || 0) / 100 * 3);
+    return clamp3(sign * Math.abs(Number(row.score) || 0) / 100 * 3);
   };
 
   /**
@@ -269,6 +277,24 @@
 
   /** how far a point sits from the origin, in compass units — "how polarised" */
   const radius = (p) => (p && p.s != null && p.e != null ? Math.hypot(p.s, p.e) : null);
+
+  /**
+   * The two most distant points in a set, and how far apart they are. With five
+   * populations the interesting number is not where they sit but how much they
+   * disagree — a world where the law and the street are 4 units apart is a different
+   * place from one where every reading lands in the same quadrant.
+   */
+  const spread = (points) => {
+    const ps = (points || []).filter((p) => p && p.s != null && p.e != null);
+    let best = null;
+    for (let i = 0; i < ps.length; i += 1) {
+      for (let j = i + 1; j < ps.length; j += 1) {
+        const d = Math.hypot(ps[i].s - ps[j].s, ps[i].e - ps[j].e);
+        if (!best || d > best.d) best = { d, a: ps[i], b: ps[j] };
+      }
+    }
+    return best;
+  };
 
   // ===========================================================================
   // 3. Stored state
@@ -651,12 +677,41 @@
   let title = null, drag = null, fabDrag = null, resize = null;
 
   const CSS = `
-    .pkww-fab { position: fixed; left: 12px; bottom: 108px; z-index: 2147482000;
-      width: 34px; height: 34px; border-radius: 17px; border: 1px solid #3f3f46;
-      background: #18181b; color: #e4e4e7; font-size: 15px; line-height: 32px;
-      text-align: center; cursor: pointer; user-select: none; opacity: .85; padding: 0; }
-    .pkww-fab:hover { opacity: 1; }
-    .pkww-panel { position: fixed; left: 12px; bottom: 148px; z-index: 2147482000;
+    /* FAB KIT v1 — shared verbatim block.
+       Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
+       bump the version here and in every tool carrying a copy, so the copies can
+       be diffed. Several of these tools are on screen at once, and buttons that
+       each picked their own shape read as several unrelated add-ons rather than
+       one set of tools. A 15px glyph is also a coin toss across fonts and
+       platforms, and four of them tell you nothing about which is which. So the
+       box is fixed here and only the word inside it belongs to the tool: three
+       or four letters, upper case, no emoji.
+
+       What this block deliberately leaves to the tool, because it IS the tool's:
+         - which corner the button starts in: position / inset / z-index
+         - state colour and badges layered on top (.hot, .live, .pkws-done)
+       The tool's own rule goes AFTER this block: same specificity, later wins.
+
+       Tools that also do their own placement maths keep CFG.FAB_SIZE in step
+       with the 38px below; tools/test-placement.js fails the build if one drifts.
+
+       people-watch is the one exception to the word. It wears the eye of
+       providence, which is its mark and predates this block; the svg rule sizes
+       that inside the same square as everyone else's letters. */
+    .pk-fab {
+      box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      display: grid; place-items: center;
+      background: #18181b; color: #e4e4e7;
+      border: 1px solid #3f3f46; border-radius: 3px;
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .08em; text-align: center;
+      cursor: pointer; user-select: none; touch-action: none;
+    }
+    .pk-fab:hover { border-color: #71717a; color: #fafafa; }
+    .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    .pk-fab svg { width: 24px; height: 24px; display: block; }
+    .pkww-fab { position: fixed; left: 12px; bottom: 110px; z-index: 2147482000; }
+    .pkww-panel { position: fixed; left: 12px; bottom: 156px; z-index: 2147482000;
       width: min(360px, calc(100vw - 24px)); max-height: min(80vh, 820px);
       display: flex; flex-direction: column;
       border: 1px solid #3f3f46; border-radius: 8px; background: #09090bf2; color: #e4e4e7;
@@ -845,7 +900,8 @@
       g.title = `${layer.hint}\nClick to show or hide this layer`;
       g.addEventListener('click', () => { ui.layers[layer.key] = !on; saveUI(); render(); });
       const name = el('td', null, layer.label);
-      name.title = layer.hint;
+      const r = radius(p);
+      name.title = r == null ? layer.hint : `${layer.hint}\n${r.toFixed(2)} from dead centre`;
       tr.append(g, name,
         el('td', 'n', has ? sign2(p.s) : '—'),
         el('td', 'n', has ? sign2(p.e) : '—'),
@@ -861,6 +917,16 @@
     hdr.append(el('td', 'c', ''), el('td', 'c', ''), el('td', 'c', 'social'), el('td', 'c', 'econ'), el('td', 'c', 'n · age'));
     legend.prepend(hdr);
     out.append(legend);
+
+    // With five estimates of one thing, the gap between them is the finding.
+    const far = spread(marks.map((m) => ({ s: m.s, e: m.e, label: LAYERS.find((l) => l.color === m.color)?.label })));
+    if (far) {
+      const p = el('p', 'pkww-note',
+        `They disagree by ${far.d.toFixed(2)} at the widest — ${far.a.label} against ${far.b.label}. `
+        + 'The whole plot box is 6 across, so that is the scale to read it against.');
+      p.style.marginTop = '6px';
+      out.append(p);
+    }
 
     // What is missing, and the one click that would fix it. This is the whole
     // acquisition story: every row fills from a screen you were going to open anyway.
@@ -941,7 +1007,13 @@
       out.append(jrow);
       return;
     }
-    if (!ui.city || !data.cities[ui.city]) ui.city = keys[0];
+    // Default to the city you are standing in — /api/user/status names it every ten
+    // seconds for free, and it is the one whose numbers you can act on today.
+    if (!ui.city || !data.cities[ui.city]) {
+      const here = keys.find((k) => data.cities[k].id != null && String(data.cities[k].id) === String(data.loc));
+      ui.city = here ?? cityKey(data.locName) ?? keys[0];
+      if (!data.cities[ui.city]) ui.city = keys[0];
+    }
 
     const chips = el('div', 'pkww-chips');
     for (const k of keys) {
@@ -965,8 +1037,12 @@
       const p = pointOf(layer, city);
       const nat = pointOf(layer, null);
       const on = ui.layers[layer.key] !== false;
-      const has = p.s != null && p.e != null;
-      if (on && has) {
+      // A marker needs both axes; a NUMBER needs only its own. A city with one campaign
+      // on one economic issue has a real economic reading and no social one, and hiding
+      // the figure it does have would be the wrong half of the honesty.
+      const plot = p.s != null && p.e != null;
+      const has = p.s != null || p.e != null;
+      if (on && plot) {
         marks.push({ ...p, glyph: layer.glyph, color: layer.color });
         if (nat.s != null && nat.e != null) ghosts.push({ ...nat, color: layer.color });
       }
@@ -974,14 +1050,13 @@
       tr.dataset.off = on && has ? '0' : '1';
       const g = el('td', 'pkww-glyph', layer.glyph);
       g.style.color = layer.color; g.style.width = '14px';
+      g.title = `${layer.hint}\nClick to show or hide this layer`;
       g.addEventListener('click', () => { ui.layers[layer.key] = !on; saveUI(); render(); });
-      const d = has && nat.s != null
-        ? `${sign1(p.s - nat.s)} / ${sign1(p.e - nat.e)}`
-        : '—';
+      const gap = (a, b) => (a != null && b != null ? sign1(a - b) : '·');
       tr.append(g, el('td', null, layer.label),
-        el('td', 'n', has ? sign2(p.s) : '—'),
-        el('td', 'n', has ? sign2(p.e) : '—'),
-        el('td', 'c', d));
+        el('td', 'n', sign2(p.s)),
+        el('td', 'n', sign2(p.e)),
+        el('td', 'c', has ? `${gap(p.s, nat.s)} / ${gap(p.e, nat.e)}` : '—'));
       legend.append(tr);
     }
 
@@ -1090,7 +1165,12 @@
       tr.className = cat === 'social' ? 's' : 'e';
       tr.title = `${labelOf(slug)} · ${cat} axis`;
       const lawTd = el('td', 'n', law == null ? '·' : sign1(law));
-      if (law != null) lawTd.style.color = hue(law);
+      if (law != null) {
+        lawTd.style.color = hue(law);
+        // The word scale is written for exactly this: a single left→right score on a
+        // policy. It is NOT applied to the composed axes, which the game never names.
+        lawTd.title = `${word(law)} · the client's own word for ${sign1(law)}`;
+      }
       const pollTd = el('td', 'n', poll ? sign1(poll.mean) : '·');
       if (poll) {
         pollTd.style.color = hue(poll.mean);
@@ -1138,6 +1218,8 @@
     ['/api/protests', 'the street · live meters', '/protests', 'Protests'],
     ['/api/protests/state-dominance', 'the map · every US state', '/travel', 'Travel'],
     ['/api/home/media-campaigns', 'the media · per city, per issue', '/', 'Home'],
+    ['/api/home/active-protest', 'the street · one protest, named and placed', '/', 'Home'],
+    ['/api/factions/{id}/jobs', 'the law again · the lobbying screen carries the axes', null, null],
     ['/api/actions/graffiti', 'walls · the city you are in', '/actions/graffiti', 'Graffiti'],
     ['/api/locations', 'the world\'s cities', '/travel', 'Travel'],
     ['/api/users/{id}', 'citizens · one profile at a time', null, null],
@@ -1495,7 +1577,7 @@
     style.textContent = CSS;
     root.append(style);
 
-    fab = el('button', 'pkww-fab', '⊕');
+    fab = el('button', 'pk-fab pkww-fab', 'WRLD');
     fab.title = 'Politiko World Watch (passive) — drag to move';
     fab.addEventListener('click', () => {
       if (fabDrag.dragged()) return; // that gesture was a drag, not a click
@@ -1518,7 +1600,7 @@
     });
 
     const close = el('button', 'pkww-btn', '×');
-    close.title = 'Hide (the ⊕ button brings it back)';
+    close.title = 'Hide (the WRLD button brings it back)';
     close.addEventListener('click', () => { ui.open = false; saveUI(); sync(); });
 
     head.append(title, pinBtn, close);

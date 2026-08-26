@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Align Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.0
+// @version      0.4.1
 // @description  Mirrors your character's political-compass chart from the profile screen onto the home page: last measured social/economic axes, every change since you installed it, and the projected effect of alignment actions you have taken since that reading. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -91,11 +91,18 @@
   const px = (economic) => BOX + (clamp3(economic) + 3) / 6 * PLOT;
   const py = (social) => BOX + (3 - clamp3(social)) / 6 * PLOT;
 
-  // The wiki's −3..+3 name scale. It is written for policy axes and NPCs, whose
-  // single alignment score runs left→right; the player compass splits the same
-  // numeric range across two axes and names the vertical one authority/liberty.
-  // Shown as a legend, not stamped onto the social axis.
-  const SCALE = ['Communist', 'Progressive', 'Liberal', 'Moderate', 'Conservative', 'Republican', 'Far-Right'];
+  // GovernmentPage's own −3..+3 name scale — the shipped client's, not the
+  // in-bundle wiki's (Communist / Progressive / Liberal / Moderate / Conservative /
+  // Republican / Far-Right). The two disagree on five of the seven words, and the
+  // renderer is what a player actually sees, so these are the words to print.
+  // Found 2026-08-26; docs/13-world-politics-surface.md carries the table.
+  //
+  // Swapping the words does not fix the older clash: this scale is still written for
+  // entities carrying a *single* left→right score — policy axes and NPCs — whereas
+  // the player compass splits the same numeric range across two axes and names the
+  // vertical one authority/liberty. So the words land on the economic axis and not
+  // the social one. Shown as a legend, not stamped onto the social axis.
+  const SCALE = ['Tankie', 'Progressive', 'Moderate Left', 'Moderate', 'Moderate Right', 'Conservative', 'Fascist'];
   const scaleWord = (v) => SCALE[Math.round(clamp3(v)) + 3];
 
   // ActivismPage's issue table — which axis each of the 20 issues belongs to.
@@ -362,12 +369,41 @@
   let title = null, pinBtn = null, drag = null, fabDrag = null, resize = null;
 
   const CSS = `
-    .pkaw-fab { position: fixed; left: 12px; bottom: 64px; z-index: 2147482000;
-      width: 34px; height: 34px; border-radius: 17px; border: 1px solid #3f3f46;
-      background: #18181b; color: #e4e4e7; font-size: 15px; line-height: 32px;
-      text-align: center; cursor: pointer; user-select: none; opacity: .85; padding: 0; }
-    .pkaw-fab:hover { opacity: 1; }
-    .pkaw-panel { position: fixed; left: 12px; bottom: 104px; z-index: 2147482000;
+    /* FAB KIT v1 — shared verbatim block.
+       Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
+       bump the version here and in every tool carrying a copy, so the copies can
+       be diffed. Several of these tools are on screen at once, and buttons that
+       each picked their own shape read as several unrelated add-ons rather than
+       one set of tools. A 15px glyph is also a coin toss across fonts and
+       platforms, and four of them tell you nothing about which is which. So the
+       box is fixed here and only the word inside it belongs to the tool: three
+       or four letters, upper case, no emoji.
+
+       What this block deliberately leaves to the tool, because it IS the tool's:
+         - which corner the button starts in: position / inset / z-index
+         - state colour and badges layered on top (.hot, .live, .pkws-done)
+       The tool's own rule goes AFTER this block: same specificity, later wins.
+
+       Tools that also do their own placement maths keep CFG.FAB_SIZE in step
+       with the 38px below; tools/test-placement.js fails the build if one drifts.
+
+       people-watch is the one exception to the word. It wears the eye of
+       providence, which is its mark and predates this block; the svg rule sizes
+       that inside the same square as everyone else's letters. */
+    .pk-fab {
+      box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      display: grid; place-items: center;
+      background: #18181b; color: #e4e4e7;
+      border: 1px solid #3f3f46; border-radius: 3px;
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .08em; text-align: center;
+      cursor: pointer; user-select: none; touch-action: none;
+    }
+    .pk-fab:hover { border-color: #71717a; color: #fafafa; }
+    .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    .pk-fab svg { width: 24px; height: 24px; display: block; }
+    .pkaw-fab { position: fixed; left: 12px; bottom: 64px; z-index: 2147482000; }
+    .pkaw-panel { position: fixed; left: 12px; bottom: 110px; z-index: 2147482000;
       width: min(320px, calc(100vw - 24px)); max-height: min(78vh, 760px);
       display: flex; flex-direction: column;
       border: 1px solid #3f3f46; border-radius: 8px; background: #09090bf2; color: #e4e4e7;
@@ -624,8 +660,8 @@
     body.append(tools);
 
     body.append(el('p', 'pkaw-note',
-      `Scale −3 ${SCALE[0].toLowerCase()} · 0 ${SCALE[3].toLowerCase()} · +3 ${SCALE[6].toLowerCase()} `
-      + `(the wiki's naming, written for policy axes and NPCs; the compass names its vertical axis authority/liberty). `
+      `Scale −3 ${SCALE[0]} · 0 ${SCALE[3]} · +3 ${SCALE[6]} `
+      + `(the words the client itself prints; the in-bundle wiki uses a different list. Written for policy axes and NPCs — the compass names its vertical axis authority/liberty). `
       + `Nearest word for your economic axis: ${scaleWord(r.e)}.`));
     body.append(el('p', 'pkaw-note',
       `† inferred, not measured: the wiki calls player alignment a running average, so this treats one more action at stance s as (a·n + s)/(n+1). `
@@ -888,7 +924,7 @@
     style.textContent = CSS;
     root.append(style);
 
-    fab = el('button', 'pkaw-fab', '◎');
+    fab = el('button', 'pk-fab pkaw-fab', 'ALGN');
     fab.title = 'Politiko Align Watch (passive) — drag to move';
     fab.addEventListener('click', () => {
       if (fabDrag.dragged()) return; // that gesture was a drag, not a click
@@ -906,7 +942,7 @@
     pinBtn.addEventListener('click', () => { ui.everywhere = !ui.everywhere; saveUI(); sync(); });
 
     const close = el('button', 'pkaw-btn', '×');
-    close.title = 'Hide (the ◎ button brings it back)';
+    close.title = 'Hide (the ALGN button brings it back)';
     close.addEventListener('click', () => { ui.open = false; saveUI(); sync(); });
 
     head.append(title, pinBtn, close);
