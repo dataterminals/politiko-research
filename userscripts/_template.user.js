@@ -421,8 +421,71 @@
     };
   };
 
+  // ===========================================================================
+  // 5. FAB KIT v1 — shared verbatim block.
+  //
+  //    The toggle button, and the one piece of this repo a player sees before
+  //    they open anything. Ten tools can be on screen at once, so the button is
+  //    a set piece rather than each tool's own flourish: paste FAB_CSS into your
+  //    stylesheet as it stands, put `pk-fab` on the element, and put ONE three-
+  //    or four-letter word inside it. Same rule as PANEL KIT — if the block has
+  //    to change, bump the version in this header and in every tool carrying a
+  //    copy, so the copies can be diffed. tools/test-placement.js hashes them.
+  //
+  //    Pick the word the way you would pick a stock ticker: ALGN, MKT, RAID,
+  //    SLP, JUMP, SOCK, TIME, WRLD, XP. No emoji — a 15px glyph is a coin toss
+  //    across fonts and platforms, and four of them tell you nothing about which
+  //    is which. people-watch is the single exception, and it is grandfathered:
+  //    the eye of providence is its mark, and `.pk-fab svg` sizes it inside the
+  //    same square as everyone else's letters.
+  //
+  //    Your rule goes AFTER the block, same specificity, and carries only what
+  //    is actually yours: the corner it starts in, and any state colour. Where
+  //    you land, avoid the corners already spoken for — the right edge runs
+  //    bottom 16 / 64 / 110 / 156 / 202 at right: 12px, and the left edge runs
+  //    top 12 and bottom 64 / 110.
+  //
+  //    Tools that also do their own placement maths (defaultFabPos, clampFab)
+  //    keep CFG.FAB_SIZE at 38 to match the box below.
+  // ===========================================================================
+  const FAB_CSS = `
+    /* FAB KIT v1 — shared verbatim block.
+       Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
+       bump the version here and in every tool carrying a copy, so the copies can
+       be diffed. Several of these tools are on screen at once, and buttons that
+       each picked their own shape read as several unrelated add-ons rather than
+       one set of tools. A 15px glyph is also a coin toss across fonts and
+       platforms, and four of them tell you nothing about which is which. So the
+       box is fixed here and only the word inside it belongs to the tool: three
+       or four letters, upper case, no emoji.
+
+       What this block deliberately leaves to the tool, because it IS the tool's:
+         - which corner the button starts in: position / inset / z-index
+         - state colour and badges layered on top (.hot, .live, .pkws-done)
+       The tool's own rule goes AFTER this block: same specificity, later wins.
+
+       Tools that also do their own placement maths keep CFG.FAB_SIZE in step
+       with the 38px below; tools/test-placement.js fails the build if one drifts.
+
+       people-watch is the one exception to the word. It wears the eye of
+       providence, which is its mark and predates this block; the svg rule sizes
+       that inside the same square as everyone else's letters. */
+    .pk-fab {
+      box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      display: grid; place-items: center;
+      background: #18181b; color: #e4e4e7;
+      border: 1px solid #3f3f46; border-radius: 3px;
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .08em; text-align: center;
+      cursor: pointer; user-select: none; touch-action: none;
+    }
+    .pk-fab:hover { border-color: #71717a; color: #fafafa; }
+    .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    .pk-fab svg { width: 24px; height: 24px; display: block; }
+  `;
+
   // ---------------------------------------------------------------------------
-  // 5. Boot
+  // 6. Boot
   // ---------------------------------------------------------------------------
   const boot = () => {
     log('ready');
@@ -430,6 +493,18 @@
     onApiResponse(({ url, data }) => log('api', url, data));
     onSocketFrame((rec) => log('ws', rec.kind, rec.ev, rec.type ?? ''));
 
+    // The button: one element, class `pk-fab`, one word. draggable() takes it as
+    // both node and handle — a bare FAB drags from itself — and dragged() is what
+    // stops a drag from also toggling the panel.
+    //
+    //   const fab = document.createElement('button');
+    //   fab.className = 'pk-fab';        // plus your own class for the corner
+    //   fab.textContent = 'WORD';
+    //   const fabDrag = draggable(fab, fab, (pos) => { ui.fab = pos; save(); });
+    //   fabDrag.apply(ui.fab);
+    //   fab.addEventListener('click', () => { if (!fabDrag.dragged()) toggle(); });
+    //   fab.addEventListener('dblclick', () => { ui.fab = null; save(); fabDrag.reset(); });
+    //
     // Panel skeleton the kit expects: a fixed container, a header that drags it,
     // and a body you re-render. The body wants `flex: 1 1 auto; min-height: 0` so a
     // chosen height fills instead of leaving dead space under the content. Persist

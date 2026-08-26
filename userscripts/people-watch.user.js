@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — People Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      1.5.0
+// @version      1.6.0
 // @description  Builds a local ledger of players' last-online times, cities, ranks and combat records from the profiles you open, and sorts it least-active-first. Fully passive: it reads responses the game already made and originates nothing. Includes a next/back walk so filling the ledger by hand is one keypress per player — along the roster, or along the panel's own sorted and filtered list.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -81,7 +81,7 @@
     LIST_CAP: 400,              // rows the table draws; the walk counts along the same ones
     PANEL_W: 560,
     PANEL_MIN_H: 160,
-    FAB_SIZE: 42,           // a triangle carries less visual weight than a square of the same box
+    FAB_SIZE: 38,   // must match FAB KIT's .pk-fab box           // a triangle carries less visual weight than a square of the same box
     EDGE: 8,                    // keep this much gap from the viewport edge
   };
 
@@ -885,16 +885,45 @@
     .dim { color: #71717a; }
     .transit { color: #60a5fa; font-style: italic; }
     .note { padding: 6px 8px; color: #a1a1aa; border-top: 1px solid #27272a; font-size: 11px; }
-    /* The button is the triangle — not a square with a triangle drawn on it. The
-       outline and fill come from the SVG, and clip-path takes the corners out of the
-       box itself, so the hit area is the triangle too: clicks in the dead corners
-       fall through to whatever is underneath. */
-    .fab { position: fixed; z-index: 2147483000; width: ${CFG.FAB_SIZE}px; height: ${CFG.FAB_SIZE}px;
-      background: none; border: 0; padding: 0; color: #e4e4e7;
-      cursor: grab; touch-action: none; display: block;
-      clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
-    .fab svg { width: 100%; height: 100%; display: block; }
-    .fab:hover { color: #fafafa; }
+    /* FAB KIT v1 — shared verbatim block.
+       Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
+       bump the version here and in every tool carrying a copy, so the copies can
+       be diffed. Several of these tools are on screen at once, and buttons that
+       each picked their own shape read as several unrelated add-ons rather than
+       one set of tools. A 15px glyph is also a coin toss across fonts and
+       platforms, and four of them tell you nothing about which is which. So the
+       box is fixed here and only the word inside it belongs to the tool: three
+       or four letters, upper case, no emoji.
+
+       What this block deliberately leaves to the tool, because it IS the tool's:
+         - which corner the button starts in: position / inset / z-index
+         - state colour and badges layered on top (.hot, .live, .pkws-done)
+       The tool's own rule goes AFTER this block: same specificity, later wins.
+
+       Tools that also do their own placement maths keep CFG.FAB_SIZE in step
+       with the 38px below; tools/test-placement.js fails the build if one drifts.
+
+       people-watch is the one exception to the word. It wears the eye of
+       providence, which is its mark and predates this block; the svg rule sizes
+       that inside the same square as everyone else's letters. */
+    .pk-fab {
+      box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      display: grid; place-items: center;
+      background: #18181b; color: #e4e4e7;
+      border: 1px solid #3f3f46; border-radius: 3px;
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .08em; text-align: center;
+      cursor: pointer; user-select: none; touch-action: none;
+    }
+    .pk-fab:hover { border-color: #71717a; color: #fafafa; }
+    .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    .pk-fab svg { width: 24px; height: 24px; display: block; }
+    /* The eye used to BE the button: a clip-path cut the box down to the triangle, so
+       the silhouette and the hit area were both the eye of providence. FAB KIT ended
+       that — every tool in the set wears the same square now, and this one keeps the
+       eye as the mark inside the square rather than as its outline. It is still the
+       only button in the repo that shows a symbol instead of a word. */
+    .fab { position: fixed; z-index: 2147483000; cursor: grab; }
     .fab.dragging { cursor: grabbing; color: #a1a1aa; }
     .grip { display: flex; gap: 8px; align-items: baseline; padding: 6px 8px;
       border-bottom: 1px solid #27272a; user-select: none; }
@@ -902,12 +931,12 @@
     .grip .cov { margin-left: auto; }
   `;
 
-  // The eye of providence. The triangle carries the button's own fill and outline and
-  // runs to the edge of the box, inset just enough that its stroke survives the
-  // clip-path rather than being sliced in half along the diagonals.
+  // The eye of providence. The triangle is drawn now, not cut: stroked and left
+  // unfilled so the button's own background shows through, sitting inside the FAB KIT
+  // square at the 24px the kit sizes an icon to.
   const EYE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
       stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
-      <path d="M12 2 22.6 22.2 1.4 22.2 Z" fill="#09090b"/>
+      <path d="M12 2 22.6 22.2 1.4 22.2 Z" fill="none"/>
       <path d="M7.3 16.5c1.5-2.6 7.9-2.6 9.4 0-1.5 2.6-7.9 2.6-9.4 0Z"/>
       <circle cx="12" cy="16.5" r="1.45" fill="currentColor" stroke="none"/>
     </svg>`;
@@ -927,7 +956,7 @@
     document.documentElement.append(host);
 
     fab = document.createElement('button');
-    fab.className = 'fab';
+    fab.className = 'pk-fab fab';
     fab.innerHTML = EYE_SVG;
     fab.setAttribute('aria-label', 'People Watch');
     fab.title = 'People Watch — click to open, drag to move, double-click to reset';

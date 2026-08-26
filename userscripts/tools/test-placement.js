@@ -420,5 +420,131 @@ console.log('\n— the drag handle survives a repaint —');
     [...KNOWN_BROKEN].filter((f) => !broken.some((b) => b.file === f)), []);
 }
 
+// ---------------------------------------------------------------------------
+// FAB KIT v1 — one button, eleven copies.
+//
+// The toggle button is the only part of this repo a player sees before they open
+// anything, and several of these tools sit on the same screen at once. Before the
+// kit each tool had picked its own: three different sizes, two different shapes,
+// and four emoji that render at the mercy of whatever font the platform hands them.
+// Uniform is the point — so the box lives in one block and only the WORD inside it
+// belongs to the tool.
+//
+// Same enforcement as PANEL KIT above, plus three things the hash cannot see: that
+// the element actually wears the class, that the word is a word, and that a tool
+// doing its own placement maths agrees with the kit about how big the box is.
+// ---------------------------------------------------------------------------
+console.log('\n— FAB KIT v1 is one button everywhere —');
+{
+  const dir = path.join(__dirname, '..');
+  const A = '    /* FAB KIT v1 — shared verbatim block.';
+  const B = '    .pk-fab svg { width: 24px; height: 24px; display: block; }';
+  const BOX = 38; // .pk-fab's width/height, and what CFG.FAB_SIZE has to agree with
+
+  // people-watch wears the eye of providence instead of a word. It is the mark the
+  // tool has always had, it predates the kit, and it is the ONLY exception — a
+  // second symbol button and the set stops reading as a set. Everything else about
+  // it is the kit: same square, same border, same corner behaviour.
+  const SYMBOL = new Set(['people-watch.user.js']);
+
+  // Tools that draw no button of their own, and why. Same list as the panel one
+  // minus _template, which carries the kit as FAB_CSS for the next tool to copy.
+  const NO_FAB = new Set(['time-bridge.user.js', 'comms-move.user.js']);
+
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.user.js'));
+  const carriers = files.filter((f) => !NO_FAB.has(f));
+  check('every tool is accounted for', files.length, carriers.length + NO_FAB.size);
+
+  const seen = new Map();
+  for (const f of carriers) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const i = src.indexOf(A);
+    const j = src.indexOf(B, i);
+    check(`${f} carries a whole kit`, i >= 0 && j > i, true);
+    if (i < 0 || j <= i) continue;
+    const body = src.slice(i, j + B.length);
+    const key = crypto.createHash('md5').update(body).digest('hex').slice(0, 12);
+    if (!seen.has(key)) seen.set(key, []);
+    seen.get(key).push(f);
+  }
+
+  const variants = [...seen.entries()];
+  check(`all ${carriers.length} copies agree`, variants.length, 1);
+  if (variants.length > 1) {
+    for (const [hash, list] of variants) console.log(`        ${hash}  ${list.join(', ')}`);
+  }
+
+  // A copy of the CSS is inert if nothing wears the class. _template mounts nothing,
+  // so it is exempt from this one and from the label check below.
+  const mounted = carriers.filter((f) => f !== '_template.user.js');
+  const unworn = mounted.filter((f) => {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    return !/(?:className\s*=\s*'pk-fab|el\(\s*'(?:button|div)'\s*,\s*'pk-fab)/.test(src);
+  });
+  check('every button actually wears pk-fab', unworn, []);
+
+  // The word. Three or four upper-case letters, like a ticker — long enough to tell
+  // ALGN from a shrug, short enough to fit the box at 11px. XP is two and is the
+  // abbreviation everyone already uses; a third letter would only make it worse.
+  const labelOf = (src) => {
+    let m = src.match(/el\(\s*'(?:button|div)'\s*,\s*'pk-fab[^']*'\s*,\s*'([^']*)'\s*\)/);
+    if (m) return m[1];
+    m = src.match(/\bfab\.textContent\s*=\s*'([^']*)'/);
+    if (m) return m[1];
+    m = src.match(/\bfab\.append\(\s*document\.createTextNode\('([^']*)'\)/);
+    if (m) return m[1];
+    if (/\bfab\.innerHTML\s*=\s*EYE_SVG\b/.test(src)) return null; // the mark, not a word
+    return undefined;                                                 // unreadable: a failure
+  };
+
+  const labels = [];
+  for (const f of mounted) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const label = labelOf(src);
+    if (SYMBOL.has(f)) {
+      check(`${f} still wears its symbol`, label, null);
+      continue;
+    }
+    check(`${f}: a 2-4 letter word, upper case, no emoji`,
+      typeof label === 'string' && /^[A-Z]{2,4}$/.test(label) ? label : `bad label: ${label}`,
+      typeof label === 'string' && /^[A-Z]{2,4}$/.test(label) ? label : 'A-Z, 2-4 chars');
+    if (typeof label === 'string') labels.push(`${label} (${f})`);
+  }
+
+  // Two buttons reading the same word is worse than either reading nothing.
+  const words = labels.map((l) => l.split(' ')[0]);
+  check('no two buttons say the same thing',
+    words.filter((w, i) => words.indexOf(w) !== i), []);
+  console.log(`        ${words.sort().join('  ')}`);
+
+  // A tool that places its own button measures against CFG.FAB_SIZE while the browser
+  // measures against .pk-fab. Let those two disagree and the button clamps to the
+  // wrong edge — off by exactly the drift, which is small enough to look like nothing
+  // until the viewport is short.
+  const drifted = [];
+  for (const f of mounted) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const m = src.match(/FAB_SIZE:\s*(\d+)/);
+    if (m && Number(m[1]) !== BOX) drifted.push(`${f} (${m[1]})`);
+  }
+  check(`CFG.FAB_SIZE agrees with the ${BOX}px box`, drifted, []);
+
+  // The kit owns the box; the tool owns the corner and the state colours. A tool that
+  // re-declares width/height/radius/font in its own rule is back to picking its own
+  // shape, which is the whole thing this block exists to stop. Descendant selectors
+  // (sleeper-watch's .fab .dot badge) are their own box and are not covered.
+  const BOXY = /(?:^|[;{\s])(?:width|height|border-radius|font|font-size|font-family)\s*:/;
+  const redeclared = [];
+  for (const f of carriers) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    for (const m of src.matchAll(/^[ \t]*([#.][\w.:#-]*fab[\w.:#-]*)[ \t]*\{([^}]*)\}/gmi)) {
+      const [, sel, decls] = m;
+      if (sel.startsWith('.pk-fab')) continue;   // that IS the kit
+      if (BOXY.test(decls)) redeclared.push(`${f} (${sel})`);
+    }
+  }
+  check('no tool redeclares the box in its own rule', redeclared, []);
+}
+
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);

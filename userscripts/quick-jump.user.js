@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Quick Jump
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.0
+// @version      0.3.0
 // @description  A launcher for the 64 screens the sidebar cannot reach. Offers every parameterless route the game ships, and learns the ID-bearing ones — casinos above all — from responses the game already fetched while you played. Shows the casino's city gate next to the door so you never load a floor you cannot enter. Passive: zero added requests, and every jump is one you pressed a key for.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -74,7 +74,7 @@
   const CFG = {
     HOTKEY: 'j',        // Alt+J toggles the panel
     PANEL_W: 400,
-    FAB_SIZE: 34,
+    FAB_SIZE: 38,   // must match FAB KIT's .pk-fab box
     RECENT_MAX: 8,
     PIN_MAX: 9,         // Alt+1 .. Alt+9
     FRESH_MS: 5 * 60_000, // a gate reading older than this is called out as stale
@@ -691,15 +691,42 @@
   const CSS = `
     :host { all: initial; }
     * { box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .fab {
-      position: fixed; right: 12px; bottom: 246px; width: ${CFG.FAB_SIZE}px; height: ${CFG.FAB_SIZE}px;
-      z-index: 2147483000; display: grid; place-items: center; cursor: pointer;
-      background: #18181b; color: #f4f4f5; border: 1px solid #3f3f46; border-radius: 3px;
-      font-size: 11px; letter-spacing: .08em; user-select: none;
+    /* FAB KIT v1 — shared verbatim block.
+       Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
+       bump the version here and in every tool carrying a copy, so the copies can
+       be diffed. Several of these tools are on screen at once, and buttons that
+       each picked their own shape read as several unrelated add-ons rather than
+       one set of tools. A 15px glyph is also a coin toss across fonts and
+       platforms, and four of them tell you nothing about which is which. So the
+       box is fixed here and only the word inside it belongs to the tool: three
+       or four letters, upper case, no emoji.
+
+       What this block deliberately leaves to the tool, because it IS the tool's:
+         - which corner the button starts in: position / inset / z-index
+         - state colour and badges layered on top (.hot, .live, .pkws-done)
+       The tool's own rule goes AFTER this block: same specificity, later wins.
+
+       Tools that also do their own placement maths keep CFG.FAB_SIZE in step
+       with the 38px below; tools/test-placement.js fails the build if one drifts.
+
+       people-watch is the one exception to the word. It wears the eye of
+       providence, which is its mark and predates this block; the svg rule sizes
+       that inside the same square as everyone else's letters. */
+    .pk-fab {
+      box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      display: grid; place-items: center;
+      background: #18181b; color: #e4e4e7;
+      border: 1px solid #3f3f46; border-radius: 3px;
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .08em; text-align: center;
+      cursor: pointer; user-select: none; touch-action: none;
     }
-    .fab:hover { border-color: #71717a; }
+    .pk-fab:hover { border-color: #71717a; color: #fafafa; }
+    .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    .pk-fab svg { width: 24px; height: 24px; display: block; }
+    .fab { position: fixed; right: 12px; bottom: 156px; z-index: 2147483000; }
     .panel {
-      position: fixed; right: 12px; bottom: 290px; width: ${CFG.PANEL_W}px;
+      position: fixed; right: 12px; bottom: 202px; width: ${CFG.PANEL_W}px;
       max-width: calc(100vw - 24px); max-height: 74vh; z-index: 2147483000;
       background: #09090b; color: #e4e4e7; border: 1px solid #27272a; border-radius: 4px;
       display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,.7);
@@ -797,7 +824,7 @@
     root = host.attachShadow({ mode: 'open' });
     const style = el('style'); style.textContent = CSS; root.append(style);
 
-    fab = el('div', 'fab', 'JUMP');
+    fab = el('div', 'pk-fab fab', 'JUMP');
     fab.title = 'Quick Jump (Alt+J) — drag to move, double-click to reset';
     root.append(fab);
 

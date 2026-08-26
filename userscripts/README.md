@@ -12,21 +12,22 @@ bannable, so the disclosure block is the contract.
 
 | tool | version | raw link |
 |---|---|---|
-| People Watch | 1.5.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
-| Market Watch | 1.0.1 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
-| Time Watch | 0.5.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
+| People Watch | 1.6.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| Market Watch | 1.1.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
+| Time Watch | 0.6.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
 | Align Watch | 0.4.1 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
 | Comms Move | 0.1.1 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
-| WS Watch | 0.3.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.3.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
-| Raid Watch | 0.2.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
-| Sleeper Watch | 0.2.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
-| Quick Jump | 0.2.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
-| World Watch | 0.1.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
+| WS Watch | 0.4.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
+| XP Watch | 0.4.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| Raid Watch | 0.3.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
+| Sleeper Watch | 0.3.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
+| Quick Jump | 0.3.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
+| World Watch | 0.2.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
+| Gov Watch | 0.1.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
-(passive tap, SPA awareness, the shared `PANEL KIT` block).
+(passive tap, SPA awareness, and the shared `PANEL KIT` and `FAB KIT` blocks).
 
 All of them declare `@updateURL`/`@downloadURL` pointing back here, so **shipping a fix means
 bumping `@version`** — a script manager only acts on an increase.
@@ -59,6 +60,38 @@ resizes nothing, because the window it moves is the game's Comms dock, and sizin
 overriding the game's own collapse behaviour — a larger claim than "this tool only
 repositions". `tools/test-placement.js` encodes both exceptions by name.
 
+## The buttons
+
+`FAB KIT v1` is the same idea applied to the toggle button — the one part of any of this a
+player sees before they open anything. Install four of these tools and four buttons land on
+your screen, so they are a set rather than each tool's own flourish: **one 38px square, one
+three-or-four-letter word.**
+
+| | | | | | |
+|---|---|---|---|---|---|
+| `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` |
+| `SOCK` | `TIME` | `WRLD` | `XP` | 👁 People Watch | |
+
+**People Watch is the one exception**, and it is grandfathered: it wears the eye of
+providence, which has been its mark since 1.0. Everything else about it is the kit — same
+square, same border, same behaviour. A second symbol button and the set stops reading as a
+set, so the check in `tools/test-placement.js` names people-watch and nothing else.
+
+Before the kit each tool had picked its own button: three different sizes, two different
+shapes, and four emoji rendering at the mercy of whatever font the platform handed them. A
+glyph at 15px is a coin toss, and four of them tell you nothing about which is which.
+
+What each tool still owns is the corner it starts in and its own **state colour** — Sleeper
+Watch's button goes green when a meeting is open, Market Watch's goes red when a live order
+is armed, WS Watch's goes green when a capture finishes. Those layer on top of the shared
+box; nothing redraws it, and the test fails the build if anything tries.
+
+The defaults no longer collide, either, which is what made the uniform size worth having:
+the right edge runs `MKT` `XP` `RAID` `JUMP` `SLP` bottom-to-top with 8px between each,
+and the left edge runs `TIME` at the top and `ALGN` `WRLD` `GOV` up from the bottom. Every
+one of them still drags anywhere and remembers, and a stored position always wins — moving
+the defaults moves nothing you have already put somewhere.
+
 ---
 
 # People Watch
@@ -81,7 +114,7 @@ entire account lifetime was under two hours — they never really engaged.
 
 ## How to use it
 
-**Alt+P**, or click the triangle button, to open the panel. Drag either wherever you like;
+**Alt+P**, or click the **eye** button, to open the panel. Drag either wherever you like;
 they remember.
 
 The header shows two numbers — `12/292 profiled · 40 known`:
@@ -915,6 +948,110 @@ tool does: [`docs/13-world-politics-surface.md`](../docs/13-world-politics-surfa
 
 ---
 
+# Gov Watch
+
+World Watch draws the government as a position. This one draws it as a **trajectory**.
+
+## The idea in one paragraph
+
+The Government screen shows you where the law stands today and keeps no history at all —
+open it twice a week apart and nothing tells you the second reading differs from the first.
+But the client also says, on a completely different screen, that Congress runs on a
+**monthly cycle**, and a game month is about **fourteen real hours** — so the government
+moves roughly twice a day and the game never mentions it happened. Gov Watch records every
+reading the app already made and reports what changed between two of them.
+
+## What you get
+
+Five tabs.
+
+**MOTION** — the ledger, newest first, grouped by day. One row per thing that moved: a
+policy axis, a justice, a seat, the president's approval, a lobbying job changing status, a
+cycle rolling over. Filter by *the law* / *seats* / *executive*, or flip **live only** to
+see just the changes caught as they happened.
+
+**LAW** — all twenty policy axes as they stand, split by the axis the game files each under,
+each with the seven-cell bar the Government screen draws, how far it has drifted since this
+ledger first saw it, and how long it has held its current value. Hover a name for its
+written position.
+
+**SEATS** — the president with approval, both chambers, the court justice by justice, and
+the next election dates.
+
+**CYCLE** — the heartbeat: which cycle is next, how long a game month is, and — once the
+tool has actually *witnessed* a rollover — a projection of the next boundary with the width
+of that observation as its error bar. It also tells you, plainly, whether anything is
+currently feeding it.
+
+**SOURCES** — the three endpoints it reads, when each last arrived, what is held, and a
+button to copy the ledger out as TSV.
+
+## The bracket, which is the whole point
+
+**This tool cannot see a change it was not looking at.** It compares consecutive readings,
+and a reading only happens when the app fetches. So it never claims a change happened *at*
+a time — only *between* two readings, and every row prints that window:
+
+```
+Healthcare            -1.0 → -2.0     L+ → Mod-
+   between Aug 24, 09:12 and Aug 26, 02:43 · 2d 5h window
+```
+
+A row whose window is two days wide is drawn to look two days wide. A row caught on the
+live feed says `seen live (15s window)` and is marked green. That distinction is the
+difference between a measurement and a guess, and it is never omitted.
+
+## Two feeds, two very different resolutions
+
+| open this | what you get | how often |
+|---|---|---|
+| **Faction → Jobs** | the 20 axes, every congress member by seat, the cycle counter, lobbying status | **every 15 seconds**, on the app's own poll |
+| **Government** | the same 20 axes *plus* their written positions, the chambers, the court, the president, election dates | only when you open it |
+
+The faction Jobs tab is the only live feed of the law in the game — the app refetches it on
+a fifteen-second interval by itself, so leaving it open is what turns this from a visit-to-
+visit ledger into something that watches. It needs faction membership; without it, the tool
+still works, just at visit resolution.
+
+## Two things it knows that the game will not show you
+
+**Fractional axes.** The client clamps policy values to −3..+3 but never rounds them, and
+then every renderer tests equality against an integer. So an axis at `1.4` raises no cell —
+the bar just renders flat — a justice at `1.4` is counted in no bucket, and `factionUtils`
+labels anything fractional `R++`, meaning a seat at **−1.5 displays as the most right-wing
+label there is**. This panel prints the raw number and flags the row.
+
+**Chambers move more than the tallies say.** The Government screen buckets seats with wings
+cut at ±2 and *moderate* spanning three buckets, so a seat sliding −1 → 0 changes no
+displayed number at all. The per-member feed catches those, and the panel keeps the two
+apart — the server's all-seat buckets tally the chamber, the roster only ever reports its
+own size.
+
+## What it will not do
+
+- **Refresh.** Both feeds are polls the app makes on its own. A timer here that fetched
+  anything would be the exact thing the scripting clause prohibits, and it would also make
+  every "window" on the panel a lie.
+- **Alert you.** No notifications, no sound, nothing from an unfocused tab. The `GOV` button
+  picks up a highlight when there are changes you have not looked at, and that is all.
+- **Touch a lobbying job.** It reads their *status*, because a lobbying job is a push on a
+  policy axis and there is no other record of one — but it stores no username, no slot, and
+  no committed resources, and the POST that creates one is deliberately not in the file.
+
+## What it reads
+
+Full disclosure is in the header comment at the top of
+[`gov-watch.user.js`](gov-watch.user.js). In short: three GET **responses** the game already
+made — `/api/government`, `/api/factions/{id}/jobs`, and `/api/user/status` for your name —
+stored under `pkgw:` keys in your browser, and nothing sent anywhere. It originates **zero**
+requests.
+
+The measurements behind every constant, and which parts are inferred rather than measured
+(the cycle being a *game* month is the big one):
+[`docs/14-government-motion-surface.md`](../docs/14-government-motion-surface.md).
+
+---
+
 ## Tests
 
 Run from the repository root:
@@ -937,6 +1074,8 @@ node userscripts/tools/test-quick-jump.js
 node userscripts/tools/test-quick-jump-passive.js
 node userscripts/tools/test-world.js
 node userscripts/tools/test-world-passive.js
+node userscripts/tools/test-gov.js
+node userscripts/tools/test-gov-passive.js
 ```
 
 Every suite slices the layer it covers straight out of the shipped script rather than
@@ -973,6 +1112,15 @@ only until someone adds it back:
   is written. So the last block **reads the endpoints the code recognises and fails if the
   header does not name every one of them** — adding an endpoint means documenting it, or
   the build stops.
+- `test-gov-passive` fences gov-watch, which is tempted twice over. It reads a screen you
+  are usually *not* on, so every "no reading yet" line is one lazy edit from fetching
+  Government on boot; and the other feed is a fifteen-second poll **the app makes**, which
+  is exactly why the tool may read it and exactly why it must never make it itself. Its
+  own additions to the usual checks: the cycle projection must drive a sentence and never
+  a `setTimeout`; a stored lobbying job must contain no username, no slot and no committed
+  cash; and the freshness map may only record the three declared paths — a blanket
+  `seen[path] = now` looks harmless and would in fact keep a list of every route the app
+  visited, `/api/users/<name>` included.
 
 They have nothing else in common; market-watch's was named `test-passive.js` when it
 lived in its own repository and was renamed on the way in.
@@ -1017,6 +1165,20 @@ a second copy of the campaigns already there. A state whose last protest ended h
 rather than a stale winner. And the assertion that pays for itself: the lean is computed
 from the **stored** record, not the wire row, because the first version of that function
 took the wire shape and every state on the map drew a blank in a way that looked deliberate.
+
+`test-gov` covers gov-watch's diff engine, and almost all of it is about the **bracket** —
+the claim that a change happened between two particular times, which is the tool's entire
+product. There are two silent ways to break it, and both are checked. Narrowing it: stamping
+a change with `now` turns a week-old shift into breaking news. Widening it: forgetting to
+advance the confirmed-at clock on a reading that *agreed* means the next real change is
+bracketed back to first sighting, so a fifteen-second window gets reported as a four-day
+one. Beyond that it pins the cases where an event should *not* fire — a first reading is a
+baseline and not twenty changes; a feed that omits a field has not cleared it, or every
+jobs poll would read as the entire supreme court resigning; a new president is one
+succession row rather than four separate collapses. Writing it turned up two real bugs: the
+ledger was labelling policy events with their internal store key, which silently killed the
+LAW tab's drift column, and the freshness map was recording *every* API path the app
+touched — putting other players' usernames in storage as a side effect of a timestamp.
 
 ---
 

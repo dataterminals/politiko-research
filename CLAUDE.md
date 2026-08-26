@@ -81,5 +81,14 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   `tools/test-placement.js`: market-watch keeps its own corner grips (its panel is pinned to
   its button, so it grows from whichever corner is free), and comms-move resizes nothing
   (the window it moves is the game's Comms dock).
+- **Every toggle button is the same button.** One 38px square, one three- or four-letter
+  word — `ALGN`, `MKT`, `RAID`, `JUMP`. Install four tools and four of these land on one
+  screen, so the box is not the tool's to pick; copy the `FAB KIT v1` block from
+  [`userscripts/_template.user.js`](userscripts/_template.user.js) verbatim, same
+  bump-the-version rule as PANEL KIT. What a tool still owns is the corner it starts in
+  and its state colours, layered on top. No emoji — a 15px glyph is a coin toss across
+  fonts, and four of them tell you nothing about which is which. people-watch is the one
+  exception and is grandfathered: the eye of providence is its mark. `test-placement.js`
+  hashes the copies and names that exception, so a second symbol button fails the build.
 - Windows box: `git commit -F <file>` rather than `-m` (PowerShell mangles quoted `-m`).
   `.gitattributes` handles the CRLF situation.

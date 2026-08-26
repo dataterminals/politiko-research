@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — WS Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.0
+// @version      0.4.0
 // @description  Read-only observer for the two WebSockets the game itself opens (/ws/chat, /ws/market). Records which frame types arrive, what keys they carry, how often they arrive, and the values of four named server fields (a closed allowlist — no usernames, no message bodies). Opens no connection, transmits nothing, adds zero requests. Temporary measuring instrument — it tells you when it has nothing left to learn.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -788,15 +788,44 @@
   };
 
   const CSS = `
+    /* FAB KIT v1 — shared verbatim block.
+       Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
+       bump the version here and in every tool carrying a copy, so the copies can
+       be diffed. Several of these tools are on screen at once, and buttons that
+       each picked their own shape read as several unrelated add-ons rather than
+       one set of tools. A 15px glyph is also a coin toss across fonts and
+       platforms, and four of them tell you nothing about which is which. So the
+       box is fixed here and only the word inside it belongs to the tool: three
+       or four letters, upper case, no emoji.
+
+       What this block deliberately leaves to the tool, because it IS the tool's:
+         - which corner the button starts in: position / inset / z-index
+         - state colour and badges layered on top (.hot, .live, .pkws-done)
+       The tool's own rule goes AFTER this block: same specificity, later wins.
+
+       Tools that also do their own placement maths keep CFG.FAB_SIZE in step
+       with the 38px below; tools/test-placement.js fails the build if one drifts.
+
+       people-watch is the one exception to the word. It wears the eye of
+       providence, which is its mark and predates this block; the svg rule sizes
+       that inside the same square as everyone else's letters. */
+    .pk-fab {
+      box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      display: grid; place-items: center;
+      background: #18181b; color: #e4e4e7;
+      border: 1px solid #3f3f46; border-radius: 3px;
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .08em; text-align: center;
+      cursor: pointer; user-select: none; touch-action: none;
+    }
+    .pk-fab:hover { border-color: #71717a; color: #fafafa; }
+    .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    .pk-fab svg { width: 24px; height: 24px; display: block; }
     /* Corner allocation across this repo's tools: time-watch owns top-left,
        align-watch bottom-left, and the game's own Comms dock is fixed bottom-right
        (right: 20px, bottom: 0, 320x420). That leaves top-right. Drag it anywhere;
        it remembers where you put it, including the button. */
-    .pkws-fab { position: fixed; right: 12px; top: 12px; z-index: 2147482000;
-      width: 34px; height: 34px; border-radius: 17px; border: 1px solid #3f3f46;
-      background: #18181b; color: #e4e4e7; font-size: 15px; line-height: 32px;
-      text-align: center; cursor: pointer; user-select: none; opacity: .85; }
-    .pkws-fab:hover { opacity: 1; }
+    .pkws-fab { position: fixed; right: 12px; top: 12px; z-index: 2147482000; }
     .pkws-fab.pkws-done { border-color: #34d399; color: #34d399; }
     .pkws-panel { position: fixed; right: 12px; top: 52px; z-index: 2147482000;
       width: min(380px, calc(100vw - 24px)); max-height: 74vh;
@@ -1192,7 +1221,7 @@
     style.textContent = CSS;
     document.head.append(style);
 
-    fab = el('button', 'pkws-fab', '◉');
+    fab = el('button', 'pk-fab pkws-fab', 'SOCK');
     fab.title = 'ws-watch';
     document.body.append(fab);
 

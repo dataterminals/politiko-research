@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.0
+// @version      0.4.0
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -927,15 +927,46 @@
   const ATTRIB_COLOR = { action: '#34d399', train: '#38bdf8', education: '#a78bfa', passive: '#a1a1aa', ambiguous: '#fbbf24' };
 
   const CSS = `
-    #pkxp-fab{position:fixed;right:16px;bottom:132px;z-index:99999;width:38px;height:26px;border-radius:4px;
-      background:#18181b;border:1px solid #3f3f46;color:#e4e4e7;font:700 10px/24px ui-monospace,monospace;
-      text-align:center;letter-spacing:.08em;user-select:none}
-    #pkxp-fab:hover{border-color:#71717a}
+    /* FAB KIT v1 — shared verbatim block.
+       Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
+       bump the version here and in every tool carrying a copy, so the copies can
+       be diffed. Several of these tools are on screen at once, and buttons that
+       each picked their own shape read as several unrelated add-ons rather than
+       one set of tools. A 15px glyph is also a coin toss across fonts and
+       platforms, and four of them tell you nothing about which is which. So the
+       box is fixed here and only the word inside it belongs to the tool: three
+       or four letters, upper case, no emoji.
+
+       What this block deliberately leaves to the tool, because it IS the tool's:
+         - which corner the button starts in: position / inset / z-index
+         - state colour and badges layered on top (.hot, .live, .pkws-done)
+       The tool's own rule goes AFTER this block: same specificity, later wins.
+
+       Tools that also do their own placement maths keep CFG.FAB_SIZE in step
+       with the 38px below; tools/test-placement.js fails the build if one drifts.
+
+       people-watch is the one exception to the word. It wears the eye of
+       providence, which is its mark and predates this block; the svg rule sizes
+       that inside the same square as everyone else's letters. */
+    .pk-fab {
+      box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      display: grid; place-items: center;
+      background: #18181b; color: #e4e4e7;
+      border: 1px solid #3f3f46; border-radius: 3px;
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .08em; text-align: center;
+      cursor: pointer; user-select: none; touch-action: none;
+    }
+    .pk-fab:hover { border-color: #71717a; color: #fafafa; }
+    .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    .pk-fab svg { width: 24px; height: 24px; display: block; }
+    /* An ID, so it outranks .pk-fab. It carries nothing but the corner, on purpose. */
+    #pkxp-fab{position:fixed;right:12px;bottom:64px;z-index:99999}
     /* resize:both needs a non-visible overflow; .bd does the scrolling. The
        min-* pair is the same "never strand the UI" rule PANEL KIT's fit()
        enforces for position — a panel shrunk to nothing has no grab area
        left, and double-clicking the header restores both. */
-    #pkxp{position:fixed;right:16px;bottom:166px;z-index:99999;width:340px;max-height:70vh;display:flex;
+    #pkxp{position:fixed;right:12px;bottom:110px;z-index:99999;width:340px;max-height:70vh;display:flex;
       flex-direction:column;background:#0c0c0f;border:1px solid #3f3f46;border-radius:6px;
       color:#d4d4d8;font:11px/1.5 ui-monospace,monospace;box-shadow:0 8px 30px rgba(0,0,0,.5);
       overflow:hidden;resize:both;min-width:260px;min-height:160px}
@@ -1083,6 +1114,7 @@
 
     fab = document.createElement('div');
     fab.id = 'pkxp-fab';
+    fab.className = 'pk-fab';
     fab.textContent = 'XP';
     document.body.appendChild(fab);
 

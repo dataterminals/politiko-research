@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Time Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.5.0
+// @version      0.6.0
 // @description  Passive game-clock calibrator: reads the /api/time responses the app already polls, shows the real↔game time mapping, month schedule, and next-September countdown in your local timezone. Zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -175,17 +175,46 @@
   let drag = null, fabDrag = null, resize = null;
 
   const CSS = `
+    /* FAB KIT v1 — shared verbatim block.
+       Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
+       bump the version here and in every tool carrying a copy, so the copies can
+       be diffed. Several of these tools are on screen at once, and buttons that
+       each picked their own shape read as several unrelated add-ons rather than
+       one set of tools. A 15px glyph is also a coin toss across fonts and
+       platforms, and four of them tell you nothing about which is which. So the
+       box is fixed here and only the word inside it belongs to the tool: three
+       or four letters, upper case, no emoji.
+
+       What this block deliberately leaves to the tool, because it IS the tool's:
+         - which corner the button starts in: position / inset / z-index
+         - state colour and badges layered on top (.hot, .live, .pkws-done)
+       The tool's own rule goes AFTER this block: same specificity, later wins.
+
+       Tools that also do their own placement maths keep CFG.FAB_SIZE in step
+       with the 38px below; tools/test-placement.js fails the build if one drifts.
+
+       people-watch is the one exception to the word. It wears the eye of
+       providence, which is its mark and predates this block; the svg rule sizes
+       that inside the same square as everyone else's letters. */
+    .pk-fab {
+      box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      display: grid; place-items: center;
+      background: #18181b; color: #e4e4e7;
+      border: 1px solid #3f3f46; border-radius: 3px;
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .08em; text-align: center;
+      cursor: pointer; user-select: none; touch-action: none;
+    }
+    .pk-fab:hover { border-color: #71717a; color: #fafafa; }
+    .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    .pk-fab svg { width: 24px; height: 24px; display: block; }
     /* Default corner deliberately avoids bottom-right: the game's own Comms dock is
        fixed there (right: 20px, bottom: 0, 320×420), so anything parked in that corner
        lands on top of it. Bottom-left is align-watch's. That leaves the top-left, and
        the panel is anchored from the top rather than the bottom because it is ~500px
        tall — bottom-anchoring a panel that size pushes its head off a 720px screen.
        Drag it anywhere you like; it remembers. */
-    .pktw-fab { position: fixed; left: 12px; top: 12px; z-index: 2147482000;
-      width: 34px; height: 34px; border-radius: 17px; border: 1px solid #3f3f46;
-      background: #18181b; color: #e4e4e7; font-size: 16px; line-height: 32px;
-      text-align: center; cursor: pointer; user-select: none; opacity: .85; }
-    .pktw-fab:hover { opacity: 1; }
+    .pktw-fab { position: fixed; left: 12px; top: 12px; z-index: 2147482000; }
     .pktw-panel { position: fixed; left: 12px; top: 52px; z-index: 2147482000;
       width: min(340px, calc(100vw - 24px)); max-height: 70vh;
       display: flex; flex-direction: column; border: 1px solid #3f3f46;
@@ -539,9 +568,9 @@
     root.append(style);
 
     fab = document.createElement('button');
-    fab.className = 'pktw-fab';
+    fab.className = 'pk-fab pktw-fab';
     fab.title = 'Politiko Time Watch (passive) — drag to move';
-    fab.textContent = '🕰';
+    fab.textContent = 'TIME';
     fab.addEventListener('click', () => {
       if (fabDrag.dragged()) return; // that gesture was a drag, not a click
       ui.open = !ui.open; writeJSON(K.ui, ui); sync();

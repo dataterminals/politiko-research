@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      1.0.1
+// @version      1.1.0
 // @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Fully passive — it places no orders and originates no requests; a buy/sell rule hands you a sized shortcut to the stocks screen instead.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -62,7 +62,7 @@
     PANEL_W: 430,
     PANEL_MIN_W: 240,
     PANEL_MIN_H: 160,
-    FAB_SIZE: 40,
+    FAB_SIZE: 38,   // must match FAB KIT's .pk-fab box
     EDGE: 8,                      // keep this much gap from the viewport edge
   };
 
@@ -786,11 +786,44 @@
     .toast button { float: right; background: none; border: 0; color: #52525b; cursor: pointer; font-size: 14px; line-height: 1; }
     @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
 
+    /* FAB KIT v1 — shared verbatim block.
+       Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
+       bump the version here and in every tool carrying a copy, so the copies can
+       be diffed. Several of these tools are on screen at once, and buttons that
+       each picked their own shape read as several unrelated add-ons rather than
+       one set of tools. A 15px glyph is also a coin toss across fonts and
+       platforms, and four of them tell you nothing about which is which. So the
+       box is fixed here and only the word inside it belongs to the tool: three
+       or four letters, upper case, no emoji.
+
+       What this block deliberately leaves to the tool, because it IS the tool's:
+         - which corner the button starts in: position / inset / z-index
+         - state colour and badges layered on top (.hot, .live, .pkws-done)
+       The tool's own rule goes AFTER this block: same specificity, later wins.
+
+       Tools that also do their own placement maths keep CFG.FAB_SIZE in step
+       with the 38px below; tools/test-placement.js fails the build if one drifts.
+
+       people-watch is the one exception to the word. It wears the eye of
+       providence, which is its mark and predates this block; the svg rule sizes
+       that inside the same square as everyone else's letters. */
+    .pk-fab {
+      box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      display: grid; place-items: center;
+      background: #18181b; color: #e4e4e7;
+      border: 1px solid #3f3f46; border-radius: 3px;
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .08em; text-align: center;
+      cursor: pointer; user-select: none; touch-action: none;
+    }
+    .pk-fab:hover { border-color: #71717a; color: #fafafa; }
+    .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    .pk-fab svg { width: 24px; height: 24px; display: block; }
+    /* Position only. This one is absolute inside .wrap rather than fixed, and
+       placeFab() overwrites left/top on mount anyway. The shadow is its own:
+       market-watch floats over the stocks screen, not over flat page chrome. */
     .fab { pointer-events: auto; position: absolute; bottom: 16px; right: 16px;
-           width: ${CFG.FAB_SIZE}px; height: ${CFG.FAB_SIZE}px;
-           background: #18181b; color: #e4e4e7; border: 1px solid #3f3f46;
-           cursor: grab; font-size: 15px; box-shadow: 0 4px 14px rgba(0,0,0,.45);
-           touch-action: none; user-select: none; }
+           cursor: grab; box-shadow: 0 4px 14px rgba(0,0,0,.45); }
     .fab.dragging { cursor: grabbing; border-color: #52525b; box-shadow: 0 6px 20px rgba(0,0,0,.6); }
     /* A live-armed session should be obvious without opening the panel. */
     .fab.live { border-color: #ef4444; color: #ef4444; box-shadow: 0 0 0 1px #ef4444, 0 4px 14px rgba(0,0,0,.45); }
@@ -1619,7 +1652,7 @@
     const wrap = el('div', 'wrap');
     $toasts = el('div', 'toasts');
 
-    $fab = el('button', 'fab', '📈');
+    $fab = el('button', 'pk-fab fab', 'MKT');
     $fab.title = 'Market Watch (Alt+M) — drag to move, double-click to reset';
 
     $panel = el('div', 'panel');
