@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Sleeper Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.0
+// @version      0.3.1
 // @description  Keeps the sleeper-recruitment timers alive after you leave the page. Reads the poll the recruitment screen already makes, remembers when each lead's meeting window opens, counts it down on every Politiko page, and hands you a one-click jump back with that lead's own issue pre-selected. Also counts down the faction advocate/embezzle cooldowns. Passive — zero added requests, and it never meets, canvasses, drops, advocates or embezzles.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -1321,7 +1321,12 @@
     const b = board();
     const hot = b.open.length + b.fresh.length + (ui.facTier ? new Set([...b.adv, ...b.emb]).size : 0);
     const soon = !hot && b.next && b.next.t.left != null && b.next.t.left <= CFG.HEADS_UP_MS;
-    fab.className = `fab${hot ? ' hot' : soon ? ' soon' : ''}`;
+    // toggle(), never assign. Rebuilding className here is what shipped in 0.3.0, and
+    // it dropped `pk-fab` on the first repaint — the button kept its position and its
+    // click handler and lost the entire FAB KIT box, so it went invisible rather than
+    // broken. Nothing throws when that happens, which is why it got out.
+    fab.classList.toggle('hot', !!hot);
+    fab.classList.toggle('soon', !hot && !!soon);
     fab.replaceChildren(document.createTextNode('SLP'), fabDot);
     fabDot.textContent = hot ? String(hot) : soon ? '!' : '';
   }

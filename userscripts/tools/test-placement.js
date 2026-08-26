@@ -544,6 +544,25 @@ console.log('\n— FAB KIT v1 is one button everywhere —');
     }
   }
   check('no tool redeclares the box in its own rule', redeclared, []);
+
+  // Wearing the class at mount is not the same as keeping it. A repaint that rebuilds
+  // the button's className from its state — `fab.className = \`fab${hot ? ' hot' : ''}\``
+  // — drops pk-fab on the first tick and takes the whole kit with it: no box, no
+  // border, no background, no font.
+  //
+  // What makes it worth a check of its own is how quietly it fails. The button keeps
+  // its position and its click handler, so nothing throws, nothing logs, and the
+  // element is still right there in the DOM with its text in it. Against the game's
+  // dark chrome the result is not a broken button, it is no button — which is how
+  // sleeper-watch 0.3.0 got out the door. Use classList.toggle for state.
+  const clobbered = [];
+  for (const f of mounted) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    for (const m of src.matchAll(/[\w$]*[Ff]ab\.className\s*=\s*([^;\n]+)/g)) {
+      if (!m[1].includes('pk-fab')) clobbered.push(`${f} (${m[1].trim()})`);
+    }
+  }
+  check('no repaint drops pk-fab off the button', clobbered, []);
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
