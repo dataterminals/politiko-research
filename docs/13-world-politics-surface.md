@@ -14,6 +14,11 @@ Companion to [`07-alignment-surface.md`](07-alignment-surface.md), which covers 
 two axes for **one player**. This file covers everything else that carries a number on
 them.
 
+Everything here is a **position**, measured at whatever moment the reading arrived. For the
+same government as a **trajectory** — what can change, where a change becomes visible, and
+the monthly Congress cycle that drives it — see
+[`14-government-motion-surface.md`](14-government-motion-surface.md).
+
 ## The finding that shapes everything
 
 **The game has no world compass, and it has all the parts for one.**

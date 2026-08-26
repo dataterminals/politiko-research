@@ -65,6 +65,23 @@ names which screen fills which row. What it will not do is average the five into
 number: they disagree, and a sixth figure with no source is not an improvement. Findings:
 [`13-world-politics-surface.md`](13-world-politics-surface.md).
 
+### Government motion — **shipped 2026-08-26** as `gov-watch.user.js`
+World Watch draws the government as a position; this draws it as a trajectory. The
+Government screen keeps no history whatsoever — open it a week apart and nothing says the
+second reading differs — while a *different* screen quietly reveals that Congress runs on a
+**monthly cycle**, which at 52× real time is about **fourteen real hours**. So the law moves
+roughly twice a day and the game never mentions that it did. The tool is a diff engine over
+readings the operator's own navigation already produces (the xp-watch precedent), and its
+whole product is the **bracket**: never "this changed at 14:02", always "this changed
+between these two readings", with the window printed on every row and a four-day window
+drawn to look four days wide. The find that makes it more than a visit log is that
+`/api/factions/{id}/jobs` carries the same twenty policy axes plus every congress member on
+a **`refetchInterval: 15e3` the app runs itself** — the only live feed of the law in the
+game, free to read because it is already happening. What it refuses: refreshing anything
+(the cadence is *known*, so it projects the next boundary and offers a button instead),
+alerting from an unfocused tab, and storing anything about a lobbying job beyond its status.
+Findings: [`14-government-motion-surface.md`](14-government-motion-surface.md).
+
 ### Time bridge — **shipped 2026-08-07** as `time-bridge.user.js`
 Time Watch reads the clock; the [Time Wire](https://dataterminals.github.io/PolitikoTimeWire/)
 planner wants that reading; they are different origins, so neither can reach the other's
@@ -116,7 +133,12 @@ PANEL KIT v1, zero added requests.
 
 ## 🟨 Needs the sanctioned API (Phase 0 gates all of these)
 
-- **Congress tracker** — bill calendar, vote history, whip counts over time
+- **Congress tracker** — bill calendar and vote history. **Partly delivered 2026-08-26**:
+  "whip counts over time" no longer needs the API, because seat composition and every
+  per-member alignment are both readable passively and `gov-watch` now tracks them. Bills
+  and votes are still gated — they are not in the client at any endpoint, so there is
+  nothing to consume. `result_metadata.winner_job_id` on a resolved lobbying job is the
+  closest thing to a vote record, and it names a job rather than a faction.
 - **Corp/industry analytics** — revenue trends from `/api/public/top-corps`, which is
   already public and unauthenticated
 - **World dashboard** — a standalone page built only on `/api/public/*`; arguably fine
