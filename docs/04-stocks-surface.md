@@ -34,8 +34,28 @@ stocks/tax                  :: owed
 the market's view of the listing, `holdings` is the player's position in it. Note
 that the holdings price field is `current_price`, not `price`.
 
-- **URL scope resolved to `stocks`.** The tap strips `/api/` and `public`, so the request
-  path is `/api/stocks` or `/api/stocks/<numeric>`. The exact path was not captured.
+- ~~**URL scope resolved to `stocks`.** The tap strips `/api/` and `public`, so the request
+  path is `/api/stocks` or `/api/stocks/<numeric>`. The exact path was not captured.~~
+
+  **Captured 2026-08-26**, off the bundles rather than the wire, which is cheaper and did
+  not need a session. There is no `/api/stocks/<numeric>` — instruments are addressed under
+  a sub-collection, and the read surface is wider than one session showed:
+
+  ```
+  GET  /api/stocks/instruments                       the watchlist (HTTP-polled, 2 s)
+  GET  /api/stocks/instruments/{id}/quote            single instrument
+  GET  /api/stocks/instruments/{id}/candles?tf=&n=150 OHLCV history
+  GET  /api/stocks/instruments/{id}/events           per-instrument event feed
+  GET  /api/stocks/holdings                          your positions
+  GET  /api/stocks/trades?limit={}                   your trade history
+  GET  /api/stocks/tax                               tax owed
+  ```
+
+  This confirms the inference in the bullet below it — `instruments` really is an object
+  keyed by symbol under a `stocks/instruments/…` prefix — and it means the shape the
+  sampler recovered from response *scopes* was right without the path ever being seen.
+  Note `/candles` is the only place OHLC lives over HTTP, matching what
+  [`09-socket-surface.md`](09-socket-surface.md) says about `candle_update`.
 - **Symbols seen:** `PNRG`, `RCRD`, `SNTL`, `USTL`, `BRDL`, plus more above the panel's
   scroll position. 53 series were tracked in that session.
 - **`instruments` is an object, not a top-level array.** The tap keeps a parent's scope
@@ -57,6 +77,14 @@ POST /api/stocks/sell   { "instrument_id": 10, "shares": 1,  "idempotency_key": 
 
 Both sides were captured from real trades. **The body shape is identical** — only the
 path differs, so one executor covers both with the side selecting the route.
+
+**There are four more, read off the bundles 2026-08-26 and never captured on the wire:**
+`POST /api/stocks/short`, `POST /api/stocks/cover`, `POST /api/stocks/margin/close` and
+`POST /api/stocks/tax/pay`. Bodies unknown — they are listed for completeness of the
+surface, not as anything to build on, and nothing in this repo places an order anyway
+(the execution seam was deleted 2026-08-07; see
+[`01-rules-envelope.md`](01-rules-envelope.md)). Their existence does say the game has
+**short selling and margin**, which no doc here had recorded.
 
 Three things follow from this:
 

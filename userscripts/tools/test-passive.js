@@ -83,7 +83,11 @@ ok('no @require (single auditable file)', !/^\/\/ @require/m.test(SRC));
 // Clause 6: undisclosed functionality is bannable. The header must say the things
 // a suspicious reader needs.
 const HEAD = SRC.slice(0, SRC.indexOf('(() => {'));
-ok('disclosure names the sockets it reads', HEAD.includes('/ws/chat') && HEAD.includes('/ws/market'));
+ok('disclosure names the sockets it reads',
+  HEAD.includes('/ws/chat') && HEAD.includes('/ws/market') && HEAD.includes('/ws/casino/poker'));
+// The token is in the URL on two of the three sockets and in the subprotocol on the
+// third. A disclosure that only mentions the query string is now an incomplete one.
+ok('disclosure explains the subprotocol token too', /subprotocol/i.test(HEAD));
 ok('disclosure states zero added requests', /ZERO additional requests/.test(HEAD));
 ok('disclosure names the storage prefix', HEAD.includes('pkws:'));
 ok('disclosure explains the token is discarded', /token/i.test(HEAD) && /discard/i.test(HEAD));
@@ -95,15 +99,18 @@ ok('calls fit() after render', /if \(drag\) drag\.fit\(\);/.test(SRC));
 // ---------------------------------------------------------------------------
 // 2. Drive the real WS TAP layer
 // ---------------------------------------------------------------------------
-const TAP = cut('  const WS_TAP_VERSION = 1;', '  // ---------------------------------------------------------------------------\n  // 2. The census');
+const TAP = cut('  const WS_TAP_VERSION = 2;', '  // ---------------------------------------------------------------------------\n  // 2. The census');
 
 // A stand-in for the platform WebSocket. Not an EventTarget — the tap only ever
 // calls addEventListener on its super, so a plain method is enough, and this keeps
 // the harness free of Node/browser event-class differences.
 const makeFake = () => {
   const transmitted = [];
+  const constructed = [];
   class FakeWebSocket {
-    constructor(url) { this.url = url; this._l = {}; }
+    // `protocols` is recorded here so a test can prove the tap forwarded it intact
+    // AND never copied it anywhere of its own.
+    constructor(url, protocols) { this.url = url; this.protocols = protocols; constructed.push({ url, protocols }); this._l = {}; }
     addEventListener(type, fn) { (this._l[type] = this._l[type] || []).push(fn); }
     // The counter this whole file exists to keep at zero.
     send(data) { transmitted.push(data); }
@@ -112,7 +119,7 @@ const makeFake = () => {
   }
   FakeWebSocket.OPEN = 1;
   FakeWebSocket.CLOSED = 3;
-  return { FakeWebSocket, transmitted };
+  return { FakeWebSocket, transmitted, constructed };
 };
 
 const buildTap = (FakeWebSocket) => {
@@ -123,8 +130,12 @@ const buildTap = (FakeWebSocket) => {
   return { onSocketFrame: api.onSocketFrame, Tapped: win.WebSocket, win };
 };
 
-const CHAT = 'wss://politiko.io/ws/chat?token=SENTINEL-DO-NOT-LEAK';
-const MARKET = 'wss://politiko.io/ws/market?token=SENTINEL-DO-NOT-LEAK';
+const SENTINEL = 'SENTINEL-DO-NOT-LEAK';
+const CHAT = `wss://politiko.io/ws/chat?token=${SENTINEL}`;
+const MARKET = `wss://politiko.io/ws/market?token=${SENTINEL}`;
+// The third socket. Its token is not here — it goes in the constructor's second
+// argument, which is why it gets its own block below.
+const POKER = 'wss://politiko.io/ws/casino/poker?table_id=7';
 
 console.log('\n— the tap observes without transmitting —');
 {
@@ -289,6 +300,38 @@ console.log('\n— two sockets, reconnects, and double-install —');
   onSocketFrame((r) => { rec = r; });
   new Tapped('wss://example.com/socket').fire('open', {});
   check('a third-party socket is kind=other', rec.kind, 'other');
+}
+
+console.log('\n— the casino socket, whose token is NOT in the URL —');
+{
+  // /ws/casino/poker authenticates with a subprotocol rather than a query parameter:
+  //   new WebSocket(url, ['politiko-poker', 'auth.<accessToken>'])
+  // Redacting the URL is therefore not sufficient on its own, and this is the fence
+  // that says so. The tap must forward `protocols` untouched and keep none of it.
+  const { FakeWebSocket, transmitted, constructed } = makeFake();
+  const { onSocketFrame, Tapped } = buildTap(FakeWebSocket);
+  const seen = [];
+  onSocketFrame((r) => seen.push(r));
+
+  const sock = new Tapped(POKER, ['politiko-poker', `auth.${SENTINEL}`]);
+  sock.fire('open', {});
+  sock.fire('message', { data: '{"type":"snapshot","table":{"player_cash":250}}' });
+
+  check('a casino socket is kind=casino', seen[0].kind, 'casino');
+  check('the table_id query is dropped like any other', seen[0].safeUrl,
+    'wss://politiko.io/ws/casino/poker');
+  check('its frames still parse', seen[1].type, 'snapshot');
+
+  // The whole point: the token rode in argument 1, and nothing kept it.
+  const emitted = JSON.stringify(seen);
+  ok('the subprotocol token reaches no subscriber', !emitted.includes(SENTINEL));
+  ok('the subprotocol token is in no emitted key or value', !/auth\./.test(emitted));
+  check('still transmitted nothing', transmitted.length, 0);
+
+  // ...but it WAS handed to the real constructor, or the game's socket would not
+  // authenticate. Forwarding and discarding are different things and both must hold.
+  check('protocols was forwarded to the real constructor verbatim',
+    JSON.stringify(constructed[0].protocols), JSON.stringify(['politiko-poker', `auth.${SENTINEL}`]));
 }
 
 // ---------------------------------------------------------------------------

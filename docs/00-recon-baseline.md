@@ -91,6 +91,13 @@ No `EventSource` or `socket.io` strings — looks like a raw WebSocket.
 
 ## Game surface, enumerated from chunk names
 
+> **Superseded for practical use — see [`12-navigation-surface.md`](12-navigation-surface.md).**
+> The list below is what one logged-out look on 2026-07-28 could see, and it is now well
+> short: it predates the casino, forum, wiki, protest, trades, estate-market and
+> support-desk trees entirely. docs/12 carries the **route table read straight out of the
+> router** (84 routes, 21 parameterized, re-verified 2026-08-26), which is both complete
+> and the right thing to build against. Keep reading here only for the historical baseline.
+
 Vite names lazy chunks after their source module, so the route list leaks for free:
 
 **Crime / action:** `CombatPage` `HackingPage` `DrugDealPage` `CarTheftPage`
@@ -109,6 +116,65 @@ Vite names lazy chunks after their source module, so the route list leaks for fr
 
 `useMissions` being a shared hook (not a page) suggests a mission/quest system threaded
 through multiple screens.
+
+## Client re-read — 2026-08-26
+
+A staleness sweep: fresh one-shot bundle pull, diffed against the 2026-08-10 set on disk.
+**Zero game contact beyond the static asset fetch** — no `/api/*` call, authenticated or
+otherwise. Everything here is a statement about client code.
+
+**How much the numbers above have moved:**
+
+| baseline claim (2026-07-28) | 2026-08-26 | |
+|---|---|---|
+| ~80 lazy chunks | **138** `.js`/`.css` files | grew ~70 % |
+| entry ~397 KB | **389 KB** (398 437 bytes) | still accurate |
+| one socket, uncharacterized | **three** | [`09`](09-socket-surface.md) |
+
+**How to read a bundle diff, because the raw one lies.** 122 of 137 chunks changed hash
+between 08-10 and 08-26. That is a rebuild, not 122 edits — a hash cascades into every
+chunk that imports a changed one. Normalize hashed asset references out of the file
+contents first, then compare: **12 files actually differed.** Do this before concluding
+anything about how much moved.
+
+**What actually changed in those 16 days:**
+
+- **A support desk.** `ContactPage` roughly quadrupled; `/api/user/contact-submissions`
+  (list, read, reply) with staff-reply and closed states. Its significance is in
+  [`01-rules-envelope.md`](01-rules-envelope.md) — it is a usable channel for the
+  sanctioned-API question.
+- **`GET`/`PUT /api/jail/legal-offers/auto-accept`** — a server-side automation toggle the
+  game ships itself.
+- **Two new soliciting actions.** `DonationsPage` generalized into three modes over one
+  shape: `/api/actions/donations`, **`/api/actions/solicit/music`**,
+  **`/api/actions/solicit/prostitution`**, all `POST {spot_key}`.
+- **Armor**, a new item category, and ~1.8 KB of structural change in `CombatPage` with no
+  new strings — consistent with armor being wired into combat rather than a new screen.
+- `TabBar` extracted as a shared chunk (which is why `FactionPage` *shrank*); a `send` icon
+  chunk dropped. Both refactor noise.
+
+**A trap this sweep walked into, worth recording.** A naive diff of `.get(\`/…\`)` call
+sites reported `/api/actions/donations` as **deleted**. It was not — the page was
+refactored so the path lives in a config object and the call site reads `.get(n.endpoint)`.
+An endpoint extractor that only reads call sites will report live endpoints as removed the
+moment a page is tidied. Confirm a disappearance by grepping for the path string itself
+before believing it.
+
+**Unchanged and verified, which is the more useful half:**
+
+- **The rules text.** `RulesPage` is byte-identical across both builds (md5
+  `04d28d76f8d0225a2031770de8937461`), and the Scripting Abuse clause lives inside that
+  chunk. [`01-rules-envelope.md`](01-rules-envelope.md) stands as written.
+- **The route table** — 84 routes, 21 parameterized, exactly as [`12`](12-navigation-surface.md)
+  recorded on 2026-08-23.
+- **The authored class prefixes** `ch-*` (42) and `prof-*` (26) — byte-identical, so the
+  selectors `comms-move` and `people-watch` match on are safe.
+- **Every endpoint the 13 shipped tools tap still exists.** All 24 distinct prefixes checked.
+- Chat and market socket protocols unchanged.
+
+**Still no sanctioned player API.** No api-key, rate-limit, developer-token or API-doc
+string anywhere in the build — only a "Developer News" feed, present in both snapshots.
+The oldest open question in the project is still open.
 
 ## What wasn't found yet
 

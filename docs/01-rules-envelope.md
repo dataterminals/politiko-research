@@ -85,10 +85,18 @@ the table above. ~~`wss://politiko.io` is still uncharacterized and remains the
 highest-value thing left unexplored.~~
 
 **Characterized 2026-08-07**, entirely from the bundles on disk with zero game contact.
-There are two sockets, and `/ws/chat` **does** broadcast presence — so the cheaper unlock
-named in July exists and is inside the clause.
+~~There are two sockets~~ **three** (corrected 2026-08-26), and `/ws/chat` **does**
+broadcast presence — so the cheaper unlock named in July exists and is inside the clause.
 [`09-socket-surface.md`](09-socket-surface.md) has the protocol, the tap design, and the
 conditions on it.
+
+The third, `/ws/casino/poker`, changes nothing about the verdicts in the table above —
+reading frames off a connection the client already opened is ✅ whichever connection it is.
+It matters here for one reason: **it carries its access token in the WebSocket subprotocol
+rather than the URL query string**, so "we redact the URL" stopped being a complete account
+of what a tap keeps. That is a disclosure-accuracy problem, and clause 6 is the clause with
+teeth. `WS TAP v2` and its fence test are the fix; see
+[`09-socket-surface.md`](09-socket-surface.md#the-token-is-in-the-url--on-two-of-three-sockets).
 
 One thing that surface turned up belongs in this file rather than that one. The chat
 component registers `window.addEventListener("chat:open-dm", …)`, whose handler's first
@@ -105,6 +113,20 @@ on the denylist, and any future use is an explicit operator decision, not a defa
 - **Multiple accounts** → one account per person, aggressively enforced. So: no test
   alt, ever. All authenticated research happens on the single real account, which means
   research is conducted at real risk to that account — be conservative.
+
+  **And now the mechanism, promoted here 2026-08-26 from
+  [`07-alignment-surface.md`](07-alignment-surface.md) where it was buried.** Every call
+  the client makes to `/api/*` carries five fingerprint headers — `X-CT-TZ`, `X-CT-Screen`,
+  `X-CT-Lang`, `X-CT-Platform` and **`X-CT-Canvas`**, a canvas fingerprint. They are built
+  once and cached in `localStorage`. "Aggressively enforced" is therefore not a figure of
+  speech about staff vigilance: the client hands the server a device identity on every
+  request, and that is what the rule is enforced with.
+
+  Two consequences worth having written down. **A tool must never touch these headers** —
+  altering, suppressing or randomizing them is indistinguishable from evading multi-account
+  detection, whatever the intent, and it would be an undisclosed function besides. And a
+  passive `fetch` tap will *see* them, which is fine, but they belong in the same bucket as
+  the token: not stored, not rendered, not logged.
 - **Account sharing** → nobody else operates the account. Relevant here: an agent
   driving the session counts as "having someone initiate processes on your behalf."
   **Claude must not click through game actions.** Read-only inspection of an
@@ -136,3 +158,32 @@ manual browsing. That constraint is the interesting part of the design problem.
   from personal use, and clause 6 governs it.
 - Best-effort answer path: ask staff via `/contact` or the Discord before building
   anything that depends on the answer.
+
+### The answer path got better — 2026-08-26
+
+`/contact` was a fire-and-forget form. As of the 2026-08-26 build it is a **support desk
+with threaded tickets**: `GET /api/user/contact-submissions` lists yours, `GET
+…/{id}` opens one, `POST …/{id}/messages` replies into it, and the UI carries states
+"Staff replied", "Needs staff" and "Closed". So a question to staff is now a conversation
+with a record, rather than a message into a void that you cannot cite later.
+
+That matters more here than a new screen normally would, because **the sanctioned-API
+question above has been the project's oldest open item since 2026-07-28 and it is the one
+that branches everything.** The reason it stayed open was partly that there was no good way
+to ask it and be sure of getting an answer back. There is now.
+
+Two notes before using it. It is an ordinary authenticated game screen the operator loads
+by hand — nothing about the ticket system changes hard rule 1, and no tool should call
+these endpoints. And the question is worth drafting carefully rather than firing off: ask
+whether a documented player API exists, whether the internal `/api/*` counts as "our API"
+for the clause, and what their stance is on distributing tools to other players. Those are
+the three unknowns, they are cheap to ask together, and a single answer to all three would
+close more of this file than anything else available.
+
+**A cheap corroboration for the "server-side control" preference.** The same build added
+`GET`/`PUT /api/jail/legal-offers/auto-accept` — an **auto-accept toggle the game ships
+itself**, server-side, for a thing a script would otherwise be tempted to automate. It is a
+worked example of the pattern this file has recommended since July and of why reaching for
+it first is right: the operator gets the automation, the client originates nothing extra,
+and nobody is running a bot. When some future tedium looks automatable, the first question
+is whether the game already has, or would add, a switch for it.

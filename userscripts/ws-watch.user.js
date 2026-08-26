@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — WS Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.4.0
-// @description  Read-only observer for the two WebSockets the game itself opens (/ws/chat, /ws/market). Records which frame types arrive, what keys they carry, how often they arrive, and the values of four named server fields (a closed allowlist — no usernames, no message bodies). Opens no connection, transmits nothing, adds zero requests. Temporary measuring instrument — it tells you when it has nothing left to learn.
+// @version      0.5.0
+// @description  Read-only observer for the three WebSockets the game itself opens (/ws/chat, /ws/market, /ws/casino/poker). Records which frame types arrive, what keys they carry, how often they arrive, and the values of four named server fields (a closed allowlist — no usernames, no message bodies). Opens no connection, transmits nothing, adds zero requests. Temporary measuring instrument — it tells you when it has nothing left to learn.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -16,8 +16,9 @@
 /*
  * DISCLOSURE (Politiko rules, Scripting Abuse clause)
  *
- *   Reads:    frames arriving on the two WebSocket connections the game client opens
- *             on its own — wss://politiko.io/ws/chat and /ws/market. Nothing else.
+ *   Reads:    frames arriving on the three WebSocket connections the game client opens
+ *             on its own — wss://politiko.io/ws/chat, /ws/market, and /ws/casino/poker.
+ *             Nothing else.
  *   Opens:    no connection, ever. This script never constructs a socket, never
  *             transmits a frame, and never closes or reopens one the game owns.
  *   Requests: ZERO additional requests to politiko.io.
@@ -73,10 +74,15 @@
  *
  * WHAT IS NOT STORED
  *
- *   - The connection URL carries an access token in its query string. This script keeps
- *     origin + pathname and discards query and fragment whole, at the point of
- *     construction, before anything else in the file can observe it. Allowlist, not
- *     denylist: a future credential-bearing parameter is dropped automatically.
+ *   - The access token, which the game puts in two different places depending on the
+ *     socket. On /ws/chat and /ws/market it is a query parameter on the connection
+ *     URL: this script keeps origin + pathname and discards query and fragment whole,
+ *     at the point of construction, before anything else in the file can observe it.
+ *     Allowlist, not denylist, so a future credential-bearing parameter is dropped
+ *     automatically. On /ws/casino/poker it is not in the URL at all — it rides in the
+ *     constructor's second argument as an `auth.<token>` subprotocol. That argument is
+ *     forwarded to the real constructor and never read, so there is no code path that
+ *     could store it. Both facts are fenced by tools/test-passive.js.
  *   - No other player's name is written to storage. Chat bodies are never stored.
  *     Presence is counts, never a list of who. `username` is not on the allowlist and
  *     there is no code path that records it.
@@ -144,7 +150,7 @@
   };
 
   // ===========================================================================
-  // 1. WS TAP v1 — shared verbatim block.
+  // 1. WS TAP v2 — shared verbatim block.
   //
   //    Repo convention, same as PANEL KIT: copy this block into a new tool exactly
   //    as it stands. If you have to change it, bump the version here and in every
@@ -155,14 +161,20 @@
   //        { id, kind, safeUrl, ev, at }                     ev: 'open' | 'close'
   //        { id, kind, safeUrl, ev:'close', code, wasClean }
   //        { id, kind, safeUrl, ev:'frame', type, data }     data: frozen, scrubbed
-  //      kind is 'chat' | 'market' | 'other', derived from the pathname.
+  //      kind is 'chat' | 'market' | 'casino' | 'other', derived from the pathname.
   //      id is an opaque per-connection counter, so reconnects are distinguishable.
   //
-  //    THE INVARIANT: nothing in this block hands out a socket, a MessageEvent, or a
-  //    URL with a query string, and nothing in it transmits. It holds no reference to
-  //    any connection — not even a WeakMap — so a reconnect leaves nothing behind.
+  //    THE INVARIANT: nothing in this block hands out a socket, a MessageEvent, a
+  //    URL with a query string, or the `protocols` argument, and nothing in it
+  //    transmits. It holds no reference to any connection — not even a WeakMap — so
+  //    a reconnect leaves nothing behind.
+  //
+  //    v2 (2026-08-26) added the casino kind and the `protocols` rule. The token is
+  //    not always in the URL: /ws/casino/poker authenticates with an `auth.<token>`
+  //    subprotocol, so "redact the query string" is not on its own a sufficient
+  //    account of what this block must not keep. See docs/09-socket-surface.md.
   // ===========================================================================
-  const WS_TAP_VERSION = 1;
+  const WS_TAP_VERSION = 2;
 
   const subs = new Set();
   const onSocketFrame = (fn) => { subs.add(fn); return () => subs.delete(fn); };
@@ -175,9 +187,11 @@
 
     const SECRET = /(token|jwt|auth|bearer|secret|password|passwd|refresh|session|cookie|credential|apikey|api_key)/i;
 
-    // Deep-copy into frozen plain data, replacing credential-looking values on the way.
-    // Runs before anything is emitted, so a scrubbed value cannot reach a subscriber,
-    // storage, or the panel even if the server starts sending one tomorrow.
+    // Deep-copy into frozen plain data, replacing credential-looking VALUES on the
+    // way — key names survive, so "does this frame carry a token field?" stays an
+    // answerable question. Runs before anything is emitted, so a scrubbed value
+    // cannot reach a subscriber, storage, or a panel even if the server starts
+    // sending one tomorrow.
     const clean = (v, d = 0) => {
       if (d > 6 || v === null || typeof v !== 'object') return v;
       if (Array.isArray(v)) return Object.freeze(v.slice(0, 200).map((x) => clean(x, d + 1)));
@@ -197,13 +211,18 @@
       constructor(url, protocols) {
         super(url, protocols); // the ONLY construction here, and it is the game's own
 
-        // The raw URL must not survive this block: it carries the access token.
+        // Neither argument may survive this block; both carry a token, in different
+        // places. `protocols` is not read below — forwarding it to the base
+        // constructor above is the whole of its handling, which is why no token can
+        // leak through it. (Written without naming that call, because the static
+        // fence in tools/test-passive.js counts occurrences of the literal text.)
         let kind = 'other', safeUrl = '';
         try {
           const u = new URL(String(url), location.href);
           safeUrl = u.origin + u.pathname;     // allowlist; query + fragment dropped whole
           kind = u.pathname === '/ws/chat' ? 'chat'
-            : u.pathname === '/ws/market' ? 'market' : 'other';
+            : u.pathname === '/ws/market' ? 'market'
+              : u.pathname.startsWith('/ws/casino/') ? 'casino' : 'other';
         } catch { /* an unparseable URL just stays 'other' with no safeUrl */ }
 
         const info = Object.freeze({ id: ++seq, kind, safeUrl });

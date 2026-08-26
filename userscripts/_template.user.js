@@ -72,17 +72,19 @@
   //    Same convention as PANEL KIT: copy as-is, and if you must change it, bump
   //    the version here and in every tool carrying a copy so they can be diffed.
   //
-  //    The game opens two sockets of its own — /ws/chat on every authenticated
-  //    route, /ws/market while you are on the stocks screen. Reading frames off
-  //    them adds no request at all. See docs/09-socket-surface.md for the protocol
-  //    and for why this block is shaped the way it is.
+  //    The game opens three sockets of its own — /ws/chat on every authenticated
+  //    route, /ws/market while you are on the stocks screen, and /ws/casino/poker
+  //    while you are sat at a poker table. Reading frames off them adds no request
+  //    at all. See docs/09-socket-surface.md for the protocol and for why this
+  //    block is shaped the way it is.
   //
   //    onSocketFrame(fn) -> unsubscribe
   //      fn receives a frozen plain record and nothing else:
   //        { id, kind, safeUrl, ev:'open'|'close', at, [code, wasClean] }
   //        { id, kind, safeUrl, ev:'frame', at, type, data }
-  //      kind is 'chat' | 'market' | 'other'; id is an opaque per-connection
-  //      counter, so a reconnect is distinguishable from the connection it replaced.
+  //      kind is 'chat' | 'market' | 'casino' | 'other'; id is an opaque
+  //      per-connection counter, so a reconnect is distinguishable from the
+  //      connection it replaced.
   //
   //    THREE THINGS THAT ARE NOT STYLE CHOICES:
   //
@@ -94,10 +96,17 @@
   //       the game's chat.
   //
   //    b) Nothing hands out a socket, a MessageEvent (its .target is the socket),
-  //       or the connection URL. The URL carries an access token in its query
-  //       string; this keeps origin + pathname and drops the rest whole, in the
-  //       constructor, before anything else can read it. Allowlist, not denylist,
-  //       so a future credential parameter is dropped automatically.
+  //       or EITHER constructor argument. Both of them carry credentials, and not
+  //       in the same place: /ws/chat and /ws/market put the access token in the
+  //       URL query string, while /ws/casino/poker puts it in `protocols`, as an
+  //       `auth.<token>` entry. The URL is cut to origin + pathname in the
+  //       constructor before anything else can read it — allowlist, not denylist,
+  //       so a future credential parameter is dropped automatically. `protocols`
+  //       is never read at all: it is forwarded to the base constructor and other-
+  //       wise untouched, which is the only handling that stays correct if a fourth
+  //       socket invents a fourth place to put a token. Note the fence in
+  //       tools/test-passive.js counts the literal text of that call, so do not
+  //       name it in prose here either.
   //
   //    c) It holds no reference to any connection — not even a WeakMap. Reconnects
   //       leave nothing behind.
@@ -105,7 +114,7 @@
   //    Ship it with tools/test-passive.js, which fails the build if a transmitting
   //    token ever reappears in the file.
   // ===========================================================================
-  const WS_TAP_VERSION = 1;
+  const WS_TAP_VERSION = 2;
 
   const subs = new Set();
   const onSocketFrame = (fn) => { subs.add(fn); return () => subs.delete(fn); };
@@ -120,7 +129,9 @@
 
     // Deep-copy into frozen plain data, replacing credential-looking VALUES on the
     // way — key names survive, so "does this frame carry a token field?" stays an
-    // answerable question.
+    // answerable question. Runs before anything is emitted, so a scrubbed value
+    // cannot reach a subscriber, storage, or a panel even if the server starts
+    // sending one tomorrow.
     const clean = (v, d = 0) => {
       if (d > 6 || v === null || typeof v !== 'object') return v;
       if (Array.isArray(v)) return Object.freeze(v.slice(0, 200).map((x) => clean(x, d + 1)));
@@ -140,13 +151,18 @@
       constructor(url, protocols) {
         super(url, protocols); // the ONLY construction here, and it is the game's own
 
-        // The raw URL must not survive this block: it carries the access token.
+        // Neither argument may survive this block; both carry a token, in different
+        // places. `protocols` is not read below — forwarding it to the base
+        // constructor above is the whole of its handling, which is why no token can
+        // leak through it. (Written without naming that call, because the static
+        // fence in tools/test-passive.js counts occurrences of the literal text.)
         let kind = 'other', safeUrl = '';
         try {
           const u = new URL(String(url), location.href);
           safeUrl = u.origin + u.pathname;     // allowlist; query + fragment dropped whole
           kind = u.pathname === '/ws/chat' ? 'chat'
-            : u.pathname === '/ws/market' ? 'market' : 'other';
+            : u.pathname === '/ws/market' ? 'market'
+              : u.pathname.startsWith('/ws/casino/') ? 'casino' : 'other';
         } catch { /* an unparseable URL just stays 'other' with no safeUrl */ }
 
         const info = Object.freeze({ id: ++seq, kind, safeUrl });

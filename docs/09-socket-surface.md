@@ -13,6 +13,23 @@ This closes the "completely uncharacterized" status that
 **Byte offsets are locators into the 2026-08-03 snapshot only.** Chunk hashes change every
 deploy; so does everything in this file. Re-read the client before trusting any of it.
 
+> ## Correction, 2026-08-26 — there is a **third** socket, and it authenticates differently
+>
+> This file said "two sockets" from the day it was written, and four other places in the
+> repo repeated it. There are **three**. `/ws/casino/poker` is opened by `CasinoPokerPage`
+> and was already present in the **2026-08-10** bundles — so it is not new to the game,
+> only to us. It was missed because the first pass grepped for `/ws/` in the entry chunk
+> and on `StocksPage`, and nothing sent us to look at a casino page.
+>
+> The count is the smaller half. The larger half is that
+> **[the token is not in its URL](#the-token-is-in-the-url--on-two-of-three-sockets)** — it
+> rides in the WebSocket *subprotocol* argument. Everything this file said about redacting
+> the query string is still true and is no longer sufficient on its own. If you are here
+> to build a tap, read that section before the protocol sections.
+>
+> Full protocol: [`/ws/casino/poker`](#wscasinopoker--the-protocol) below. Found by a
+> staleness sweep of the 2026-08-26 bundles against 2026-08-10; zero game contact.
+
 ## What the live capture settled — 2026-08-07
 
 **125 frames, 8 connections, ~20 minutes of tab-open time.** Zero requests added; every
@@ -90,8 +107,10 @@ name; its **values never are**. The census cannot tell which three rooms those w
 
 ## The correction to carry forward
 
-`00-recon-baseline.md` describes **one** socket of unknown purpose. There are **two**, and
-both are fully legible from the bundles:
+`00-recon-baseline.md` describes **one** socket of unknown purpose. There are ~~**two**~~
+**three** — see the [2026-08-26 correction](#correction-2026-08-26--there-is-a-third-socket-and-it-authenticates-differently)
+at the top; the third is `/ws/casino/poker` and has its own section below. The two that this
+2026-08-07 pass found are fully legible from the bundles:
 
 | | `/ws/chat` | `/ws/market` |
 |---|---|---|
@@ -292,6 +311,66 @@ unconditional or infinite** — both schedule a retry only from the `onclose` of
 that was successfully constructed, so a reconnect that yields no token ends the loop
 permanently for that mount.
 
+## `/ws/casino/poker` — the protocol
+
+**Read 2026-08-26 off `artifacts/bundles/2026-08-26/CasinoPokerPage-HfyalaKY.js`.** Present
+identically in the 2026-08-10 snapshot, so it has existed at least since then. Client code
+only — no frame of this socket has ever been observed on the wire by anything in this repo.
+
+**Poker is the only casino game with a socket.** Blackjack, craps, roulette, slots and
+predictions chunks contain no `WebSocket` at all; they are REST. So this connection exists
+only while you are sat at a poker table, which makes it the shortest-lived of the three by
+a wide margin — shorter even than `/ws/market`, which at least lasts as long as `/stocks`.
+
+```
+wss://politiko.io/ws/casino/poker?table_id=<id>
+                  subprotocols: ['politiko-poker', 'auth.<accessToken>']
+```
+
+Two things to notice in that handshake, both departures from the other two sockets:
+
+1. **The query string carries `table_id`, not the token.** It is not a credential.
+2. **The token is a subprotocol**, sent in the `Sec-WebSocket-Protocol` header rather than
+   the URL. See [the token section](#the-token-is-in-the-url--on-two-of-three-sockets).
+
+### Outbound — three types
+
+| type | body | when |
+|---|---|---|
+| `ping` | — | 25 s interval, armed in `onopen`, cleared on close |
+| `poker_action` | `hand_id`, `action`, `amount` (default `0`), `idempotency_key` | player acts |
+| `set_sitting_out` | `sitting_out`, `idempotency_key` | player toggles sitting out |
+
+Both game actions carry an **`idempotency_key`** from `crypto.randomUUID()`. Neither of the
+other two sockets sends anything with one. That is the client telling us these frames are
+*commands against money* and the server is expected to dedupe retries — the only
+write-shaped socket traffic in the client.
+
+The ping interval is 25 s here against 30 s on `/ws/market`; `/ws/chat` does not ping at
+all. Three sockets, three answers, so there is no house convention to lean on.
+
+### Inbound — two types
+
+| type | shape | notes |
+|---|---|---|
+| `snapshot` | `{ table: { my_session:{id}, player_cash, table_id, operational, hand:{id}, … } }` | full state each time, not a delta |
+| `error` | — | rendered into the page's error slot |
+
+**`snapshot` is a whole-table replacement**, and the client diffs it against two refs it
+keeps itself (`my_session?.id` and `player_cash`) rather than trusting a delta. A consumer
+reading this socket therefore gets the complete table state on every frame and never has to
+reconstruct one — the opposite of `/ws/chat`, where state is assembled from increments.
+
+### What this socket is worth to us, honestly
+
+**Very little, and it is the most dangerous of the three to touch.** It is the only socket
+in the client whose outbound frames move money, it is open only while you are seated at a
+table, and its inbound half is a state dump you can already see rendered in front of you.
+There is no analytical question in this repo it answers. It is documented here because a
+socket we did not know about is a hole in the tap's threat model, not because we want its
+data. Reading it costs nothing; the tap already covers it as `kind: 'casino'` — but nothing
+should be built on it.
+
 ## Presence — the finding this thread was ranked for
 
 **`/ws/chat` carries presence.** This is the thing
@@ -484,26 +563,63 @@ Both construction sites resolve `WebSocket` from the global at call time (no mod
 alias anywhere in the set), so a `document-start` wrap catches every construction
 including reconnects and the lazily-loaded market socket.
 
-### The four things that must never cross the boundary
+### The five things that must never cross the boundary
 
 1. **The socket** — it has `.send`.
 2. **The `MessageEvent`** — `event.target` is the socket.
 3. **The URL with its query** — see below.
-4. **The app's parsed object** — parse a separate copy from the string.
+4. **The `protocols` argument** — added 2026-08-26; it is where `/ws/casino/poker` puts the
+   access token. Unlike the URL, no part of it is ever wanted, so it is not redacted but
+   simply never read.
+5. **The app's parsed object** — parse a separate copy from the string.
 
 Nothing a consumer plausibly wants requires any of them. Presence, quotes, message bodies
 and room ids all live in frame bodies.
 
-### The token is in the URL
+### The token is in the URL — on two of three sockets
 
-**Measured.** Both sockets are `wss://politiko.io/ws/{chat,market}?token=<access token>`.
-Any wrapper sees it, twice — as argument 0 and as `this.url`.
+**Measured.** `/ws/chat` and `/ws/market` are
+`wss://politiko.io/ws/{chat,market}?token=<access token>`. Any wrapper sees it, twice — as
+argument 0 and as `this.url`.
 
 The rule is **allowlist, not denylist**: in the constructor, parse and keep only
 `origin + pathname`, dropping query and fragment whole. That way a future
 credential-bearing parameter is dropped by construction rather than by pattern-match. The
 raw string must not survive that block — not on the instance, not in a WeakMap, not in a
 log line.
+
+#### And on the third it is in argument 1 — corrected 2026-08-26
+
+`/ws/casino/poker` puts **no credential in the URL at all**. It authenticates with
+
+```js
+new WebSocket(`${base}/ws/casino/poker?table_id=${id}`, ['politiko-poker', `auth.${token}`])
+```
+
+so the access token is the **second constructor argument**, and the URL-allowlist rule
+above does not touch it. The `?table_id=` it *does* carry is not a secret.
+
+This is worth stating as bluntly as possible, because the earlier version of this section
+gave a reader a complete-sounding rule that was complete only for the sockets we knew
+about: **"redact the URL" was never the actual invariant.** The invariant is *no
+constructor argument survives the constructor*, and the URL work is one half of it. A tap
+author who read this file in good faith, redacted the query string, and logged `protocols`
+alongside it "for debugging" would have written an access token to `localStorage`.
+
+The correct handling of `protocols` is to **forward it and never read it**. Not to redact
+it, not to allowlist it, not to check it for `auth.` — those all require a code path that
+touches the value, and each is a place a later edit can go wrong. Passing it straight
+through to the base constructor and never binding it to a name means there is no path to
+audit. This generalizes, which is why it is the rule rather than a patch: if a fourth
+socket invents a fourth place to put a token, code that never reads the argument is still
+correct on the day it ships.
+
+`WS TAP v2` implements exactly this, and
+[`tools/test-passive.js`](../userscripts/tools/test-passive.js) fences both halves — that a
+sentinel token in `protocols` reaches no subscriber, *and* that it was still handed to the
+real constructor intact. Forwarding and discarding are different properties and a tap has
+to have both; testing only the second would pass a tap that silently broke the game's
+poker table.
 
 Frame bodies need the same treatment separately: scrub credential-looking keys *before*
 anything is frozen, stored, or rendered.
@@ -529,16 +645,19 @@ a claim that the token is unreachable, and any disclosure should not overclaim.
    `Notification`, or if `super(` appears more than once. A correct tap contains **zero**
    of those strings, which makes the invariant unusually strong.
 5. **Never close, never reopen, never originate a connection** — including when the socket
-   looks stuck. Both sockets self-heal; a late wrap self-heals too, because chat reconnects
-   on every natural close and market is rebuilt on every entry to `/stocks`.
+   looks stuck. All three self-heal; a late wrap self-heals too, because chat reconnects on
+   every natural close, market is rebuilt on every entry to `/stocks`, and poker is rebuilt
+   on every entry to a table.
 6. Render coalesced and only while visible. No notifications, no title changes, no sound —
    the clause names attention-raising from unfocused windows directly, and the game already
    owns that channel via Web Push.
 7. Disclosure written for a suspicious reader. A userscript that replaces
    `window.WebSocket` looks alarming to someone who does not know it is read-only, and
-   clause 6 is the one with teeth. Say plainly: observes frames on the two connections the
-   game itself opens, opens none, sends none, adds zero requests, discards the query string
-   before anything reads it, and names the fence test.
+   clause 6 is the one with teeth. Say plainly: observes frames on the three connections
+   the game itself opens, opens none, sends none, adds zero requests, discards the query
+   string before anything reads it, **never reads the subprotocol argument at all** — say
+   that separately, because it is where the poker token lives and a reader who knows the
+   handshake will look for it — and names the fence test.
 
 **The honest risk statement:** this tool is structurally one line away from being a bot.
 The design's entire job is to make that line impossible to write without editing the wrap

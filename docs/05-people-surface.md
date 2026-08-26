@@ -166,6 +166,19 @@ detector, and it costs nothing extra to compute.
 
 ### Observed authenticated API surface
 
+> **Two rows of this table are dead — checked again 2026-08-26.** `/api/user/{name}` and
+> `/api/user/{name}/sidebar` do not exist and have not since at least the 2026-08-03 build.
+> The live shapes are **`/api/users/{name}`** (plural, another player *or* you) and
+> **`/api/user/config/sidebar`** (no name in the path at all). Every other row below was
+> re-verified against the 2026-08-26 bundles and is still live.
+>
+> [`07-alignment-surface.md`](07-alignment-surface.md) recorded this drift on 2026-08-07,
+> but *there* rather than here, so the wrong list stayed readable without a warning on it
+> for three weeks. That is the actual lesson of this box: a correction filed anywhere other
+> than the place people read is not a correction. The block is left standing rather than
+> silently edited because it is dated evidence of what one session saw — but read it with
+> this on top.
+
 Every distinct endpoint the client called during one session, normalized:
 
 ```
@@ -178,8 +191,14 @@ GET /api/effects                GET /api/stocks/tax
 GET /api/combat/active
 ```
 
-Note the singular/plural split: `/api/user/{name}` and `/api/user/{name}/sidebar` serve
-your own session; `/api/users/{name}` is another player. This is the first authenticated
+~~Note the singular/plural split: `/api/user/{name}` and `/api/user/{name}/sidebar` serve
+your own session; `/api/users/{name}` is another player.~~ **Wrong, and the interesting
+part of being wrong is that the shape it described is real.** There *is* a singular/plural
+split — `/api/user/*` is your own session and `/api/users/*` is a player by name — but the
+own-session routes never take a name, because the token already says who you are:
+`/api/user/status`, `/api/user/money`, `/api/user/profile`, `/api/user/config/sidebar`. The
+rule was inferred from two mis-transcribed paths and happened to land near the truth, which
+is exactly the kind of error that survives review. This is the first authenticated
 surface recorded anywhere in this repo —
 [`00-recon-baseline.md`](00-recon-baseline.md) was taken logged out and covers only the
 four `/api/public/*` endpoints.

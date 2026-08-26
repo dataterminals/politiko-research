@@ -15,7 +15,6 @@ artifacts/
 *.swp
 Thumbs.db
 desktop.ini
-</content>
 
 # Per-machine Claude Code settings; .claude/launch.json (shared dev config) IS tracked.
 .claude/settings.local.json

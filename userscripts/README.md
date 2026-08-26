@@ -18,7 +18,7 @@ bannable, so the disclosure block is the contract.
 | Align Watch | 0.4.1 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
 | Comms Move | 0.1.1 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
-| WS Watch | 0.4.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
+| WS Watch | 0.5.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
 | XP Watch | 0.4.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 | Raid Watch | 0.3.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
 | Sleeper Watch | 0.3.1 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
@@ -1088,6 +1088,12 @@ only until someone adds it back:
 - `test-market-passive` fences market-watch's deleted order-execution seam.
 - `test-passive` fences ws-watch, which replaces `window.WebSocket` and is therefore
   structurally one line away from being a bot. It also drives the tap's behaviour.
+  **Added 2026-08-26:** it now fences the *credential* half too. The game's three sockets
+  do not agree on where the access token goes — `/ws/chat` and `/ws/market` put it in the
+  URL query, `/ws/casino/poker` puts it in the WebSocket subprotocol — so the fence checks
+  both that a sentinel token planted in the subprotocol reaches no subscriber, *and* that
+  it was still handed to the real constructor intact. Those are different properties and
+  a tap needs both: dropping it would quietly break the game's poker table.
 - `test-raid-passive` fences raid-watch, which reads a surface whose write endpoints
   surrender wars and impose flags. It fails on any mention of those paths, any non-GET
   verb, and any timer body that touches the network — the two ways to build a poll are
