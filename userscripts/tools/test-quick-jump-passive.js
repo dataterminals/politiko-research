@@ -137,7 +137,18 @@ console.log('\n— it stays auditable —');
 
 check('@grant none', /@grant\s+none/.test(SRC), 'any other grant sandboxes window and blinds the tap');
 check('the disclosure block names Requests: ZERO', /Requests:\s*ZERO/.test(SRC), 'clause 6');
-check('PANEL KIT v1 is present', /PANEL KIT v1 — shared verbatim block/.test(SRC), 'panels must be movable');
+check('PANEL KIT v2 is present', /PANEL KIT v2 — shared verbatim block/.test(SRC), 'panels must be movable');
+check('the panel is resizable', SRC.includes('panelResize = resizable(panelEl,'),
+  'CLAUDE.md: every window this repo draws is resizable, not just movable');
+// 0.2.0: a destination click no longer closes the panel, so walking a set costs one
+// keypress each instead of a reopen and a retype. If a toggle(false) ever creeps back
+// into jump(), that is the regression — nothing else in the file can cause it.
+check('the panel stays open across a jump',
+  !/const jump = [\s\S]{0,1200}toggle\(false\)/.test(SRC),
+  'jump() closes the panel again — 0.2.0 exists to stop exactly that');
+check('...and repaints instead, so recents and the current row are not left stale',
+  /const jump = [\s\S]{0,1200}\n {4}paint\(\);/.test(SRC),
+  'a jump that neither closes nor repaints leaves a lying list on screen');
 check('fit() runs after render', /panelDrag\.fit\(\)/.test(CODE), 'an off-screen handle is unrecoverable');
 absent('no hashed chunk name is hardcoded', /-[A-Za-z0-9_-]{8}\.js/g);
 absent('it sends nothing anywhere', /https?:\/\/(?!politiko\.io|raw\.github|github\.com)/g);

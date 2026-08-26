@@ -68,12 +68,18 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   reflects the real world state. Don't cite the landing page as data.
 - Chunk hashes change every deploy — never hardcode a hashed filename or a generated CSS
   class in anything meant to last.
-- **Any on-screen panel must be movable.** If a tool draws UI over the game, that UI is
-  draggable and remembers where it was put — including the floating toggle button, not
-  just the panel. Copy the `PANEL KIT v1` block from
+- **Any on-screen panel must be movable and resizable.** If a tool draws UI over the game,
+  that UI is draggable and remembers where it was put — including the floating toggle
+  button, not just the panel — and any panel (not the button) is resizable and remembers
+  that too. Copy the `PANEL KIT v2` block from
   [`userscripts/_template.user.js`](userscripts/_template.user.js) verbatim instead of
-  writing a new drag implementation; if the block changes, bump its version in every copy
-  so the copies can be diffed. It also has to survive a short window: a panel whose drag
-  handle ends up off-screen cannot be recovered, so `fit()` runs after every render.
+  writing a new drag or resize implementation; if the block changes, bump its version in
+  every copy so the copies can be diffed. Hand `resizable()` the panel's `draggable()`, and
+  double-click the title bar must undo both. It also has to survive a short window: a panel
+  whose drag handle ends up off-screen cannot be recovered, so `fit()` runs after every
+  render, and after every resize. Two windows are outside this on purpose and are named in
+  `tools/test-placement.js`: market-watch keeps its own corner grips (its panel is pinned to
+  its button, so it grows from whichever corner is free), and comms-move resizes nothing
+  (the window it moves is the game's Comms dock).
 - Windows box: `git commit -F <file>` rather than `-m` (PowerShell mangles quoted `-m`).
   `.gitattributes` handles the CRLF situation.

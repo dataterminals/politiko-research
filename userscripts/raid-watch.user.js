@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Raid Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.1
+// @version      0.2.0
 // @description  Records faction raids from responses the game already fetched: the raid list your faction page polls on its own every five seconds, its event log, and the post-mortem report. Builds the event-type vocabulary the client never spells out, charts the score curve, and ranks who actually did the work. Passive — zero added requests, and it never touches a raid action.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -62,7 +62,7 @@
   'use strict';
 
   const TAG = '[pkrw]';
-  const VERSION = '0.1.1';
+  const VERSION = '0.2.0';
   const log = (...a) => console.debug(TAG, ...a);
 
   // ===========================================================================
@@ -103,7 +103,7 @@
   let events = readJSON(K.events, {});
   /** @type {Record<string, any>} raid id -> captured post-mortem report */
   let reports = readJSON(K.reports, {});
-  let ui = readJSON(K.ui, { open: false, tab: 'types', raid: null, fab: null, panel: null });
+  let ui = readJSON(K.ui, { open: false, tab: 'types', raid: null, fab: null, panel: null, size: null });
   if (typeof ui.tab !== 'string') ui.tab = 'types';
 
   let saveTimer = null;
@@ -366,13 +366,13 @@
   };
 
   // ===========================================================================
-  // PANEL KIT v1 — shared verbatim block.
+  // PANEL KIT v2 — shared verbatim block.
   //
-  //    Repo convention: every panel we ship is draggable and remembers where you
-  //    put it. Copy this block into a new tool exactly as it stands. If you have
-  //    to change it, bump the version in this header and in every tool carrying
-  //    a copy, so the copies can be diffed. No build step, no @require, so each
-  //    script stays a single auditable file (clause 6).
+  //    Repo convention: every panel we ship is draggable and resizable, and
+  //    remembers both. Copy this block into a new tool exactly as it stands. If
+  //    you have to change it, bump the version in this header and in every tool
+  //    carrying a copy, so the copies can be diffed. No build step, no @require,
+  //    so each script stays a single auditable file (clause 6).
   //
   //    draggable(node, handle, onMove) -> { apply(pos), reset(), dragged() }
   //      node    the element that moves (must be position: fixed)
@@ -381,6 +381,8 @@
   //      onMove  called with {x, y} in viewport px, or null when reset
   //      dragged() is true if the last gesture actually moved — check it in a
   //              click handler so dragging a FAB doesn't also toggle it
+  //      pin() converts a CSS-corner anchor into left/top without moving the
+  //              element — resizable() needs that, see below
   // ===========================================================================
   const draggable = (node, handle, onMove) => {
     const EDGE = 44; // px of the element that must stay reachable on screen
@@ -473,6 +475,113 @@
       },
       dragged: () => moved,
       fit, // call after mounting and after any render that changes the size
+
+      // Convert whatever CSS corner the element is anchored to into explicit
+      // left/top, without moving it. The browser's own resize grabber only grows a
+      // box right and down, so a panel still hanging off `right`/`bottom` grows
+      // away from the pointer; resizable() pins it the moment the grab starts.
+      pin: () => {
+        const r = node.getBoundingClientRect();
+        if (!r.width || !r.height) return false; // hidden: nothing to measure
+        place(r.left, r.top);
+        return true;
+      },
+    };
+  };
+
+  // ---------------------------------------------------------------------------
+  //    resizable(node, onSize, opts) -> { apply(size), reset(), sized() }
+  //      node    the element that resizes (the same one draggable() moves)
+  //      onSize  called with {w, h} as CSS lengths, or null when reset
+  //      opts    { minW, minH, drag } — pass the draggable() for this same node so
+  //              a resize can re-pin and re-clamp it
+  //
+  //    The browser's own grabber does the dragging. There is deliberately no second
+  //    drag implementation here to keep in step with the one above: all this block
+  //    does is arm the grabber, keep it pointing the right way, and remember the
+  //    result. The grabber writes inline width/height, so inline values that differ
+  //    from what we last wrote can only have come from the user — content re-renders
+  //    never write them, which is what keeps auto-sizing intact until the first
+  //    deliberate resize.
+  // ---------------------------------------------------------------------------
+  const resizable = (node, onSize, opts = {}) => {
+    const GRAB = 18;                  // the corner the UA's grabber occupies
+    const drag = opts.drag || null;
+    let mine = null;                  // the last size WE wrote
+
+    // A viewport this small is a hidden tab or a minimised window rather than a
+    // real layout — the same trap the placement layers guard against. Capping
+    // against it would shrink the panel to nothing and the next report would make
+    // that permanent, so treat it as no information.
+    const usable = () => window.innerWidth > 120 && window.innerHeight > 120;
+
+    const floor = () => ({
+      w: Math.min(opts.minW || 220, Math.max(80, window.innerWidth - 16)),
+      h: Math.min(opts.minH || 140, Math.max(80, window.innerHeight - 16)),
+    });
+
+    // Cap growth at the viewport rather than at whatever vh the panel's own CSS
+    // picked: a `max-height: 74vh` silently fights a chosen height, so the panel
+    // stops growing while the pointer keeps going and then jumps on the way back.
+    // Only ever applied once a size has actually been chosen, so an untouched
+    // panel keeps its stylesheet's sizing exactly as written.
+    const cap = () => {
+      if (!usable()) return;
+      const f = floor();
+      node.style.minWidth = `${f.w}px`;
+      node.style.minHeight = `${f.h}px`;
+      node.style.maxWidth = `${Math.max(f.w, window.innerWidth - 16)}px`;
+      node.style.maxHeight = `${Math.max(f.h, window.innerHeight - 16)}px`;
+    };
+
+    node.style.resize = 'both';
+    node.style.overflow = 'hidden'; // `resize` is inert while overflow is visible
+
+    const report = () => {
+      const w = node.style.width, h = node.style.height;
+      if (!w && !h) return;                             // never resized: still auto
+      if (mine && mine.w === w && mine.h === h) return; // our own restore, not a gesture
+      mine = { w, h };
+      onSize(mine);
+      if (drag) drag.fit(); // a taller panel can push its own handle off-screen
+    };
+
+    // Capture phase: the panel's own handlers must not be able to swallow the grab.
+    // Nothing is preventDefault()ed — the UA still runs the resize itself.
+    node.addEventListener('pointerdown', (ev) => {
+      const r = node.getBoundingClientRect();
+      if (ev.clientX < r.right - GRAB || ev.clientY < r.bottom - GRAB) return;
+      cap();
+      if (drag) drag.pin();
+    }, true);
+
+    // Two ways in, because neither alone is sufficient. ResizeObserver is the
+    // precise one but it is delivered on the rendering lifecycle, so a page that is
+    // not compositing never gets the callback. pointerup is the backstop: the
+    // grabber is a pointer gesture, so releasing it always lands here. report() is
+    // idempotent, so both firing costs nothing.
+    if (typeof ResizeObserver === 'function') new ResizeObserver(report).observe(node);
+    node.addEventListener('pointerup', report);
+    window.addEventListener('resize', () => { if (mine) cap(); });
+
+    return {
+      apply: (size) => {
+        if (!size || !size.w || !size.h) return false;
+        mine = { w: String(size.w), h: String(size.h) };
+        node.style.width = mine.w;
+        node.style.height = mine.h;
+        cap();
+        if (drag) drag.pin(); // a restored size wants the same anchoring a grab does
+        return true;
+      },
+      reset: () => {
+        mine = null;
+        node.style.width = node.style.height = '';
+        node.style.minWidth = node.style.minHeight = '';
+        node.style.maxWidth = node.style.maxHeight = '';
+        onSize(null);
+      },
+      sized: () => !!mine,
     };
   };
 
@@ -482,7 +591,7 @@
   let host = null, root = null, fab = null, panelEl = null;
   let hdEl = null, covEl = null, tabsEl = null, bodyEl = null, noteEl = null;
   const tabBtn = {};
-  let panelDrag = null, fabDrag = null, placed = false;
+  let panelDrag = null, fabDrag = null, panelResize = null, placed = false;
 
   const CSS = `
     :host { all: initial; }
@@ -508,7 +617,7 @@
     .hd b { font-weight: 600; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
     .hd .sp { flex: 1; }
     .cov { font-size: 10px; color: #71717a; }
-    .body { overflow: auto; padding: 8px 10px; }
+    .body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 10px; }
     .tabs { display: flex; gap: 4px; padding: 6px 10px 0; border-bottom: 1px solid #27272a; }
     .tab {
       padding: 4px 9px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
@@ -791,6 +900,7 @@
     covEl = el('span', 'cov');
     const close = el('button', 'act', '×');
     close.addEventListener('click', () => toggle(false));
+    hdEl.title = 'Drag to move · drag the bottom-right corner to resize · double-click to reset both';
     hdEl.append(el('b', null, 'Raid Watch'), covEl, el('span', 'sp'), close);
 
     tabsEl = el('div', 'tabs');
@@ -807,8 +917,13 @@
     root.append(panelEl);
 
     panelDrag = draggable(panelEl, hdEl, (pos) => { ui.panel = pos; saveUi(); });
+    panelResize = resizable(panelEl, (size) => { ui.size = size; saveUi(); },
+      { drag: panelDrag, minW: 280, minH: 180 });
+    // Double-click the header undoes both — the recovery path for a panel dragged
+    // or resized into uselessness.
     hdEl.addEventListener('dblclick', () => {
-      ui.panel = null; saveUi(); panelDrag.reset(); placed = true;
+      ui.panel = null; ui.size = null; saveUi();
+      panelDrag.reset(); panelResize.reset(); placed = true;
     });
   };
 
@@ -875,7 +990,7 @@
     // mount it is display:none, so the kit has no geometry to clamp or de-skew against.
     // After that only fit() runs: apply() would fight a drag in progress, since ui.panel
     // still holds the pre-drag position until the gesture ends.
-    if (!placed) { placed = true; panelDrag.apply(ui.panel); }
+    if (!placed) { placed = true; panelDrag.apply(ui.panel); panelResize.apply(ui.size); }
     panelDrag.fit();
   }
 

@@ -20,7 +20,7 @@ const cut = (from, to) => {
 // job anyway (tools/test-raid-passive.js). Nothing in either half runs at definition
 // time, so concatenating them out of order is safe.
 const SLICE = cut('  const num = (v) =>', '  // ===========================================================================\n  // Passive tap')
-  + cut('  const ms = (iso) =>', '  // ===========================================================================\n  // PANEL KIT v1');
+  + cut('  const ms = (iso) =>', '  // ===========================================================================\n  // PANEL KIT v2');
 
 /** The slice closes over module state and `paint`/`save`; inject inert versions. */
 const mk = (raids = {}, events = {}, reports = {}) => {

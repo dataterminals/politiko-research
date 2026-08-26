@@ -89,7 +89,7 @@ ok('disclosure names the storage prefix', HEAD.includes('pkws:'));
 ok('disclosure explains the token is discarded', /token/i.test(HEAD) && /discard/i.test(HEAD));
 
 // PANEL KIT must be the shared block, not a local reimplementation.
-ok('carries PANEL KIT v1 verbatim marker', SRC.includes('PANEL KIT v1 — shared verbatim block'));
+ok('carries PANEL KIT v2 verbatim marker', SRC.includes('PANEL KIT v2 — shared verbatim block'));
 ok('calls fit() after render', /if \(drag\) drag\.fit\(\);/.test(SRC));
 
 // ---------------------------------------------------------------------------

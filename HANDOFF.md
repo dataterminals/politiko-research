@@ -73,10 +73,14 @@ Every script declares `@updateURL`/`@downloadURL`, so **shipping a fix means bum
 
 ## Conventions that will bite you
 
-- **Every panel is draggable and remembers where it was put.** Copy `PANEL KIT v1` from
+- **Every panel is draggable and resizable, and remembers both.** Copy `PANEL KIT v2` from
   [`userscripts/_template.user.js`](userscripts/_template.user.js) verbatim; if it changes,
   bump the version in every copy. `fit()` must run after any render that changes the size —
-  a drag handle off-screen is unrecoverable.
+  a drag handle off-screen is unrecoverable — which is why `resizable()` takes the panel's
+  `draggable()` and re-fits after every resize. The kit pins a panel to left/top before the
+  grab: the browser's grabber only grows a box down and right, so a panel still on its CSS
+  `right`/`bottom` corner grows away from the pointer. That bug shipped in xp-watch for six
+  versions before v2 fixed it in the shared block.
 - **`@grant none` is load-bearing** in every tool that taps `fetch`. Any other grant
   sandboxes `window`, the wrap lands on the sandbox, and the tap silently sees nothing.
   time-bridge is the exception *because* it taps nothing — which is exactly why the reading

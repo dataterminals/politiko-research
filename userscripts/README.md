@@ -12,17 +12,17 @@ bannable, so the disclosure block is the contract.
 
 | tool | version | raw link |
 |---|---|---|
-| People Watch | 1.3.2 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| People Watch | 1.4.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
 | Market Watch | 1.0.1 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
-| Time Watch | 0.4.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
-| Align Watch | 0.2.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
-| Comms Move | 0.1.0 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
+| Time Watch | 0.5.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
+| Align Watch | 0.3.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
+| Comms Move | 0.1.1 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
-| WS Watch | 0.2.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.2.7 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
-| Raid Watch | 0.1.1 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
-| Sleeper Watch | 0.1.1 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
-| Quick Jump | 0.1.1 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
+| WS Watch | 0.3.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
+| XP Watch | 0.3.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| Raid Watch | 0.2.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
+| Sleeper Watch | 0.2.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
+| Quick Jump | 0.2.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, the shared `PANEL KIT` block).
@@ -30,15 +30,33 @@ bannable, so the disclosure block is the contract.
 All of them declare `@updateURL`/`@downloadURL` pointing back here, so **shipping a fix means
 bumping `@version`** — a script manager only acts on an increase.
 
-Panels drawn over the game are draggable and remember where you put them. `PANEL KIT` is
-copied verbatim into each tool rather than pulled from anywhere at runtime, so every script
-stays one auditable file.
+Panels drawn over the game are draggable **and resizable**, and remember both. `PANEL KIT`
+is copied verbatim into each tool rather than pulled from anywhere at runtime, so every
+script stays one auditable file.
 
-XP Watch's panel is also **resizable**, which is a local addition sitting *around* its
-verbatim `PANEL KIT v1` block rather than a change to it — changing the kit means bumping
-its version in all ten copies (nine tools plus the template). If resizing proves worth
-having everywhere, that is the `PANEL KIT v2` candidate; the local implementation is deliberately small (a CSS
-`resize: both`, plus persistence and a double-click reset) so it ports cleanly.
+Resize was XP Watch's local addition for six versions; `PANEL KIT v2` is that idea promoted
+into the shared block, so every window in this directory now has it. Grab a panel's
+**bottom-right corner**; **double-click its title bar** to put position *and* size back to
+default, which is the recovery path for a panel dragged or resized into uselessness.
+
+The kit's `resizable()` arms the browser's own grabber rather than shipping a second drag
+implementation, and does three things around it that the local version did not:
+
+- **Pins the panel to left/top before the grab.** The UA grabber only ever grows a box down
+  and to the right, so a panel still sitting on its CSS `right`/`bottom` corner grew *away*
+  from the pointer. That was live in XP Watch the whole time and is the bug that made this a
+  kit change rather than a copy-paste.
+- **Caps growth at the viewport, not at the panel's own `max-height: 74vh`** — that cap
+  silently outranks a chosen height, so the panel stops growing while the pointer keeps going.
+- **Ignores a ~zero viewport**, which is what a minimised window or a hidden tab reports.
+  Capping against it would shrink the panel to nothing and the next save would make it
+  permanent — the same trap `viewportUsable()` guards in the placement layers.
+
+Two windows sit outside that: **Market Watch** keeps its own corner grips, because its panel
+is pinned to its button and has to grow from whichever corner is free; and **Comms Move**
+resizes nothing, because the window it moves is the game's Comms dock, and sizing that means
+overriding the game's own collapse behaviour — a larger claim than "this tool only
+repositions". `tools/test-placement.js` encodes both exceptions by name.
 
 ---
 
@@ -338,8 +356,9 @@ username and no values from those samples.
 ## The panel
 
 **Alt+X**, or the `XP` button. Drag either anywhere; they remember. **Drag the panel's
-bottom-right corner to resize it** — that sticks too. Double-click the panel's title bar
-to put both the position and the size back to default. Sections: the latest
+bottom-right corner to resize it** — that sticks too, and since 0.3.0 it grows toward the
+pointer from the corner it starts in rather than away from it. Double-click the panel's
+title bar to put both the position and the size back to default. Sections: the latest
 deltas with their labels, per-skill session/all-time totals with last-known values, and
 per-action-endpoint attempts / outcomes / measured-XP-per-attempt.
 
@@ -677,7 +696,15 @@ company. Quick Jump does not change that — it just remembers the way in.
   jumps, **Esc** closes.
 - **☆** pins a destination. Pinned rows sit at the top and get **Alt+1 … Alt+9**, so the
   casino you actually play at is one chord away from anywhere in the game.
-- The **JUMP** button and the panel both drag, and remember where you put them.
+- The **JUMP** button and the panel both drag and resize, and remember where you put them.
+
+**Since 0.2.0 the panel stays open when you pick a destination.** It used to close on every
+jump, which is right for a one-shot and wrong for the thing this tool exists to do: paging
+six casinos meant six trips through Alt+J and six retypings of the filter. Now the filter
+survives the jump, so a walk is **Enter, ↓, Enter, ↓, Enter** — and the row you are standing
+on is marked, so the list doubles as your place in it. **Esc**, the **×** and **Alt+J** all
+still close it, and the panel is resizable now, so "it is in the way" has an answer that is
+not "it disappears".
 
 Every jump is a client-side route change — the same thing that happens when you click a
 link, with the walking removed.
@@ -795,10 +822,19 @@ only until someone adds it back:
 They have nothing else in common; market-watch's was named `test-passive.js` when it
 lived in its own repository and was renamed on the way in.
 
-`test-placement` also checks that **`PANEL KIT v1` is byte-identical across all eight
+`test-placement` also checks that **`PANEL KIT v2` is byte-identical across all ten
 copies**. The convention was written down in CLAUDE.md from the start and enforced by
-nobody, which is how seven hand-maintained copies of a drag implementation quietly
-diverge. Now a mismatch fails the build and prints which files disagree.
+nobody, which is how ten hand-maintained copies of a drag implementation quietly
+diverge. Now a mismatch fails the build and prints which files disagree. It slices the block
+marker-to-marker rather than by line count, because v1 was 93 lines and v2 is not — a
+hardcoded length stops covering the tail the moment the kit grows.
+
+Alongside it: **every window this repo draws can be resized, and remembers it**, with the two
+exceptions above listed by name so an omission has to be deliberate. And `resizable()` itself
+is *driven* against a stub viewport rather than only grepped for, because its failure modes
+are all states you would otherwise have to reproduce by hand — growing away from the pointer,
+a `74vh` cap quietly outranking a chosen height, a restore reading back as a user gesture, a
+minimise shrinking the panel to nothing.
 
 `test-people` covers people-watch's walk layer — where a keypress sends you, and which
 players `next unseen` is allowed to skip — plus the derived metrics. An off-by-one in the

@@ -107,7 +107,7 @@ Every userscript ships from `userscripts/` — findings, rules analysis, the ske
 were built on and the tools themselves all live together. Install links and per-tool docs
 are in [`userscripts/README.md`](userscripts/README.md).
 
-Panels drawn over the game are draggable and remember where you put them — the shared
+Panels drawn over the game are draggable and resizable, and remember both — the shared
 `PANEL KIT` block in the template is copied verbatim into each tool rather than pulled
 from anywhere at runtime, so every script stays a single file you can read end to end.
 

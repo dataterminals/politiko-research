@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.7
+// @version      0.3.0
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -95,7 +95,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.2.7';
+  const VERSION = '0.3.0';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -671,13 +671,13 @@
   });
 
   // ===========================================================================
-  // PANEL KIT v1 — shared verbatim block.
+  // PANEL KIT v2 — shared verbatim block.
   //
-  //    Repo convention: every panel we ship is draggable and remembers where you
-  //    put it. Copy this block into a new tool exactly as it stands. If you have
-  //    to change it, bump the version in this header and in every tool carrying
-  //    a copy, so the copies can be diffed. No build step, no @require, so each
-  //    script stays a single auditable file (clause 6).
+  //    Repo convention: every panel we ship is draggable and resizable, and
+  //    remembers both. Copy this block into a new tool exactly as it stands. If
+  //    you have to change it, bump the version in this header and in every tool
+  //    carrying a copy, so the copies can be diffed. No build step, no @require,
+  //    so each script stays a single auditable file (clause 6).
   //
   //    draggable(node, handle, onMove) -> { apply(pos), reset(), dragged() }
   //      node    the element that moves (must be position: fixed)
@@ -686,6 +686,8 @@
   //      onMove  called with {x, y} in viewport px, or null when reset
   //      dragged() is true if the last gesture actually moved — check it in a
   //              click handler so dragging a FAB doesn't also toggle it
+  //      pin() converts a CSS-corner anchor into left/top without moving the
+  //              element — resizable() needs that, see below
   // ===========================================================================
   const draggable = (node, handle, onMove) => {
     const EDGE = 44; // px of the element that must stay reachable on screen
@@ -778,6 +780,113 @@
       },
       dragged: () => moved,
       fit, // call after mounting and after any render that changes the size
+
+      // Convert whatever CSS corner the element is anchored to into explicit
+      // left/top, without moving it. The browser's own resize grabber only grows a
+      // box right and down, so a panel still hanging off `right`/`bottom` grows
+      // away from the pointer; resizable() pins it the moment the grab starts.
+      pin: () => {
+        const r = node.getBoundingClientRect();
+        if (!r.width || !r.height) return false; // hidden: nothing to measure
+        place(r.left, r.top);
+        return true;
+      },
+    };
+  };
+
+  // ---------------------------------------------------------------------------
+  //    resizable(node, onSize, opts) -> { apply(size), reset(), sized() }
+  //      node    the element that resizes (the same one draggable() moves)
+  //      onSize  called with {w, h} as CSS lengths, or null when reset
+  //      opts    { minW, minH, drag } — pass the draggable() for this same node so
+  //              a resize can re-pin and re-clamp it
+  //
+  //    The browser's own grabber does the dragging. There is deliberately no second
+  //    drag implementation here to keep in step with the one above: all this block
+  //    does is arm the grabber, keep it pointing the right way, and remember the
+  //    result. The grabber writes inline width/height, so inline values that differ
+  //    from what we last wrote can only have come from the user — content re-renders
+  //    never write them, which is what keeps auto-sizing intact until the first
+  //    deliberate resize.
+  // ---------------------------------------------------------------------------
+  const resizable = (node, onSize, opts = {}) => {
+    const GRAB = 18;                  // the corner the UA's grabber occupies
+    const drag = opts.drag || null;
+    let mine = null;                  // the last size WE wrote
+
+    // A viewport this small is a hidden tab or a minimised window rather than a
+    // real layout — the same trap the placement layers guard against. Capping
+    // against it would shrink the panel to nothing and the next report would make
+    // that permanent, so treat it as no information.
+    const usable = () => window.innerWidth > 120 && window.innerHeight > 120;
+
+    const floor = () => ({
+      w: Math.min(opts.minW || 220, Math.max(80, window.innerWidth - 16)),
+      h: Math.min(opts.minH || 140, Math.max(80, window.innerHeight - 16)),
+    });
+
+    // Cap growth at the viewport rather than at whatever vh the panel's own CSS
+    // picked: a `max-height: 74vh` silently fights a chosen height, so the panel
+    // stops growing while the pointer keeps going and then jumps on the way back.
+    // Only ever applied once a size has actually been chosen, so an untouched
+    // panel keeps its stylesheet's sizing exactly as written.
+    const cap = () => {
+      if (!usable()) return;
+      const f = floor();
+      node.style.minWidth = `${f.w}px`;
+      node.style.minHeight = `${f.h}px`;
+      node.style.maxWidth = `${Math.max(f.w, window.innerWidth - 16)}px`;
+      node.style.maxHeight = `${Math.max(f.h, window.innerHeight - 16)}px`;
+    };
+
+    node.style.resize = 'both';
+    node.style.overflow = 'hidden'; // `resize` is inert while overflow is visible
+
+    const report = () => {
+      const w = node.style.width, h = node.style.height;
+      if (!w && !h) return;                             // never resized: still auto
+      if (mine && mine.w === w && mine.h === h) return; // our own restore, not a gesture
+      mine = { w, h };
+      onSize(mine);
+      if (drag) drag.fit(); // a taller panel can push its own handle off-screen
+    };
+
+    // Capture phase: the panel's own handlers must not be able to swallow the grab.
+    // Nothing is preventDefault()ed — the UA still runs the resize itself.
+    node.addEventListener('pointerdown', (ev) => {
+      const r = node.getBoundingClientRect();
+      if (ev.clientX < r.right - GRAB || ev.clientY < r.bottom - GRAB) return;
+      cap();
+      if (drag) drag.pin();
+    }, true);
+
+    // Two ways in, because neither alone is sufficient. ResizeObserver is the
+    // precise one but it is delivered on the rendering lifecycle, so a page that is
+    // not compositing never gets the callback. pointerup is the backstop: the
+    // grabber is a pointer gesture, so releasing it always lands here. report() is
+    // idempotent, so both firing costs nothing.
+    if (typeof ResizeObserver === 'function') new ResizeObserver(report).observe(node);
+    node.addEventListener('pointerup', report);
+    window.addEventListener('resize', () => { if (mine) cap(); });
+
+    return {
+      apply: (size) => {
+        if (!size || !size.w || !size.h) return false;
+        mine = { w: String(size.w), h: String(size.h) };
+        node.style.width = mine.w;
+        node.style.height = mine.h;
+        cap();
+        if (drag) drag.pin(); // a restored size wants the same anchoring a grab does
+        return true;
+      },
+      reset: () => {
+        mine = null;
+        node.style.width = node.style.height = '';
+        node.style.minWidth = node.style.minHeight = '';
+        node.style.maxWidth = node.style.maxHeight = '';
+        onSize(null);
+      },
+      sized: () => !!mine,
     };
   };
 
@@ -785,7 +894,7 @@
   // Panel
   // ---------------------------------------------------------------------------
   const ui = readJSON(K.ui, {});
-  let panel = null, fab = null, drag = null, fabDrag = null, renderQueued = false;
+  let panel = null, fab = null, drag = null, fabDrag = null, resize = null, renderQueued = false;
 
   const fmt = (n) => {
     const s = n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
@@ -834,7 +943,7 @@
     #pkxp header b{letter-spacing:.14em;font-size:10px;color:#fafafa}
     #pkxp header span{color:#71717a;font-size:10px}
     #pkxp header button{margin-left:auto;background:none;border:none;color:#a1a1aa;cursor:pointer;font-size:12px}
-    #pkxp .bd{overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:10px}
+    #pkxp .bd{flex:1 1 auto;min-height:0;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:10px}
     #pkxp h4{margin:0;font-size:9px;letter-spacing:.14em;color:#71717a;text-transform:uppercase}
     #pkxp table{border-collapse:collapse;width:100%}
     #pkxp td,#pkxp th{padding:1px 6px 1px 0;text-align:left;font-weight:400;white-space:nowrap}
@@ -1025,44 +1134,20 @@
     });
     if (ui.panel) drag.apply(ui.panel);
 
-    // --- Resize (local to this tool; PANEL KIT v1 above stays verbatim) ------
-    // The browser's own resize grabber does the dragging. All we do is
-    // remember the result: the grabber writes inline width/height, so inline
-    // values that differ from what we stored can only have come from the user.
-    // Content re-renders never write them, which is what keeps auto-sizing
-    // intact until the first deliberate resize.
-    const applySize = () => {
-      if (!ui.size) return;
-      panel.style.width = ui.size.w;
-      panel.style.height = ui.size.h;
-      panel.style.maxHeight = 'none'; // the 70vh cap would fight a chosen height
-    };
-    applySize();
-    const rememberSize = () => {
-      const w = panel.style.width, h = panel.style.height;
-      if (!w && !h) return;                                      // still auto-sized
-      if (ui.size && ui.size.w === w && ui.size.h === h) return;  // our own restore
-      ui.size = { w, h };
-      writeJSON(K.ui, ui);
-      panel.style.maxHeight = 'none';
-      if (drag) drag.fit();  // a taller panel can push its own handle off-screen
-    };
-    // Two ways in, because neither alone is sufficient. ResizeObserver is the
-    // precise one but it is delivered on the rendering lifecycle, so a page
-    // that is not compositing never gets the callback. pointerup is the
-    // backstop: the grabber is a pointer gesture, so releasing it always lands
-    // here. rememberSize() is idempotent, so both firing costs nothing.
-    if (typeof ResizeObserver === 'function') new ResizeObserver(rememberSize).observe(panel);
-    panel.addEventListener('pointerup', rememberSize);
+    // Resize. This used to be a local copy of the logic; PANEL KIT v2 carries it
+    // now, and the kit's version also pins the panel to left/top before the grab
+    // so it grows toward the pointer instead of away from it — this panel sits on
+    // `right`/`bottom` until you drag it, and the old copy grew the wrong way.
+    resize = resizable(panel, (size) => {
+      ui.size = size ?? undefined; writeJSON(K.ui, ui);
+    }, { drag, minW: 260, minH: 160 });
+    if (ui.size) resize.apply(ui.size);
 
     // Double-click the header: back to the default corner AND the default size.
     // This is the recovery path for a panel resized into uselessness.
     panel.querySelector('header').addEventListener('dblclick', () => {
       drag.reset();
-      ui.size = undefined;
-      writeJSON(K.ui, ui);
-      panel.style.width = panel.style.height = '';
-      panel.style.maxHeight = '';
+      resize.reset();
       render();
     });
 
