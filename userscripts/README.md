@@ -25,6 +25,7 @@ bannable, so the disclosure block is the contract.
 | Quick Jump | 0.4.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 | World Watch | 0.3.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
 | Gov Watch | 0.2.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
+| Poll Watch | 0.1.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, and the shared `PANEL KIT` and `FAB KIT` blocks).
@@ -1083,6 +1084,101 @@ The measurements behind every constant, and which parts are inferred rather than
 
 ---
 
+# Poll Watch
+
+Files every opinion-poll memo you run, timestamped in real **and** game time, and keeps the
+per-issue trend so you can see whether the population is actually moving.
+
+It is **fully passive**. It reads the reply to a poll *you* paid for, at the moment it
+arrives, and originates no requests of its own. There is no refresh button, because
+refresh here means spending 5 energy of yours.
+
+## The problem it solves
+
+`POST /api/actions/poll` returns a one-shot memo. The game renders it, and the moment you
+navigate away it is gone — there is no poll history screen. So the only way to compare
+this week's reading on an issue against last week's is to screenshot the memo and write the
+time on it yourself.
+
+That matters more than it sounds, because the memo is the **only** surface that shows
+public opinion. The government page shows `policies[].axis` — the law — and the two are
+designed to diverge: Congress specifically picks bills where public opinion and current law
+are misaligned. Media campaigns and activism are scored against the population, not the
+statute, so a poll history is the only record of the thing that actually drives them.
+
+## What it captures
+
+Everything the memo carries, whichever method you paid for:
+
+| field | street / online | professional / focus group |
+|---|---|---|
+| spread | `left_bloc` / `center` / `right_bloc` | all seven buckets, `far_left`…`far_right` |
+| `mood`, `extreme_tag` | yes | yes |
+| `volatility`, `salience`, `popularity` | — | yes |
+| `best_target` | — | yes |
+| `persuasion_angle` | — | focus group only |
+
+plus the method, the real timestamp, and the game date — the last one lifted from the
+`/api/time` response the sidebar polls anyway, so it costs nothing.
+
+## The two derived numbers
+
+Both are arithmetic on what arrived, not a model:
+
+- **net** — `right% − left%`, on −100…+100. Defined for *both* memo shapes, which makes it
+  the only series that stays comparable when you switch methods mid-campaign. The trend
+  line and every delta use it.
+- **lean** — the same spread weighted −3…+3 by bucket, so it lands on the scale the game's
+  own policy axes use. Exact methods only. A street poll has nowhere to put the weights,
+  and the panel prints `needs an exact method` rather than inventing a number.
+
+Sides are always named (`R+22`, `L+1`, `even`) instead of shown as a bare sign, because a
+signed number on a screen full of −3…+3 axes reads as the wrong scale.
+
+## The panel
+
+Three tabs, and it remembers which one you left it on.
+
+- **latest** — the pinned issue's newest memo drawn the way the game draws it, plus the
+  delta against your previous poll on that issue, a trend sparkline, and the cooldown
+  counting down. Filled dots on the sparkline are professional or focus-group readings;
+  hollow ones are street or online, and the panel says so rather than drawing a confident
+  line through noisy points.
+- **issues** — one row per issue you have polled: where it sits now, and how far it has
+  moved since your first reading. Click a row to pin it. It also lists the issues you have
+  never polled.
+- **log** — every memo, newest first. Click one to jump to it.
+
+`copy tsv` puts the whole history on the clipboard as a spreadsheet-ready table (23
+columns, one row per memo, blanks where a cheap method returned nothing); `copy json` gives
+the raw rows.
+
+It shows on every page by default — it is a notebook, not a home-page mirror, and it is
+useful open beside the corporation media tab while picking a document to spin. The **all
+pages** button narrows it to the home page and Actions → Opinion Polls.
+
+## What it will not do
+
+Run a poll. A poll costs 5 energy plus $500 or $1,000 and sits behind a server cooldown,
+and spending that on your behalf is exactly what this repo does not do — `test-poll-watch`
+fails the build if anything in the file can originate a request, which is why its one
+repeating timer (ageing `3m ago` and the cooldown) is safe whatever its period.
+
+A memo is also a snapshot of the moment you bought it. Nothing refreshes, so a stale
+reading stays visibly stale rather than quietly pretending to be current.
+## What it reads
+
+Full disclosure is in the header comment at the top of
+[`poll-watch.user.js`](poll-watch.user.js). In short: the memo from a poll you ran, the
+issue list the poll screen loads, and the `/api/time` responses the sidebar already makes.
+Everything is kept under `pkpw:` keys in your browser, nothing is sent anywhere, and it
+originates **zero** requests.
+
+Every field it knows about was read off `OpinionPollPage` in the 2026-08-03 bundle pull,
+not off the wire.
+
+---
+
 ## Tests
 
 Run from the repository root:
@@ -1107,6 +1203,7 @@ node userscripts/tools/test-world.js
 node userscripts/tools/test-world-passive.js
 node userscripts/tools/test-gov.js
 node userscripts/tools/test-gov-passive.js
+node userscripts/tools/test-poll-watch.js
 ```
 
 Every suite slices the layer it covers straight out of the shipped script rather than
@@ -1158,6 +1255,14 @@ only until someone adds it back:
   cash; and the freshness map may only record the three declared paths — a blanket
   `seen[path] = now` looks harmless and would in fact keep a list of every route the app
   visited, `/api/users/<name>` included.
+- `test-poll-watch` fences poll-watch, which sits directly beside a write endpoint that
+  spends 5 energy and up to $1,000 a call and is rate-limited by a server cooldown. Rather
+  than ban its one repeating timer — `3m ago` and the cooldown both have to age — it holds
+  the stronger property: nothing anywhere in the file can originate a request, so the timer
+  is safe whatever its period. Its behaviour half drives the derivation and export layers
+  sliced out of the shipped file, where the properties are all about not inventing data: a
+  refused poll is an error body and must not become a data point, and `lean` must come back
+  null for a street poll rather than as a confident-looking zero.
 
 They have nothing else in common; market-watch's was named `test-passive.js` when it
 lived in its own repository and was renamed on the way in.

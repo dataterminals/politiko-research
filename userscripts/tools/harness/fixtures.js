@@ -770,4 +770,84 @@ window.HARNESS_FIXTURES = {
     })(),
   },
 
+  'poll-watch': {
+    label: 'Poll Watch',
+    source: 'OpinionPollPage in the 2026-08-03 bundle pull',
+    note: 'Fire the clock and the issue list first, then the memos. Same-issue memos in sequence are what produce a delta and a trend line; the error reply is there to prove the shape gate drops non-memos.',
+    calls: [
+      {
+        label: 'game clock (stamps each memo)',
+        path: '/api/time',
+        body: { datetime: '07:52 September 1, Y3', acceleration: 52.14 },
+      },
+      {
+        label: 'issue list',
+        path: '/api/actions/poll/issues',
+        body: {
+          issues: [
+            'Civil Rights', 'Drugs', 'Abortion', 'Animal Research', 'Healthcare',
+            'Free Speech', 'LGBT Rights', 'Gun Control', 'Torture', 'Police Behavior',
+            'Intelligence', "Women's Rights", 'Corporations', 'Elections', 'Sweatshops',
+            'Military', 'Nuclear Power', 'Pollution', 'Taxes', 'Immigration',
+          ],
+        },
+      },
+      {
+        label: "focus group — Women's Rights (fine, 7 buckets)",
+        path: '/api/actions/poll',
+        body: {
+          issue: "Women's Rights", method: 'focus_group', mood: 'right-leaning',
+          far_left: 6, center_left: 11, slight_left: 13, neutral: 18,
+          slight_right: 17, center_right: 20, far_right: 15,
+          volatility: 'moderate', salience: 'warm', popularity: 41,
+          best_target: 'Slight Right', persuasion_angle:
+            'The slight-right bloc splits on enforcement, not principle. Frame it as process and a third of them move.',
+          cooldown_until: new Date(Date.now() + 11 * 60_000).toISOString(),
+        },
+      },
+      {
+        label: 'professional — same issue, moved left (delta + trend)',
+        path: '/api/actions/poll',
+        variant: 'moved',
+        body: {
+          issue: "Women's Rights", method: 'professional', mood: 'deadlocked',
+          far_left: 9, center_left: 16, slight_left: 16, neutral: 19,
+          slight_right: 14, center_right: 15, far_right: 11,
+          volatility: 'high', salience: 'hot', popularity: 58,
+          cooldown_until: new Date(Date.now() + 11 * 60_000).toISOString(),
+        },
+      },
+      {
+        label: 'street poll — Taxes (coarse, no lean figure)',
+        path: '/api/actions/poll',
+        variant: 'coarse',
+        body: {
+          issue: 'Taxes', method: 'street', mood: 'right-leaning',
+          left_bloc: 24, center: 21, right_bloc: 55, extreme_tag: 'HARDENING',
+        },
+      },
+      {
+        label: 'online scrape — Civil Rights, boiling',
+        path: '/api/actions/poll',
+        variant: 'civil',
+        body: {
+          issue: 'Civil Rights', method: 'online', mood: 'apathetic / persuadable',
+          left_bloc: 31, center: 34, right_bloc: 35,
+          volatility: 'high', salience: 'boiling', popularity: 77,
+        },
+      },
+      {
+        label: 'a refused poll (must be ignored — no blocs)',
+        path: '/api/actions/poll',
+        variant: 'error',
+        body: { message: 'Not enough energy.', issue: 'Taxes' },
+      },
+      {
+        label: 'something unrelated (must be ignored)',
+        path: '/api/stocks/holdings',
+        body: [{ id: 1, symbol: 'CAP', qty: 40 }],
+      },
+    ],
+  },
+
 };

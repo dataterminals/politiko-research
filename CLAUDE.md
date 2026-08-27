@@ -54,10 +54,11 @@ tools/    recon helpers (PowerShell)
 userscripts/  _template.user.js — passive-tap skeleton + WS TAP + PANEL KIT;
               people-watch, market-watch, time-watch, align-watch, comms-move,
               time-bridge, ws-watch, xp-watch, raid-watch, sleeper-watch,
-              quick-jump, world-watch, gov-watch; README.md documents them; tools/ holds their
-              tests, and tools/harness/ is a browser bench that renders a panel against
-              canned payloads with fetch/WebSocket/XHR stubbed out, so no panel work
-              needs the live game. Every userscript ships from here — no separate repos
+              quick-jump, world-watch, gov-watch, poll-watch; README.md documents
+              them; tools/ holds their tests, and tools/harness/ is a browser bench
+              that renders a panel against canned payloads with fetch/WebSocket/XHR
+              stubbed out, so no panel work needs the live game. Every userscript
+              ships from here — no separate repos
 artifacts/    gitignored: downloaded bundles, HARs, captures
 ```
 
