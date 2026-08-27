@@ -84,12 +84,29 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   (the window it moves is the game's Comms dock).
 - **Every toggle button is the same button.** One 38px square, one three- or four-letter
   word — `ALGN`, `MKT`, `RAID`, `JUMP`. Install four tools and four of these land on one
-  screen, so the box is not the tool's to pick; copy the `FAB KIT v1` block from
+  screen, so the box is not the tool's to pick; copy the `FAB KIT v3` block from
   [`userscripts/_template.user.js`](userscripts/_template.user.js) verbatim, same
-  bump-the-version rule as PANEL KIT. What a tool still owns is the corner it starts in
-  and its state colours, layered on top. No emoji — a 15px glyph is a coin toss across
-  fonts, and four of them tell you nothing about which is which. people-watch is the one
-  exception and is grandfathered: the eye of providence is its mark. `test-placement.js`
+  bump-the-version rule as PANEL KIT. What a tool still owns is its slot in the row, its
+  z-index, and its state colours, layered on top. No emoji — a 15px glyph is a coin toss
+  across fonts, and four of them tell you nothing about which is which. people-watch is the
+  one exception and is grandfathered: the eye of providence is its mark. `test-placement.js`
   hashes the copies and names that exception, so a second symbol button fails the build.
+- **Every button starts in the same row.** `FAB KIT v3` places them: one line across the
+  band above the game's header rule, one slot each, declared as `--pk-slot: N` in the
+  tool's own rule and *nothing else about position* — an inset in a tool's rule silently
+  leaves the row and fails the build. Slots are fixed rather than packed, so a new tool
+  never shuffles the buttons already on screen; the eye leads and the words are
+  alphabetical after it (see the block for the table, and for the three numbers that place
+  the row). A tool that positions its own button — market-watch, people-watch — computes
+  the identical row in JS, because an inline `left/top` outranks the rule; `test-placement.js`
+  reads both and fails on a drift. **Double-click is the only way back into the row**, so
+  every button needs the `dblclick` that clears the stored position *and* calls `reset()`.
+- **A button says when its own panel is open.** `fab.classList.toggle('pk-open', ui.open)`
+  at the single place your tool writes the panel's display, above any `if (!ui.open)
+  return` — below it, the class is only ever added and a closed panel leaves a lit button
+  behind. Always `toggle()` with the second argument: `className =` drops `pk-fab` and
+  takes the whole box with it, and a bare `add()` needs a `remove()` somewhere else to
+  agree with it. The kit owns the **fill** and nothing else, so a tool's state colour
+  still reads through an open button. `test-placement.js` checks all three.
 - Windows box: `git commit -F <file>` rather than `-m` (PowerShell mangles quoted `-m`).
   `.gitattributes` handles the CRLF situation.

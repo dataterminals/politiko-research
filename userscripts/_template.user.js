@@ -438,7 +438,7 @@
   };
 
   // ===========================================================================
-  // 5. FAB KIT v1 — shared verbatim block.
+  // 5. FAB KIT v3 — shared verbatim block.
   //
   //    The toggle button, and the one piece of this repo a player sees before
   //    they open anything. Ten tools can be on screen at once, so the button is
@@ -448,6 +448,20 @@
   //    to change, bump the version in this header and in every tool carrying a
   //    copy, so the copies can be diffed. tools/test-placement.js hashes them.
   //
+  //    v3 also decides WHERE the button starts, which used to be the tool's own
+  //    business and was the last thing keeping the set from reading as a set:
+  //    every button now defaults to one slot of one row across the band above the
+  //    game's header rule. Your rule declares `--pk-slot` and nothing else about
+  //    position — see the block for the slot table and the three numbers that
+  //    place the row.
+  //
+  //    The button also has to say whether ITS window is the one already open, so
+  //    wire `pk-open` at the single place your tool writes the panel's display —
+  //    `fab.classList.toggle('pk-open', ui.open)`, above any `if (!ui.open)
+  //    return`, so closing still reaches it. toggle() with the second argument,
+  //    never `className =`: rebuilding the className drops `pk-fab` and takes
+  //    the whole box with it. test-placement.js checks for both.
+  //
   //    Pick the word the way you would pick a stock ticker: ALGN, MKT, RAID,
   //    SLP, JUMP, SOCK, TIME, WRLD, XP. No emoji — a 15px glyph is a coin toss
   //    across fonts and platforms, and four of them tell you nothing about which
@@ -456,16 +470,19 @@
   //    same square as everyone else's letters.
   //
   //    Your rule goes AFTER the block, same specificity, and carries only what
-  //    is actually yours: the corner it starts in, and any state colour. Where
-  //    you land, avoid the corners already spoken for — the right edge runs
-  //    bottom 16 / 64 / 110 / 156 / 202 at right: 12px, and the left edge runs
-  //    top 12 and bottom 64 / 110.
+  //    is actually yours: your slot in the row, your z-index, and any state
+  //    colour. No inset — top/left/right/bottom belong to the kit now, and
+  //    test-placement.js fails the build if a tool takes one back.
+  //
+  //      .pkxx-fab { --pk-slot: 11; z-index: 2147482000; }
   //
   //    Tools that also do their own placement maths (defaultFabPos, clampFab)
-  //    keep CFG.FAB_SIZE at 38 to match the box below.
+  //    keep CFG.FAB_SIZE at 38 to match the box below, and have to compute the
+  //    same row in JS — the kit's CSS never gets a say once something writes
+  //    left/top inline. test-placement.js checks the two against each other.
   // ===========================================================================
   const FAB_CSS = `
-    /* FAB KIT v1 — shared verbatim block.
+    /* FAB KIT v3 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
        bump the version here and in every tool carrying a copy, so the copies can
        be diffed. Several of these tools are on screen at once, and buttons that
@@ -475,19 +492,82 @@
        box is fixed here and only the word inside it belongs to the tool: three
        or four letters, upper case, no emoji.
 
+       v2 adds .pk-open: the button is filled while its own panel is open. Ten of
+       these can sit on one screen and every panel remembers whether it was open,
+       so the row of buttons was the one thing that could not tell you which
+       windows you already had — you found that out by clicking one and closing it.
+
+       v3 makes that row literal. Until now every tool picked its own corner, and
+       eleven tools meant eleven buttons scattered down both edges of the screen in
+       an order nobody chose: you hunted for the one you wanted. They now default
+       to one row, side by side, in the band above the game's header rule — the
+       header is 52px tall (py-3 either side of a 28px nav link) and the button is
+       38, so top: 7 centres it there, and on any desktop layout that band is empty
+       screen between the nav links and the account menu.
+
+       The kit owns the row. A tool owns its SLOT and nothing else about position:
+
+         .pkxx-fab { --pk-slot: 11; z-index: 2147482000; }
+
+       Slots are fixed rather than packed, and that is the whole point — installing
+       an eleventh tool does not shuffle the ten buttons you already know by
+       position, and a tool you do not have simply leaves its slot empty. The eye
+       leads because it is the mark of the set; the words are alphabetical after it:
+
+         0  the eye  people-watch     6  SLP   sleeper-watch
+         1  ALGN     align-watch      7  SOCK  ws-watch
+         2  GOV      gov-watch        8  TIME  time-watch
+         3  JUMP     quick-jump       9  WRLD  world-watch
+         4  MKT      market-watch    10  XP    xp-watch
+         5  RAID     raid-watch
+
+       Eleven 38px buttons 8px apart is a 498px row, so it runs 249px either side
+       of the middle of the viewport. The floor at 440px is where the game's own
+       chrome ends — 24px of padding, a 62px wordmark, 24px of gap and five nav
+       links, measured off the bundle — so above about 1380px the row is centred,
+       and below that it stops sliding left rather than climb onto the nav.
+
+       Three numbers, if that header ever changes shape: 7 (where the band is), 440
+       (where the nav ends), 249 (half the row). Nothing else in here is placement.
+
+       (No backticks anywhere in here, incidentally. This block is pasted INSIDE a
+       template literal in every tool that carries it, and one backtick in a comment
+       ends the literal and takes the rest of the file with it.)
+
+       The FILL is the open channel, and it is the one property the kit keeps for
+       itself. A tool's state rule comes after this block at the same specificity
+       and therefore wins on border-color and color: an open sleeper-watch
+       still reads green, an open market-watch still reads red, and both still read
+       as open. Put the open state in either of those two properties instead and a
+       tool's state colour erases it without a word. Hover does not outrank it
+       either — open is a state; a pointer passing over is not.
+
+       The fill is one palette step, #18181b to #3f3f46, and it does cost a state
+       colour some contrast while that panel is open: market-watch's red goes from
+       about 4.7:1 to 2.8:1. One step less (#27272a) buys that back, and at 38px it
+       stops reading as filled at all — the border ends up doing the work alone.
+       Both were rendered against a stack before this one was picked.
+
        What this block deliberately leaves to the tool, because it IS the tool's:
-         - which corner the button starts in: position / inset / z-index
+         - its slot in the row, and its z-index: --pk-slot / z-index
          - state colour and badges layered on top (.hot, .live, .pkws-done)
        The tool's own rule goes AFTER this block: same specificity, later wins.
+       An inset is no longer among them — a tool that sets top/left/right/bottom
+       has quietly left the row, and tools/test-placement.js fails that build.
 
        Tools that also do their own placement maths keep CFG.FAB_SIZE in step
        with the 38px below; tools/test-placement.js fails the build if one drifts.
+       They also have to compute this row themselves, because an inline left/top
+       outranks any rule here. Two do: market-watch and people-watch.
 
        people-watch is the one exception to the word. It wears the eye of
        providence, which is its mark and predates this block; the svg rule sizes
        that inside the same square as everyone else's letters. */
     .pk-fab {
       box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      /* The home row. --pk-slot is the tool's; the three numbers are the kit's. */
+      position: fixed; top: 7px;
+      left: calc(max(440px, 50% - 249px) + var(--pk-slot, 0) * 46px);
       display: grid; place-items: center;
       background: #18181b; color: #e4e4e7;
       border: 1px solid #3f3f46; border-radius: 3px;
@@ -497,6 +577,8 @@
     }
     .pk-fab:hover { border-color: #71717a; color: #fafafa; }
     .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    /* Open, and last: neither hover nor a drag may un-fill it. */
+    .pk-fab.pk-open { background: #3f3f46; border-color: #a1a1aa; color: #fafafa; }
     .pk-fab svg { width: 24px; height: 24px; display: block; }
   `;
 
@@ -514,12 +596,27 @@
     // stops a drag from also toggling the panel.
     //
     //   const fab = document.createElement('button');
-    //   fab.className = 'pk-fab';        // plus your own class for the corner
+    //   fab.className = 'pk-fab';        // plus your own class, for the slot
     //   fab.textContent = 'WORD';
     //   const fabDrag = draggable(fab, fab, (pos) => { ui.fab = pos; save(); });
     //   fabDrag.apply(ui.fab);
     //   fab.addEventListener('click', () => { if (!fabDrag.dragged()) toggle(); });
     //   fab.addEventListener('dblclick', () => { ui.fab = null; save(); fabDrag.reset(); });
+    //
+    // That last line is not optional. reset() drops the stored position and clears
+    // the inline left/top, which is the only thing that lets the CSS rule — and so
+    // the home row — apply again; without it a button dragged somewhere awkward has
+    // no way back, and the row is only ever true on a fresh profile.
+    //
+    // …and wherever that toggle writes the panel's display, say so on the button
+    // in the same breath, so the two can never disagree:
+    //
+    //   const sync = () => {
+    //     panel.style.display = ui.open ? 'flex' : 'none';
+    //     fab.classList.toggle('pk-open', ui.open);   // BEFORE any early return
+    //     if (!ui.open) return;
+    //     …
+    //   };
     //
     // Panel skeleton the kit expects: a fixed container, a header that drags it,
     // and a body you re-render. The body wants `flex: 1 1 auto; min-height: 0` so a

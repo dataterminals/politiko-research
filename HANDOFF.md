@@ -79,12 +79,20 @@ every copy so the copies can be diffed.**
 | block | version | where |
 |---|---|---|
 | `PANEL KIT` | v2 | every tool that draws a window |
-| `FAB KIT` | v1 | every tool with a toggle button |
+| `FAB KIT` | v3 | every tool with a toggle button |
 | `WS TAP` | v2 | `_template`, `ws-watch` |
 
 `tools/test-placement.js` hashes the FAB KIT copies, so a tool that quietly forks the button
 fails the build. It also names the two deliberate exceptions — market-watch's own corner
 grips, and comms-move resizing nothing.
+
+**`FAB KIT` went to v3 on 2026-08-26.** v3 takes the last thing a tool still chose about its
+button — where it starts — and puts all eleven in one row across the band above the game's
+header rule, one `--pk-slot` each. A tool's own rule may no longer carry an inset, and the
+two tools that place their own button (market-watch, people-watch) carry the same row in JS
+because an inline `left/top` outranks any rule; the test reads the CSS and both JS copies and
+fails on a drift. Six buttons had no double-click-to-home at all before this, which is the
+only way back into the row once a button has been dragged — they all have it now.
 
 **`WS TAP` went to v2 on 2026-08-26** and the reason generalizes: see the next section.
 
@@ -137,10 +145,12 @@ endpoint all 13 tools tap still exists.
   kit pins a panel to left/top before the grab: the browser's grabber only grows a box down
   and right, so a panel still on its CSS `right`/`bottom` corner grows away from the pointer.
   That bug shipped in xp-watch for six versions before v2 fixed it in the shared block.
-- **Every toggle button is the same button** — `FAB KIT v1`, one 38 px square, a three- or
+- **Every toggle button is the same button** — `FAB KIT v2`, one 38 px square, a three- or
   four-letter word, no emoji. Install four tools and four of these land on one screen, so the
   box is not the tool's to pick. people-watch's eye is grandfathered and is named as an
-  exception in the test.
+  exception in the test. v2 also fills the button while its own panel is open
+  (`classList.toggle('pk-open', ui.open)`, above the paint function's early return). The kit
+  claims the fill and nothing else, so a tool's state colour still reads through it.
 - **`@grant none` is load-bearing** in every tool that taps `fetch`. Any other grant
   sandboxes `window`, the wrap lands on the sandbox, and the tap silently sees nothing.
   time-bridge is the exception *because* it taps nothing — which is exactly why the reading

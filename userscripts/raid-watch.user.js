@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Raid Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.0
+// @version      0.4.0
 // @description  Records faction raids from responses the game already fetched: the raid list your faction page polls on its own every five seconds, its event log, and the post-mortem report. Builds the event-type vocabulary the client never spells out, charts the score curve, and ranks who actually did the work. Passive — zero added requests, and it never touches a raid action.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -62,7 +62,7 @@
   'use strict';
 
   const TAG = '[pkrw]';
-  const VERSION = '0.2.0';
+  const VERSION = '0.4.0';
   const log = (...a) => console.debug(TAG, ...a);
 
   // ===========================================================================
@@ -596,7 +596,7 @@
   const CSS = `
     :host { all: initial; }
     * { box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    /* FAB KIT v1 — shared verbatim block.
+    /* FAB KIT v3 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
        bump the version here and in every tool carrying a copy, so the copies can
        be diffed. Several of these tools are on screen at once, and buttons that
@@ -606,19 +606,82 @@
        box is fixed here and only the word inside it belongs to the tool: three
        or four letters, upper case, no emoji.
 
+       v2 adds .pk-open: the button is filled while its own panel is open. Ten of
+       these can sit on one screen and every panel remembers whether it was open,
+       so the row of buttons was the one thing that could not tell you which
+       windows you already had — you found that out by clicking one and closing it.
+
+       v3 makes that row literal. Until now every tool picked its own corner, and
+       eleven tools meant eleven buttons scattered down both edges of the screen in
+       an order nobody chose: you hunted for the one you wanted. They now default
+       to one row, side by side, in the band above the game's header rule — the
+       header is 52px tall (py-3 either side of a 28px nav link) and the button is
+       38, so top: 7 centres it there, and on any desktop layout that band is empty
+       screen between the nav links and the account menu.
+
+       The kit owns the row. A tool owns its SLOT and nothing else about position:
+
+         .pkxx-fab { --pk-slot: 11; z-index: 2147482000; }
+
+       Slots are fixed rather than packed, and that is the whole point — installing
+       an eleventh tool does not shuffle the ten buttons you already know by
+       position, and a tool you do not have simply leaves its slot empty. The eye
+       leads because it is the mark of the set; the words are alphabetical after it:
+
+         0  the eye  people-watch     6  SLP   sleeper-watch
+         1  ALGN     align-watch      7  SOCK  ws-watch
+         2  GOV      gov-watch        8  TIME  time-watch
+         3  JUMP     quick-jump       9  WRLD  world-watch
+         4  MKT      market-watch    10  XP    xp-watch
+         5  RAID     raid-watch
+
+       Eleven 38px buttons 8px apart is a 498px row, so it runs 249px either side
+       of the middle of the viewport. The floor at 440px is where the game's own
+       chrome ends — 24px of padding, a 62px wordmark, 24px of gap and five nav
+       links, measured off the bundle — so above about 1380px the row is centred,
+       and below that it stops sliding left rather than climb onto the nav.
+
+       Three numbers, if that header ever changes shape: 7 (where the band is), 440
+       (where the nav ends), 249 (half the row). Nothing else in here is placement.
+
+       (No backticks anywhere in here, incidentally. This block is pasted INSIDE a
+       template literal in every tool that carries it, and one backtick in a comment
+       ends the literal and takes the rest of the file with it.)
+
+       The FILL is the open channel, and it is the one property the kit keeps for
+       itself. A tool's state rule comes after this block at the same specificity
+       and therefore wins on border-color and color: an open sleeper-watch
+       still reads green, an open market-watch still reads red, and both still read
+       as open. Put the open state in either of those two properties instead and a
+       tool's state colour erases it without a word. Hover does not outrank it
+       either — open is a state; a pointer passing over is not.
+
+       The fill is one palette step, #18181b to #3f3f46, and it does cost a state
+       colour some contrast while that panel is open: market-watch's red goes from
+       about 4.7:1 to 2.8:1. One step less (#27272a) buys that back, and at 38px it
+       stops reading as filled at all — the border ends up doing the work alone.
+       Both were rendered against a stack before this one was picked.
+
        What this block deliberately leaves to the tool, because it IS the tool's:
-         - which corner the button starts in: position / inset / z-index
+         - its slot in the row, and its z-index: --pk-slot / z-index
          - state colour and badges layered on top (.hot, .live, .pkws-done)
        The tool's own rule goes AFTER this block: same specificity, later wins.
+       An inset is no longer among them — a tool that sets top/left/right/bottom
+       has quietly left the row, and tools/test-placement.js fails that build.
 
        Tools that also do their own placement maths keep CFG.FAB_SIZE in step
        with the 38px below; tools/test-placement.js fails the build if one drifts.
+       They also have to compute this row themselves, because an inline left/top
+       outranks any rule here. Two do: market-watch and people-watch.
 
        people-watch is the one exception to the word. It wears the eye of
        providence, which is its mark and predates this block; the svg rule sizes
        that inside the same square as everyone else's letters. */
     .pk-fab {
       box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      /* The home row. --pk-slot is the tool's; the three numbers are the kit's. */
+      position: fixed; top: 7px;
+      left: calc(max(440px, 50% - 249px) + var(--pk-slot, 0) * 46px);
       display: grid; place-items: center;
       background: #18181b; color: #e4e4e7;
       border: 1px solid #3f3f46; border-radius: 3px;
@@ -628,8 +691,10 @@
     }
     .pk-fab:hover { border-color: #71717a; color: #fafafa; }
     .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    /* Open, and last: neither hover nor a drag may un-fill it. */
+    .pk-fab.pk-open { background: #3f3f46; border-color: #a1a1aa; color: #fafafa; }
     .pk-fab svg { width: 24px; height: 24px; display: block; }
-    .fab { position: fixed; right: 12px; bottom: 110px; z-index: 2147483000; }
+    .fab { --pk-slot: 5; z-index: 2147483000; }
     .panel {
       position: fixed; right: 12px; bottom: 156px; width: ${CFG.PANEL_W}px;
       max-width: calc(100vw - 24px); max-height: 74vh; z-index: 2147483000;
@@ -963,7 +1028,8 @@
   function paint() {
     if (!root || !panelEl) return;
     panelEl.style.display = ui.open ? 'flex' : 'none';
-    if (!ui.open) return;
+    fab.classList.toggle('pk-open', ui.open);   // the button says which window is up —
+    if (!ui.open) return;                       // above the return, so closing reaches it
 
     // header + tabs: refresh what they SAY, never who they are
     covEl.textContent =

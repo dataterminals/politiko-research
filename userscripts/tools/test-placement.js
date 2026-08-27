@@ -13,7 +13,7 @@ const cut = (from, to) => {
   return SRC.slice(i, j);
 };
 
-const P_SLICE = cut('  const defaultFabPos = ()', '  function makeDraggable()');
+const P_SLICE = cut('  const HOME = {', '  function makeDraggable()');
 
 const CFG = { PANEL_W: 560, PANEL_MIN_H: 160, FAB_SIZE: 38, EDGE: 8 };
 
@@ -40,16 +40,32 @@ const check = (label, got, want) => {
   if (!ok) { console.log(`        got  ${JSON.stringify(got)}\n        want ${JSON.stringify(want)}`); fail++; }
 };
 
-console.log('\n— default position —');
+console.log('\n— the home row —');
 {
+  // FAB KIT v3: every button in this repo defaults to one slot of one row across the
+  // band above the game's header rule. people-watch holds slot 0 and places its own
+  // button, so this is the JS half of that row — the CSS half is checked at the bottom
+  // of this file, against these same numbers.
   const s = mkStage(1600, 900);
   const d = s.defaultFabPos();
-  check('sits on the right edge', d.x, 1600 - CFG.FAB_SIZE - CFG.EDGE);
-  check('sits in the upper third, not in a corner', d.y, Math.round(900 * 0.28));
-  // The whole point of the height: the Comms dock is 420px tall and anchored to the
-  // bottom of this same edge, so mid-height lands on top of it on a short window.
-  check('clears a 420px dock on a 900px window', d.y + CFG.FAB_SIZE < 900 - 420, true);
-  check('...and on a 720px one', Math.round(720 * 0.28) + CFG.FAB_SIZE < 720 - 420, true);
+  check('sits in the header band, not in a corner', d.y, 7);
+  check('the whole button clears the 52px band', d.y + CFG.FAB_SIZE <= 52, true);
+  check('centred on a wide window', d.x, 800 - 249);
+
+  // Below ~1380px the row would start climbing onto the game's own nav links, so it
+  // stops sliding left instead. That floor is why the maths is a max() rather than a
+  // subtraction, and it is the half most likely to get simplified away later.
+  check('floored clear of the nav on a 1200px window', mkStage(1200, 800).defaultFabPos().x, 440);
+  check('...and centred again when there is room', mkStage(2560, 1440).defaultFabPos().x, 1280 - 249);
+  check('the floor engages below ~1380px', mkStage(1376, 900).defaultFabPos().x, 440);
+  check('...and not above it', mkStage(1382, 900).defaultFabPos().x, 442);
+
+  // Eleven slots at a 46px pitch. Slot 10 is the far end of the row and has to stay on
+  // screen on the narrowest window where the row is still centred-or-floored.
+  const ROW = 11 * CFG.FAB_SIZE + 10 * 8;
+  check('eleven slots make a 498px row', ROW, 498);
+  check('...which is what 249 is half of', ROW, 249 * 2);
+  check('the far slot fits a 1200px window', 440 + 10 * 46 + CFG.FAB_SIZE <= 1200 - CFG.EDGE, true);
 }
 
 console.log('\n— clamping —');
@@ -138,6 +154,33 @@ const onScreen = (s) => {
     const h = px(s.panel.style.maxHeight);
     check(`height at y=${y} is bounded and usable`, h >= CFG.PANEL_MIN_H && h <= 900, true);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Before anything about the blocks: every shipped file has to PARSE.
+//
+// Nothing in this suite used to. The checks below read the tools as text and the
+// driven ones slice single functions out of them, so a file could be syntactically
+// broken from end to end and the whole suite would still print ALL OK.
+//
+// The way that actually happened: FAB KIT's CSS is pasted inside a template
+// literal, and a backtick written into its comment ends the literal. Every copy
+// took it at once, every text check passed, and the first sign of it was a tool
+// that silently never mounted. A parse is one line and it fences the whole class.
+// ---------------------------------------------------------------------------
+console.log('\n— every shipped userscript parses —');
+{
+  const dir = path.join(__dirname, '..');
+  const broken = [];
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.user.js'))) {
+    try {
+      // The scripts are IIFEs, not modules; new Function parses without running.
+      new Function(fs.readFileSync(path.join(dir, f), 'utf8'));
+    } catch (e) {
+      broken.push(`${f}: ${e.message}`);
+    }
+  }
+  check('no tool ships a syntax error', broken, []);
 }
 
 // ---------------------------------------------------------------------------
@@ -421,7 +464,7 @@ console.log('\n— the drag handle survives a repaint —');
 }
 
 // ---------------------------------------------------------------------------
-// FAB KIT v1 — one button, eleven copies.
+// FAB KIT v3 — one button, eleven copies.
 //
 // The toggle button is the only part of this repo a player sees before they open
 // anything, and several of these tools sit on the same screen at once. Before the
@@ -434,10 +477,10 @@ console.log('\n— the drag handle survives a repaint —');
 // the element actually wears the class, that the word is a word, and that a tool
 // doing its own placement maths agrees with the kit about how big the box is.
 // ---------------------------------------------------------------------------
-console.log('\n— FAB KIT v1 is one button everywhere —');
+console.log('\n— FAB KIT v3 is one button everywhere —');
 {
   const dir = path.join(__dirname, '..');
-  const A = '    /* FAB KIT v1 — shared verbatim block.';
+  const A = '    /* FAB KIT v3 — shared verbatim block.';
   const B = '    .pk-fab svg { width: 24px; height: 24px; display: block; }';
   const BOX = 38; // .pk-fab's width/height, and what CFG.FAB_SIZE has to agree with
 
@@ -482,6 +525,41 @@ console.log('\n— FAB KIT v1 is one button everywhere —');
     return !/(?:className\s*=\s*'pk-fab|el\(\s*'(?:button|div)'\s*,\s*'pk-fab)/.test(src);
   });
   check('every button actually wears pk-fab', unworn, []);
+
+  // v2 moved the open state onto the button, and the CSS for it is inert in any tool
+  // that never sets the class. That failure is silent, and it is precisely the thing
+  // the state was added to fix: ten buttons on one screen, every panel remembering
+  // whether it was open, and no way to tell which windows are already up except by
+  // clicking one and watching it close.
+  const OPEN = /classList\.toggle\(\s*'pk-open'\s*,/;
+  const unlit = mounted.filter((f) => !OPEN.test(fs.readFileSync(path.join(dir, f), 'utf8')));
+  check('every button says when its own panel is open', unlit, []);
+
+  // toggle(name, cond) with the SECOND argument, always. A bare add() paired with a
+  // remove() elsewhere is two places that have to agree about one fact, and the one
+  // that gets missed is the close path — which strands a lit button over nothing.
+  const oneWay = [];
+  for (const f of mounted) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    for (const m of src.matchAll(/classList\.(add|remove|toggle)\(\s*'pk-open'\s*([,)])/g)) {
+      if (m[1] !== 'toggle' || m[2] !== ',') oneWay.push(`${f} (${m[0].trim()}…)`);
+    }
+  }
+  check('...as toggle(name, cond), never a one-way add', oneWay, []);
+
+  // And it has to sit ABOVE the paint function's own `if (!ui.open) return`. Below it
+  // the class is only ever added, never removed: the panel closes and the button stays
+  // lit until something else repaints it. Opening works, which is what makes it easy
+  // to ship — you have to close a panel and look at the button to see it at all.
+  const late = [];
+  for (const f of mounted) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const lit = src.search(OPEN);
+    if (lit < 0) continue;                     // already reported as unlit, above
+    const early = src.search(/if \(!ui\.open\) return/);
+    if (early >= 0 && early < lit) late.push(f);
+  }
+  check('...above the early return, so closing reaches it too', late, []);
 
   // The word. Three or four upper-case letters, like a ticker — long enough to tell
   // ALGN from a shrug, short enough to fit the box at 11px. XP is two and is the
@@ -563,6 +641,146 @@ console.log('\n— FAB KIT v1 is one button everywhere —');
     }
   }
   check('no repaint drops pk-fab off the button', clobbered, []);
+}
+
+
+// ---------------------------------------------------------------------------
+// FAB KIT v3 — one row, eleven slots.
+//
+// v3 took the last thing a tool still chose about its button: where it starts.
+// Eleven tools picking their own corner meant eleven buttons down both edges of
+// the screen in an order nobody chose, and finding the one you wanted meant
+// remembering which corner that tool had claimed. They now default to one row
+// across the band above the game's header rule, one slot each.
+//
+// A row only holds if nothing quietly steps out of it, and there are three ways to:
+// take an inset back in your own rule, forget to declare a slot, or — for the two
+// tools that place their own button — let the JS drift from the CSS. All three fail
+// silently and only on someone else's screen, so all three are checked here.
+// ---------------------------------------------------------------------------
+console.log('\n— FAB KIT v3 puts every button in one row —');
+{
+  const dir = path.join(__dirname, '..');
+  const NO_FAB = new Set(['time-bridge.user.js', 'comms-move.user.js']);
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.user.js'));
+  const mounted = files.filter((f) => !NO_FAB.has(f) && f !== '_template.user.js');
+  const src = (f) => fs.readFileSync(path.join(dir, f), 'utf8');
+
+  // The row itself, read back out of the kit rather than restated here — restating
+  // it is how a test ends up agreeing with itself instead of with the shipped file.
+  const kit = src('_template.user.js');
+  const row = kit.match(/position: fixed; top: (\d+)px;\s*\n\s*left: calc\(max\((\d+)px, 50% - (\d+)px\) \+ var\(--pk-slot, 0\) \* (\d+)px\);/);
+  check('the kit places the row itself', !!row, true);
+  const [TOP, FLOOR, HALF, PITCH] = row ? row.slice(1).map(Number) : [];
+  check('...7px down, inside the 52px header band', [TOP, TOP + 38 <= 52], [7, true]);
+  check('...floored where the game nav ends, centred above that', [FLOOR, HALF], [440, 249]);
+  check('...at a 46px pitch, which is the 38px box and an 8px gap', PITCH, 38 + 8);
+  check('...and half the row is what eleven slots need', HALF, Math.round((11 * 38 + 10 * 8) / 2));
+
+  // Every tool declares a slot, and the eleven of them are exactly 0..10 — no
+  // duplicates (two buttons stacked on one square, and the one underneath is
+  // unreachable) and no gaps that are really a typo.
+  const RULE = /^[ \t]*([#.][\w.:#-]*fab[\w.:#-]*)[ \t]*\{([^}]*)\}/gmi;
+  const KIT_END = '    .pk-fab svg { width: 24px; height: 24px; display: block; }';
+  const own = (s) => s.slice(s.indexOf(KIT_END) + KIT_END.length);   // past the block
+  const slotOf = (s) => {
+    for (const m of own(s).matchAll(RULE)) {
+      if (m[1].startsWith('.pk-fab')) continue;            // that IS the kit
+      const d = m[2].match(/--pk-slot:\s*(\d+)/);
+      if (d) return Number(d[1]);
+    }
+    return null;
+  };
+
+  const slots = new Map();
+  const slotless = [];
+  for (const f of mounted) {
+    const n = slotOf(src(f));
+    if (n === null) { slotless.push(f); continue; }
+    if (!slots.has(n)) slots.set(n, []);
+    slots.get(n).push(f);
+  }
+  check('every tool declares its slot', slotless, []);
+  check('no two tools claim the same slot',
+    [...slots.entries()].filter(([, l]) => l.length > 1).map(([n, l]) => `${n}: ${l.join(' + ')}`), []);
+  check(`the ${mounted.length} slots are 0..${mounted.length - 1}`,
+    [...slots.keys()].sort((a, b) => a - b), mounted.map((_, i) => i));
+
+  // Declaring a slot and WEARING it are two different things. A slot on a selector the
+  // button does not carry is inert, and the failure is not an error — the button falls
+  // back to var(--pk-slot, 0) and quietly parks itself on top of people-watch's eye.
+  // So: the selector that carries the slot has to be a class or id the button is
+  // actually given at mount.
+  const wornBy = (s) => {
+    const t = new Set();
+    for (const m of s.matchAll(/el\(\s*'(?:button|div)'\s*,\s*'([^']*pk-fab[^']*)'/g)) {
+      for (const c of m[1].split(/\s+/)) t.add('.' + c);
+    }
+    for (const m of s.matchAll(/[\w$]*[Ff]ab\.className\s*=\s*'([^']*pk-fab[^']*)'/g)) {
+      for (const c of m[1].split(/\s+/)) t.add('.' + c);
+    }
+    for (const m of s.matchAll(/[\w$]*[Ff]ab\.id\s*=\s*'([^']+)'/g)) t.add('#' + m[1]);
+    return t;
+  };
+
+  const inert = [];
+  for (const f of mounted) {
+    const s = src(f);
+    let sel = null;
+    for (const m of own(s).matchAll(RULE)) {
+      if (m[1].startsWith('.pk-fab')) continue;
+      if (/--pk-slot:/.test(m[2])) { sel = m[1]; break; }
+    }
+    if (sel && !wornBy(s).has(sel)) inert.push(`${f} (${sel} is never worn)`);
+  }
+  check('...on a selector the button actually wears', inert, []);
+
+  // The kit owns where the button goes, full stop. A tool that sets an inset in its
+  // own rule wins on specificity and leaves the row without saying so — and because
+  // the rest of the kit still applies, the button looks completely correct.
+  const INSET = /(?:^|[;{\s])(?:top|left|right|bottom|inset)\s*:/;
+  const strayed = [];
+  for (const f of files) {
+    for (const m of own(src(f)).matchAll(RULE)) {
+      const [, sel, decls] = m;
+      if (sel.startsWith('.pk-fab')) continue;   // that IS the kit
+      if (INSET.test(decls)) strayed.push(`${f} (${sel})`);
+    }
+  }
+  check('no tool takes an inset back in its own rule', strayed, []);
+
+  // market-watch and people-watch place their own button, so an inline left/top lands
+  // on it every mount and the kit's rule never gets the last word. They carry the row
+  // in JS instead, and the two copies have to say the same thing — a drift here is a
+  // button that sits one slot off, or 16px high, on two tools out of eleven.
+  const SELF_PLACED = ['market-watch.user.js', 'people-watch.user.js'];
+  for (const f of SELF_PLACED) {
+    const s = src(f);
+    const m = s.match(/const HOME = \{ slot: (\d+), top: (\d+), floor: (\d+), half: (\d+), pitch: (\d+) \};/);
+    check(`${f} carries the row in JS`, !!m, true);
+    if (!m) continue;
+    const [slot, top, floor, half, pitch] = m.slice(1).map(Number);
+    check(`${f}: the JS row matches the CSS`, [top, floor, half, pitch], [TOP, FLOOR, HALF, PITCH]);
+    const css = slotOf(s);
+    check(`${f}: the JS slot matches its own --pk-slot`, slot, css);
+  }
+
+  // Double-click is the ONLY way back into the row. Drag a button somewhere awkward
+  // and the stored position wins forever after; without the handler the row is only
+  // ever true on a profile that has never touched it. Six of these were missing it
+  // when the row was introduced, which is how it stopped being a recovery path and
+  // started being a thing you happened to know about market-watch.
+  const stranded = [];
+  for (const f of mounted) {
+    const s = src(f);
+    let ok = false;
+    for (const m of s.matchAll(/[\w$]*[Ff]ab\.(?:addEventListener\('dblclick'|ondblclick\s*=)/g)) {
+      const body = s.slice(m.index, m.index + 220);
+      if (/\.reset\(\)|defaultFabPos\(\)/.test(body)) ok = true;
+    }
+    if (!ok) stranded.push(f);
+  }
+  check('every button can be double-clicked back into its slot', stranded, []);
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

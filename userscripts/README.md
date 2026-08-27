@@ -12,19 +12,19 @@ bannable, so the disclosure block is the contract.
 
 | tool | version | raw link |
 |---|---|---|
-| People Watch | 1.6.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
-| Market Watch | 1.1.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
-| Time Watch | 0.6.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
-| Align Watch | 0.4.1 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
+| People Watch | 1.7.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| Market Watch | 1.2.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
+| Time Watch | 0.7.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
+| Align Watch | 0.5.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
 | Comms Move | 0.1.1 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
-| WS Watch | 0.5.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.4.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
-| Raid Watch | 0.3.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
-| Sleeper Watch | 0.3.1 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
-| Quick Jump | 0.3.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
-| World Watch | 0.2.1 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
-| Gov Watch | 0.1.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
+| WS Watch | 0.6.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
+| XP Watch | 0.5.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| Raid Watch | 0.4.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
+| Sleeper Watch | 0.4.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
+| Quick Jump | 0.4.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
+| World Watch | 0.3.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
+| Gov Watch | 0.2.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, and the shared `PANEL KIT` and `FAB KIT` blocks).
@@ -62,15 +62,11 @@ repositions". `tools/test-placement.js` encodes both exceptions by name.
 
 ## The buttons
 
-`FAB KIT v1` is the same idea applied to the toggle button — the one part of any of this a
+`FAB KIT v3` is the same idea applied to the toggle button — the one part of any of this a
 player sees before they open anything. Install four of these tools and four buttons land on
 your screen, so they are a set rather than each tool's own flourish: **one 38px square, one
-three-or-four-letter word.**
-
-| | | | | | |
-|---|---|---|---|---|---|
-| `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` |
-| `SOCK` | `TIME` | `WRLD` | `XP` | 👁 People Watch | |
+three-or-four-letter word, all of them in one row.** (The row, and which button is which,
+is the table further down.)
 
 **People Watch is the one exception**, and it is grandfathered: it wears the eye of
 providence, which has been its mark since 1.0. Everything else about it is the kit — same
@@ -81,16 +77,51 @@ Before the kit each tool had picked its own button: three different sizes, two d
 shapes, and four emoji rendering at the mercy of whatever font the platform handed them. A
 glyph at 15px is a coin toss, and four of them tell you nothing about which is which.
 
-What each tool still owns is the corner it starts in and its own **state colour** — Sleeper
+What each tool still owns is its slot in the row and its own **state colour** — Sleeper
 Watch's button goes green when a meeting is open, Market Watch's goes red when a live order
 is armed, WS Watch's goes green when a capture finishes. Those layer on top of the shared
 box; nothing redraws it, and the test fails the build if anything tries.
 
-The defaults no longer collide, either, which is what made the uniform size worth having:
-the right edge runs `MKT` `XP` `RAID` `JUMP` `SLP` bottom-to-top with 8px between each,
-and the left edge runs `TIME` at the top and `ALGN` `WRLD` `GOV` up from the bottom. Every
-one of them still drags anywhere and remembers, and a stored position always wins — moving
-the defaults moves nothing you have already put somewhere.
+**A button is filled while its own panel is open** — that is what v2 added. Every panel here
+remembers whether it was open, so on a fresh tab several of them come back up at once, and
+until now the row of buttons was the one thing that could not tell you which. You found out
+by clicking one and watching it close.
+
+The fill is the *only* thing the shared block claims for the open state, and that is
+deliberate: a tool's state rule comes after it and wins on the border and the text, so an
+open Sleeper Watch still reads green and an open Market Watch still reads red. Both still
+read as open. It costs the state colour some contrast while that panel is up — red goes from
+about 4.7:1 to 2.8:1 — and the darker fill that buys it back stops reading as filled at 38px
+at all. Both were rendered against a stack of buttons before this one was picked.
+
+**They all start in one row now, and that is what v3 added.** Until v3 each tool picked its
+own corner, so eleven tools meant eleven buttons scattered down both edges of the screen in
+an order nobody chose — finding the one you wanted meant remembering which corner that tool
+had claimed. They now default to a single line across the band above the game's header rule,
+which on any desktop layout is empty screen between the nav links and the account menu:
+
+| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 👁 | `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` | `SOCK` | `TIME` | `WRLD` | `XP` |
+
+The eye leads because it is the mark of the set; the words are alphabetical after it. Slots
+are **fixed rather than packed**, which is the point — installing an eleventh tool does not
+shuffle the ten buttons you already know by position, and a tool you do not have simply
+leaves its slot empty.
+
+The row is 498px wide (eleven 38px buttons, 8px apart) and centred on the window, with a
+floor at 440px so it stops sliding left rather than climb onto the game's own nav links.
+Above about 1380px it is centred; between roughly 1090 and 1380 it sits at the floor; below
+about 1090 the last few buttons run under the account menu, and below 768 the game swaps in
+a different header entirely. Drag them out of the row on a window that small — that is what
+dragging is for.
+
+**Every one of them still drags anywhere and remembers, and a stored position always wins.**
+Which is also the one thing to know when this update lands: a button you have already
+dragged somewhere stays there. **Double-click a button to send it back to its slot** — that
+is the only way in, and it is worth doing once per tool to line the set up. (Double-clicking
+a *panel's* title bar is the separate, older gesture that resets that panel's position and
+size.) Six of the eleven had no double-click at all before v3; they do now.
 
 ---
 
