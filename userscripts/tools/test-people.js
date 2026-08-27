@@ -19,6 +19,8 @@ const cut = (from, to) => {
 const W_SLICE = cut('  const PROFILE_RE =', '  // ===========================================================================\n  // Derived metrics');
 const D_SLICE = cut('  const ms = (iso) =>', '  const fmtDur = (msv)');
 const S_SLICE = cut('  const ms = (iso) =>', '  // ===========================================================================\n  // Panel');
+const C_SLICE = cut('  /** the <col> elements of the table paint() built last',
+  '  /**\n   * The divider between one column and the next.');
 
 /** rows() reads `people` and `ui` from the closure, so both are injected. */
 const mkRows = (people, ui, CFG) =>
@@ -38,6 +40,36 @@ const mkWalk = (people, roster, pathname, ui = { walk: 'roster' }, displayOrder 
     people, roster, { pathname }, { pushState() {} }, { dispatchEvent() {} }, () => {}, ui, displayOrder, () => {});
 
 const mkDerive = (CFG) => new Function('CFG', `${D_SLICE}\nreturn { derive, ms };`)(CFG);
+
+/**
+ * The column-sizing layer, against a table made of plain objects.
+ *
+ * Node has no layout engine, so nothing here can prove that a 40px column *looks*
+ * like 40px — that was checked in tools/harness/. What it can prove is the
+ * arithmetic between the stored map and the style properties, which is where the
+ * damage would be: a clamp that does not clamp, a min-width that disagrees with the
+ * widths it is the sum of, or a stored map that quietly loses a column.
+ *
+ * `shown` is what each header would measure on screen; the stub hands it back from
+ * getBoundingClientRect so measureShown() has something real to read.
+ */
+const mkCols = (ui, COLUMNS, shown, CFG = { COL_MIN: 26 }) => {
+  const colEls = COLUMNS.map(() => ({ style: {} }));
+  const heads = COLUMNS.map((c) => ({
+    cls: c.key,
+    getBoundingClientRect: () => ({ width: shown[c.key] }),
+  }));
+  const table = {
+    style: {},
+    classList: { names: new Set(), add(n) { this.names.add(n); }, remove(n) { this.names.delete(n); } },
+    // the real one asks for `thead th:not(.fill)`; the stub has no filler to exclude
+    querySelectorAll: () => heads,
+  };
+  const api = new Function('ui', 'CFG', 'COLUMNS', 'saveNow', 'paint', 'seed',
+    `${C_SLICE}\ncolEls = seed;\nreturn { applyCols, measureShown, measureNatural, colBase, colsComplete, resetCols, dragging: () => colDragging };`,
+  )(ui, CFG, COLUMNS, () => {}, () => {}, colEls);
+  return { ...api, table, colEls, widths: () => colEls.map((c) => c.style.width) };
+};
 
 const CFG = { NEVER_STUCK_MS: 2 * 3600_000 };
 
@@ -468,6 +500,133 @@ console.log('\n— the list the walk follows is the list you can see —');
     const r = mkRows(ledger, { ...base, group: 'none' }, { ...D_CFG, LIST_CAP: 2 });
     check('the walk stops at the same cap the table draws', r.displayOrder(), ['ana', 'bo']);
   }
+}
+
+console.log('\n— column sizing —');
+{
+  const COLUMNS = [
+    { key: 'player' }, { key: 'idle' }, { key: 'city' }, { key: 'social' },
+    { key: 'rank' }, { key: 'record' }, { key: 'seen' },
+  ];
+  const SHOWN = { player: 91, idle: 86, city: 66, social: 86, rank: 91, record: 59, seen: 66 };
+  const SUM = Object.values(SHOWN).reduce((a, b) => a + b, 0);
+
+  {
+    // Nothing stored is not a layout to restore. The table has to be left exactly as
+    // the stylesheet wrote it, or `width: 100%` is fighting an inline table-layout
+    // that nobody asked for.
+    const ui = { cols: null };
+    const c = mkCols(ui, COLUMNS, SHOWN);
+    c.applyCols(c.table);
+    check('no stored widths leaves the layout alone', c.table.style.tableLayout, '');
+    check('...and writes no column width', c.widths(), ['', '', '', '', '', '', '']);
+  }
+
+  {
+    const ui = { cols: { ...SHOWN, city: 26 } };
+    const c = mkCols(ui, COLUMNS, SHOWN);
+    c.applyCols(c.table);
+    check('a full map pins the layout', c.table.style.tableLayout, 'fixed');
+    check('...writes every column', c.widths(),
+      ['91px', '86px', '26px', '86px', '91px', '59px', '66px']);
+    // The min-width is what makes the body scroll rather than the columns shrink, so
+    // it has to be the sum of the widths actually written — including the clamp.
+    check('...and a min-width that is their sum', c.table.style.minWidth, `${SUM - 40}px`);
+  }
+
+  {
+    // A width below the floor is stored as asked and drawn at the floor, so dragging
+    // past the end and back does not lose the column you were dragging.
+    const ui = { cols: { ...SHOWN, city: 4 } };
+    const c = mkCols(ui, COLUMNS, SHOWN);
+    c.applyCols(c.table);
+    check('a width under the floor is drawn at the floor', c.widths()[2], '26px');
+    check('...and counted at the floor too', c.table.style.minWidth, `${SUM - 66 + 26}px`);
+  }
+
+  {
+    // The migration path: a stored map from before a column existed, carrying junk
+    // and a key for a column that has since gone. Dropping the whole map over that
+    // would throw away a layout someone chose; keeping the junk would write
+    // `width: NaNpx`, which the browser ignores without saying so.
+    const ui = { cols: { player: 200, city: 40, rank: null, ancient: 999 } };
+    const c = mkCols(ui, COLUMNS, SHOWN);
+    c.applyCols(c.table);
+    check('a partial map keeps what was set', [ui.cols.player, ui.cols.city], [200, 40]);
+    check('...measures what was missing', ui.cols.rank, SHOWN.rank);
+    check('...drops a column that no longer exists', 'ancient' in ui.cols, false);
+    check('...and is complete afterwards', c.colsComplete(ui.cols), true);
+  }
+
+  {
+    // A gesture starts from the widths on screen, not from the naturals — measuring
+    // naturals here would make the first pixel of the first drag a whole-table jump.
+    const ui = { cols: null };
+    const c = mkCols(ui, COLUMNS, SHOWN);
+    check('the first gesture starts from what is on screen', c.colBase(c.table), SHOWN);
+    ui.cols = { ...SHOWN, city: 30 };
+    check('a later one starts from what is stored', c.colBase(c.table).city, 30);
+    c.colBase(c.table).city = 1;
+    check('...by copy, so a cancelled gesture cannot edit it', ui.cols.city, 30);
+  }
+
+  {
+    // measureNatural() unpins the layout to read it and has to put every part of it
+    // back — the class, the col widths, and both table properties.
+    const ui = { cols: { ...SHOWN, city: 26 } };
+    const c = mkCols(ui, COLUMNS, SHOWN);
+    c.applyCols(c.table);
+    const before = c.widths();
+    c.measureNatural(c.table);
+    check('measuring leaves no class behind', c.table.classList.names.size, 0);
+    check('...restores every column width', c.widths(), before);
+    check('...and the table properties', [c.table.style.tableLayout, c.table.style.minWidth],
+      ['fixed', `${SUM - 40}px`]);
+  }
+
+  {
+    const ui = { cols: { ...SHOWN } };
+    const c = mkCols(ui, COLUMNS, SHOWN);
+    c.applyCols(c.table);
+    c.resetCols();
+    check('the title bar hands the columns back', ui.cols, null);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Three things the arithmetic above cannot see, because they are structural.
+// ---------------------------------------------------------------------------
+console.log('\n— column sizing, structurally —');
+{
+  // `table-layout: fixed` shares spare width over EVERY column, so a panel wider than
+  // the sum inflates all seven and none is the width it was dragged to. The eighth
+  // column, declared with no width, is what takes the slack instead. It has to exist
+  // in all three places or the rows come apart: one <col>, one <th>, one <td> a row —
+  // and the group header's colSpan has to count it.
+  const fillers = (SRC.match(/className: 'fill'/g) || []).length;
+  check('the slack column is built in the head and in every row', fillers, 2);
+  check('...has a <col> of its own, deliberately outside colEls',
+    /colgroup\.append\(document\.createElement\('col'\)\); \/\/ the slack column/.test(SRC), true);
+  check('...and the group header spans it', /colSpan = COLUMNS\.length \+ 1;/.test(SRC), true);
+
+  // A repaint replaces the divider holding the pointer capture, and the drag stops
+  // dead. paint() runs on every response, so this is seconds away at all times.
+  check('a repaint waits for the drag to finish',
+    /if \(colDragging\) \{ paintQueued = true; return; \}/.test(SRC)
+    && /if \(paintQueued\) \{ paintQueued = false; paint\(\); \}/.test(SRC), true);
+
+  // Sized columns are what make the table wider than its body, so sideways became a
+  // place you can be — and a repaint that only restores scrollTop drops you back to
+  // the left edge on every response, losing the column you scrolled across to read.
+  check('a repaint restores both scroll axes',
+    /kept\.top = b\.scrollTop; kept\.left = b\.scrollLeft;/.test(SRC)
+    && /body\.scrollLeft = kept\.left;/.test(SRC), true);
+
+  // The header sorts on click and the divider lives inside it. Stopping the pointer
+  // event does not stop the click that follows, so both are needed — grabbing a
+  // divider must never also re-sort the table under the gesture.
+  check('the divider keeps its clicks away from the sort',
+    /g\.addEventListener\('click', \(ev\) => ev\.stopPropagation\(\)\);/.test(SRC), true);
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — People Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      1.7.0
+// @version      1.9.0
 // @description  Builds a local ledger of players' last-online times, cities, ranks and combat records from the profiles you open, and sorts it least-active-first. Fully passive: it reads responses the game already made and originates nothing. Includes a next/back walk so filling the ledger by hand is one keypress per player — along the roster, or along the panel's own sorted and filtered list.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -33,7 +33,8 @@
  *             off-machine. Everything stays in this browser.
  *
  *   Storage:  localStorage keys prefixed `pkpw:` — the observed player ledger, roster
- *             metadata, and panel settings. All local. Clearable from the panel.
+ *             metadata, and panel settings, the last of which now includes the width
+ *             you dragged each table column to. All local. Clearable from the panel.
  *
  *             As of 1.3.0 the ledger also keeps each player's city. Both sources are
  *             fields the game already sends: `location` on a profile you opened, and
@@ -81,6 +82,9 @@
     LIST_CAP: 400,              // rows the table draws; the walk counts along the same ones
     PANEL_W: 560,
     PANEL_MIN_H: 160,
+    // Narrowest a table column may be dragged. Small enough that squashing one is a
+    // usable stand-in for hiding it, wide enough that the divider stays grabbable.
+    COL_MIN: 26,
     FAB_SIZE: 38,   // must match FAB KIT's .pk-fab box           // a triangle carries less visual weight than a square of the same box
     EDGE: 8,                    // keep this much gap from the viewport edge
   };
@@ -106,13 +110,21 @@
   /** @type {Record<string, any>} username -> observed profile */
   let people = readJSON(K.people, {});
   let roster = readJSON(K.roster, { total: null, totalPages: null, usernames: [], seenAt: 0, pages: {} });
-  let ui = readJSON(K.ui, { sort: 'idle', dir: 1, group: 'none', hideOnline: false, hideNpc: true, minIdleDays: 0, walk: 'roster', open: false, fab: null, panel: null, size: null });
+  let ui = readJSON(K.ui, { sort: 'idle', dir: 1, group: 'none', hideOnline: false, hideNpc: true, minIdleDays: 0, walk: 'roster', open: false, fab: null, panel: null, size: null, cols: null });
   if (ui.dir !== -1) ui.dir = 1;   // an older stored ui has no dir at all
   if (typeof ui.group !== 'string') ui.group = 'none';
   // there was only one walk order before 1.5.0, so that is what a stored ui without the
   // field meant — and roster is the right thing to land on if the value is ever junk,
   // because it is the only order that can reach a player you have not profiled
   if (ui.walk !== 'list') ui.walk = 'roster';
+  // Column widths. Junk entries are dropped rather than trusted — a NaN width reaches
+  // the layout as `width: NaNpx`, which the browser ignores silently, and then one
+  // column is doing something nobody asked for and nothing says why. An empty map
+  // means the same thing as no map: automatic.
+  ui.cols = (ui.cols && typeof ui.cols === 'object' && !Array.isArray(ui.cols))
+    ? Object.fromEntries(Object.entries(ui.cols).filter(([, v]) => Number.isFinite(v)))
+    : null;
+  if (ui.cols && !Object.keys(ui.cols).length) ui.cols = null;
 
   let saveTimer = null;
   const save = () => {
@@ -866,6 +878,35 @@
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 3px 8px; border-bottom: 1px solid #18181b; white-space: nowrap; }
     th { position: sticky; top: 0; background: #09090b; color: #a1a1aa; font-weight: 500; font-size: 11px; }
+    /* A dragged-narrow column has to clip rather than shove its neighbour along, so
+       every cell truncates. In automatic mode nothing is ever narrower than its
+       content and these do nothing at all. */
+    td { overflow: hidden; text-overflow: ellipsis; }
+    /* The header's text clips; the header itself must not, because the divider hangs
+       off its right edge and overflow:hidden would cut the divider in half. */
+    th .lab { display: block; overflow: hidden; text-overflow: ellipsis; }
+    /* The divider. It straddles the boundary rather than sitting inside one column,
+       which is where the pointer expects to find it, and it draws a hairline only
+       under the pointer so seven of them are not a second set of gridlines. */
+    .cgrip { position: absolute; top: 0; right: -3px; width: 7px; height: 100%;
+      cursor: col-resize; z-index: 3; touch-action: none; }
+    /* The last one has nothing to its right to hang over: 3px past the table is 3px
+       of horizontal scroll on a table that otherwise fits exactly. */
+    .cgrip.edge { right: 0; }
+    .cgrip::after { content: ''; position: absolute; top: 2px; bottom: 2px; left: 3px;
+      width: 1px; background: transparent; }
+    .cgrip:hover::after { background: #71717a; }
+    .cgrip.on::after { background: #e4e4e7; }
+    /* ...and the last one's hairline moves with it, or it sits 3px shy of the edge */
+    .cgrip.edge::after { left: auto; right: 0; }
+    /* The one moment the table is allowed to be as wide as it wants: measureNatural()
+       reads each column's natural width here and puts the layout straight back. The
+       group headers span every column, so a long faction name would widen the whole
+       table and be shared out across columns that do not contain it — they sit this
+       measurement out. */
+    table.measuring { table-layout: auto; width: max-content; min-width: 0; }
+    table.measuring th, table.measuring td { overflow: visible; }
+    table.measuring tr.grp { display: none; }
     tr:hover td { background: #18181b; }
     /* the profile you are standing on, so the row and the page agree on where you are */
     tr.here td { background: #17171c; box-shadow: inset 2px 0 0 #dc2626; }
@@ -876,6 +917,9 @@
     tr.grp td { background: #111116; color: #a1a1aa; font-size: 10px;
       letter-spacing: .14em; text-transform: uppercase; padding: 6px 8px;
       border-top: 1px solid #27272a; position: sticky; }
+    /* The slack column — see the note above applyCols(). It is never sized, never
+       sorted and never dragged; it exists so the seven that are can be exact. */
+    th.fill, td.fill { padding: 0; }
     th.sortable { cursor: pointer; user-select: none; }
     th.sortable:hover { color: #e4e4e7; }
     th.sorted { color: #fafafa; }
@@ -1036,7 +1080,8 @@
     // The drag handle has to outlive paint(), which rebuilds everything below it.
     grip = document.createElement('div');
     grip.className = 'grip';
-    grip.title = 'Drag to move · drag the bottom-right corner to resize · double-click to re-tether';
+    grip.title = 'Drag to move · drag the bottom-right corner to resize · '
+      + 'double-click to re-tether and put the columns back to automatic';
     gripCov = document.createElement('span');
     gripCov.className = 'dim cov';
     grip.append(Object.assign(document.createElement('b'), { textContent: 'PEOPLE WATCH' }), gripCov);
@@ -1058,7 +1103,9 @@
       }
       saveNow();
     }, { drag: panelDrag, minW: 320, minH: CFG.PANEL_MIN_H });
-    grip.addEventListener('dblclick', () => { panelDrag.reset(); panelResize.reset(); });
+    // One gesture hands back everything the panel remembers about its own shape:
+    // where it was put, how big it was made, and how wide its columns were dragged.
+    grip.addEventListener('dblclick', () => { panelDrag.reset(); panelResize.reset(); resetCols(); });
 
     placeFab();
     makeDraggable();
@@ -1238,8 +1285,200 @@
     return a;
   };
 
+  // ---------------------------------------------------------------------------
+  // Column sizing
+  //
+  // The panel lives in a margin — the strip between the game's sidebar and its
+  // content, or between the content and the window edge — so the table is almost
+  // always narrower than the sum of what it wants to show, and which columns get the
+  // space is a judgement only the person looking can make. Drag a divider to set one;
+  // double-click a divider to size that column to the widest text actually in it.
+  //
+  // Two modes, and the way back out is the title bar's double-click:
+  //
+  //   automatic  ui.cols is null. The stylesheet's `width: 100%` and the browser's
+  //              own layout, exactly as this behaved before any of it existed.
+  //   fixed      ui.cols holds a px width per column, and `table-layout: fixed`.
+  //              That is the whole reason for the switch: auto layout will not put a
+  //              column narrower than its content at any price, and in a 300px margin
+  //              narrower than its content is exactly what you want.
+  //
+  // The first drag snapshots every column at the width it is *currently showing*
+  // rather than at its natural width, so crossing into fixed mode moves the one
+  // column under the pointer and nothing else. Snapshotting naturals instead would
+  // make the first pixel of the first drag a whole-table jump.
+  //
+  // The table stays `width: 100%` with `min-width: <sum>`, so below the sum the body
+  // scrolls and above it there is slack to place. It goes to an eighth column that
+  // holds nothing — measured, not assumed: `table-layout: fixed` shares spare width
+  // out over EVERY column, so a panel wider than the sum silently inflates all seven
+  // and none of them is the width you dragged it to. A column with no width declared
+  // is served first and takes the lot, which leaves the seven exact and still runs the
+  // row highlights to the panel's edge. In automatic mode it is inert: an empty column
+  // has no content to be given a proportional share of anything, and the other seven
+  // measure identically with it there and without it.
+  //
+  // Not a shared kit yet, deliberately: time-watch is the only other tool in the repo
+  // that draws a table, and it is twelve fixed rows of three columns with no header
+  // and nothing to sort. A second real caller is what would earn the shared block's
+  // version-bump-every-copy cost, and there isn't one.
+  // ---------------------------------------------------------------------------
+
+  /** the <col> elements of the table paint() built last; rebuilt with it */
+  let colEls = [];
+
+  /**
+   * A repaint replaces the table, and with it the divider holding the pointer
+   * capture — the drag would simply stop. Responses land every few seconds and
+   * paint() runs on all of them, so this is not a rare race. Hold the redraw
+   * instead; the gesture is over in a moment and paint() is cheap to run late.
+   */
+  let colDragging = false, paintQueued = false;
+
+  /** every column has a width, or the map cannot drive a fixed layout */
+  const colsComplete = (c) => !!c && COLUMNS.every((col) => Number.isFinite(c[col.key]));
+
+  /** what each column is occupying on screen right now, however it got that way */
+  const measureShown = (table) => {
+    const heads = [...table.querySelectorAll('thead th:not(.fill)')];
+    const out = {};
+    COLUMNS.forEach((col, i) => {
+      const w = heads[i] ? heads[i].getBoundingClientRect().width : 0;
+      out[col.key] = Math.max(CFG.COL_MIN, Math.round(w) || CFG.COL_MIN);
+    });
+    return out;
+  };
+
+  /**
+   * Each column's width if nothing were constraining it — measured for real rather
+   * than computed from a font metric, because the player cell carries a link with its
+   * own underline and a `◦` suffix and the header carries a sort arrow, none of which
+   * a text measurement knows about. One synchronous reflow with the layout unpinned,
+   * then everything is put back exactly as it was.
+   */
+  const measureNatural = (table) => {
+    const savedW = colEls.map((el) => el.style.width);
+    const savedLayout = table.style.tableLayout, savedMin = table.style.minWidth;
+    for (const el of colEls) el.style.width = '';
+    table.style.tableLayout = table.style.minWidth = '';
+    table.classList.add('measuring');
+
+    const out = measureShown(table); // reading the rect is what flushes the layout
+
+    table.classList.remove('measuring');
+    colEls.forEach((el, i) => { el.style.width = savedW[i]; });
+    table.style.tableLayout = savedLayout;
+    table.style.minWidth = savedMin;
+    return out;
+  };
+
+  /** the widths a gesture starts from: what is stored, or what is on screen */
+  const colBase = (table) => (colsComplete(ui.cols) ? { ...ui.cols } : measureShown(table));
+
+  /**
+   * Write ui.cols onto the table, or take the table back to automatic when there is
+   * nothing to write. Called at the end of every paint, so a chosen width survives
+   * the redraw that the next response triggers.
+   */
+  const applyCols = (table) => {
+    if (ui.cols && !colsComplete(ui.cols)) {
+      // A column added since these were stored. Keep what was set and measure the
+      // rest, rather than dropping a layout the reader chose over one new heading.
+      // Rebuilding from COLUMNS also prunes keys for columns that no longer exist.
+      const shown = measureShown(table), next = {};
+      for (const col of COLUMNS) {
+        next[col.key] = Number.isFinite(ui.cols[col.key]) ? ui.cols[col.key] : shown[col.key];
+      }
+      ui.cols = next;
+    }
+    if (!ui.cols) {
+      table.style.tableLayout = table.style.minWidth = '';
+      for (const el of colEls) el.style.width = '';
+      return;
+    }
+    let sum = 0;
+    COLUMNS.forEach((col, i) => {
+      const w = Math.max(CFG.COL_MIN, Math.round(ui.cols[col.key]));
+      sum += w;
+      if (colEls[i]) colEls[i].style.width = w + 'px';
+    });
+    table.style.tableLayout = 'fixed';
+    table.style.minWidth = sum + 'px';
+  };
+
+  /** the title bar's double-click hands back the panel's place, its size, and these */
+  const resetCols = () => {
+    if (!ui.cols) return;
+    ui.cols = null;
+    saveNow();
+    paint();
+  };
+
+  /**
+   * The divider between one column and the next. It lives inside the header cell and
+   * so has to be careful never to reach it: the header sorts on click, and neither a
+   * resize nor a fit is a sort. Hence stopPropagation on the click as well as on the
+   * pointerdown — stopping a pointer event does not stop the click that follows it.
+   */
+  const colGrip = (key, table) => {
+    const g = document.createElement('span');
+    g.className = 'cgrip';
+    g.title = 'drag to resize the ' + key + ' column'
+      + ' · double-click to size it to its widest text'
+      + '\n\ndouble-click the title bar to put every column back to automatic';
+    let base = null, sx = 0, moved = false;
+
+    g.addEventListener('pointerdown', (ev) => {
+      if (ev.button != null && ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      // Measured now, committed on the first pixel of movement: a stray click on a
+      // divider should not quietly switch the whole table into fixed mode.
+      base = colBase(table);
+      sx = ev.clientX; moved = false; colDragging = true;
+      g.classList.add('on');
+      try { g.setPointerCapture(ev.pointerId); } catch { /* capture is a nicety */ }
+    });
+
+    g.addEventListener('pointermove', (ev) => {
+      if (!colDragging || !base) return;
+      const dx = ev.clientX - sx;
+      if (!moved && Math.abs(dx) < 3) return; // tremor isn't a drag
+      moved = true;
+      ui.cols = { ...base, [key]: Math.max(CFG.COL_MIN, Math.round(base[key] + dx)) };
+      applyCols(table);
+    });
+
+    const end = (ev) => {
+      if (!colDragging) return;
+      colDragging = false; base = null;
+      g.classList.remove('on');
+      try { g.releasePointerCapture(ev.pointerId); } catch { /* already gone */ }
+      if (moved) saveNow();
+      if (paintQueued) { paintQueued = false; paint(); }
+    };
+    g.addEventListener('pointerup', end);
+    g.addEventListener('pointercancel', end);
+    g.addEventListener('click', (ev) => ev.stopPropagation());
+
+    g.addEventListener('dblclick', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const next = colBase(table);
+      next[key] = measureNatural(table)[key];
+      ui.cols = next;
+      applyCols(table);
+      saveNow();
+    });
+
+    return g;
+  };
+
   function paint() {
     if (!root) return;
+    // A column drag holds the pointer capture on a divider this would throw away.
+    // The gesture wins; the redraw runs the moment it ends.
+    if (colDragging) { paintQueued = true; return; }
     const panel = root.querySelector('.panel');
     if (!panel) return;
     panel.style.display = ui.open ? 'flex' : 'none';
@@ -1262,9 +1501,18 @@
     // opening profiles is the entire job. Working down a long ledger meant being thrown
     // back to the top on every single one, with no way to find your place again.
     //
+    // Both axes, since column sizing: a table whose columns sum to more than the panel
+    // is wider than its body, and then sideways is a place you can be. Losing that on
+    // every response is the same fault as losing the vertical position and reads worse,
+    // because the column you had scrolled across to see is the one that vanishes.
+    //
     // Restored at the very end, after placePanel, because that can change the panel's
     // max height and so how far the body is able to scroll.
-    const keptScroll = panel.querySelector('.body')?.scrollTop ?? 0;
+    const kept = { top: 0, left: 0 };
+    {
+      const b = panel.querySelector('.body');
+      if (b) { kept.top = b.scrollTop; kept.left = b.scrollLeft; }
+    }
 
     // keep the grip: it carries the drag listeners, everything below it is disposable
     panel.replaceChildren(grip);
@@ -1379,15 +1627,28 @@
     const body = document.createElement('div');
     body.className = 'body';
     const table = document.createElement('table');
+    // One <col> per column, whether or not any width has been chosen. They are what
+    // applyCols() writes to, and an empty colgroup costs nothing in automatic mode.
+    const colgroup = document.createElement('colgroup');
+    colEls = COLUMNS.map(() => colgroup.appendChild(document.createElement('col')));
+    colgroup.append(document.createElement('col')); // the slack column, never in colEls
+    table.append(colgroup);
     // Clicking a header sorts by it; clicking the one already sorted flips the order.
     const thead = document.createElement('thead');
     const htr = document.createElement('tr');
     const activeCol = (SORTS[ui.sort] || SORTS.idle).col;
-    for (const c of COLUMNS) {
+    COLUMNS.forEach((c, i) => {
       const th = document.createElement('th');
       th.className = 'sortable';
       const on = c.key === activeCol;
-      th.textContent = c.label + (on ? (ui.dir === -1 ? ' ▲' : ' ▼') : '');
+      // The label is a box of its own so a squashed column truncates it instead of
+      // pushing the next heading along; the divider then hangs off the th outside it.
+      const lab = document.createElement('span');
+      lab.className = 'lab';
+      lab.textContent = c.label + (on ? (ui.dir === -1 ? ' ▲' : ' ▼') : '');
+      const g = colGrip(c.key, table);
+      if (i === COLUMNS.length - 1) g.classList.add('edge');
+      th.append(lab, g);
       if (on) th.classList.add('sorted');
       th.title = on ? 'click to reverse' : `sort by ${SORTS[c.sort].label}`;
       th.onclick = () => {
@@ -1396,7 +1657,8 @@
         save(); paint();
       };
       htr.append(th);
-    }
+    });
+    htr.append(Object.assign(document.createElement('th'), { className: 'fill' }));
     thead.append(htr);
     table.append(thead);
     const tb = document.createElement('tbody');
@@ -1431,6 +1693,7 @@
         if (c.title) td.title = c.title;
         tr.append(td);
       }
+      tr.append(Object.assign(document.createElement('td'), { className: 'fill' }));
       return tr;
     };
 
@@ -1441,7 +1704,7 @@
         const head = document.createElement('tr');
         head.className = 'grp';
         const td = document.createElement('td');
-        td.colSpan = COLUMNS.length;
+        td.colSpan = COLUMNS.length + 1;   // + the slack column
         td.textContent = `${g.name} · ${g.members.length}`;
         head.append(td);
         tb.append(head);
@@ -1451,6 +1714,9 @@
     table.append(tb);
     body.append(table);
     panel.append(body);
+    // In the document at last, which is what measureShown() needs and what makes a
+    // stored width take effect on this paint rather than the next one.
+    applyCols(table);
 
     const note = document.createElement('div');
     note.className = 'note';
@@ -1464,8 +1730,10 @@
     placePanel();
 
     // and put you back where you were looking. Assigning past the end is clamped by the
-    // DOM, so a list that got shorter lands at its own bottom rather than nowhere.
-    if (keptScroll) body.scrollTop = keptScroll;
+    // DOM, so a list that got shorter lands at its own bottom rather than nowhere, and
+    // a table that got narrower lands at its own right edge.
+    if (kept.top) body.scrollTop = kept.top;
+    if (kept.left) body.scrollLeft = kept.left;
 
     // Walking the list means the list should follow you down it. `nearest` is a no-op
     // when the row is already on screen, so an ordinary repaint does not yank the view

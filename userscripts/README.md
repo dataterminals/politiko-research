@@ -12,7 +12,7 @@ bannable, so the disclosure block is the contract.
 
 | tool | version | raw link |
 |---|---|---|
-| People Watch | 1.7.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| People Watch | 1.9.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
 | Market Watch | 1.2.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
 | Time Watch | 0.7.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
 | Align Watch | 0.5.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
@@ -147,7 +147,8 @@ entire account lifetime was under two hours — they never really engaged.
 ## How to use it
 
 **Alt+P**, or click the **eye** button, to open the panel. Drag either wherever you like;
-they remember.
+they remember. Drag the panel's bottom-right corner to resize it, and the dividers in the
+column headings to decide how the width is spent — see [the columns](#the-columns) below.
 
 The header shows two numbers — `12/292 profiled · 40 known`:
 
@@ -228,6 +229,32 @@ Nothing about this is stored: a walk does not outlive a reload.
 | rank | their `rank_key` |
 | W-L | attacks won–lost, so "worst record" finds people who lose |
 | seen | how stale *your* copy of their profile is |
+
+### The columns
+
+Seven columns want about 550px and the panel usually has less, because these windows get
+parked in the strip beside the game rather than over it. So the widths are yours:
+
+| gesture | does |
+|---|---|
+| drag a divider | set that column's width — a divider is the last few px of a heading, and the pointer turns into `↔` over it |
+| double-click a divider | size that column to the widest text actually in it |
+| double-click the title bar | hand every column back to automatic, along with the panel's size and position |
+
+Nothing is stored until you drag something, and until then the table lays itself out exactly
+as it always did. The first drag takes every column at the width it is *currently* showing
+and then moves the one under the pointer, so crossing over never makes the table jump.
+
+After that the widths are exact and remembered. A column dragged narrower than its contents
+truncates with an `…` rather than shoving its neighbours along — squash one to the floor and
+it is a 26px sliver, which is as close to hiding a column as this gets. When the total comes
+to more than the panel, the table scrolls sideways inside it and stays where you left it;
+when it comes to less, the spare width goes to the right of `seen` rather than being shared
+back out over the columns you just set.
+
+Widths are per-column, not per-sort: sorting, filtering, grouping and walking all leave them
+alone. A drag also holds off the redraw until you let go, so a profile response landing
+mid-gesture can't pull the table out from under you.
 
 ### City, and the ⇢ mark
 
@@ -1291,6 +1318,18 @@ order and the list is not: it re-sorts as profiles land and as time passes. So t
 drives the table out from under a walk in progress and asserts the keypress still means "the
 row below the one I am on" — and separately that the walk order is the *painted* order,
 grouping and row cap included, rather than something that merely agrees with it by hand.
+
+It also covers the column widths, in two halves, because the two halves fail differently.
+The arithmetic runs against a table made of plain objects: the floor really floors, the
+`min-width` really is the sum of the widths written under it, and a stored map from an older
+version keeps what it set, measures what it is missing and drops a column that no longer
+exists — all of which decide whether a saved layout survives a release. The rest are text
+checks over the source, for three things no assertion about widths can see: that the slack
+column exists in the head, in every row and in the group header's `colSpan`; that a repaint
+waits for a drag rather than deleting the divider holding the pointer; and that a repaint
+restores `scrollLeft` as well as `scrollTop`, which only started mattering when a table
+could be wider than the panel showing it. How any of it *looks* is not testable in Node and
+was checked in `tools/harness/` instead.
 
 `test-placement` covers the panel placement layer against a synthetic viewport: the button
 stays on screen and clear of the game's Comms dock, and the panel stays fully visible from

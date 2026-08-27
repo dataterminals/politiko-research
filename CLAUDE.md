@@ -83,6 +83,29 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   `tools/test-placement.js`: market-watch keeps its own corner grips (its panel is pinned to
   its button, so it grows from whichever corner is free), and comms-move resizes nothing
   (the window it moves is the game's Comms dock).
+- **Panels live in the margins. Design for narrow.** In practice these windows get parked in
+  the empty strip between the game's sidebar and its content, or between the content and the
+  right edge of the window — not over the play area, because a panel that covers the game is
+  a panel you close. Those strips are a few hundred pixels wide. So a panel is at its
+  *typical* size when it is far narrower than the `PANEL_W` its stylesheet asks for, and
+  everything in it should still be readable and reachable there: no fixed-width row that
+  forces a horizontal scrollbar to read column one, no control bar that wraps into four
+  lines, nothing important pinned to the right edge. Where a panel shows a table, this is
+  what earns the reader a way to decide the column widths themselves — see below.
+- **A table in a panel has resizable columns.** Drag the divider in a column heading to
+  set a width, double-click that divider to size the column to the widest text in it,
+  double-click the panel's title bar to hand every column back to automatic. Widths are
+  remembered like every other piece of panel geometry. This is not decoration: in a margin
+  the table is always wider than the panel, and *which* column gets the space is a judgement
+  that changes with the job — the same reason the panel is resizable rather than sized by
+  us. people-watch is the reference implementation and the only carrier today. Two things
+  in it are load-bearing rather than taste, both measured in `tools/harness/` and fenced in
+  `tools/test-people.js`: the table needs `table-layout: fixed` (auto layout will not put a
+  column narrower than its content at any price, which is the one thing a margin needs), and
+  a fixed layout needs one extra column declared with no width to absorb the slack (it
+  shares spare width over *every* column otherwise, so a panel wider than the total silently
+  inflates all of them and none is the width it was dragged to). Once a table can be wider
+  than its body, a repaint has to restore **both** scroll axes, not just `scrollTop`.
 - **Every toggle button is the same button.** One 38px square, one three- or four-letter
   word — `ALGN`, `MKT`, `RAID`, `JUMP`. Install four tools and four of these land on one
   screen, so the box is not the tool's to pick; copy the `FAB KIT v3` block from
