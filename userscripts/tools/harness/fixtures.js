@@ -850,4 +850,194 @@ window.HARNESS_FIXTURES = {
     ],
   },
 
+  'shop-watch': {
+    label: 'Shop Watch',
+    source: 'docs/15-shop-surface.md',
+    note: 'Fire status, then city, then "first visit" and "second visit" in order — the '
+      + 'bracket only exists as a difference between two readings. The last call is '
+      + 'INVENTED and says so; everything above it is the client\'s own read set.',
+    calls: [
+      {
+        label: 'user status — the one field taken from it',
+        path: '/api/user/status',
+        body: { current_location: { name: 'Tijuana', kind: 'city' } },
+      },
+      {
+        label: 'city buildings',
+        path: '/api/city',
+        body: [
+          { id: 14, name: 'Calle Ocho Guns', kind: 'shop', description: 'Ammunition, parts, and no questions.' },
+          { id: 15, name: 'Sunset Pharmacy', kind: 'clinic', description: 'Patch-ups, discreet.' },
+          { id: 16, name: 'The Yard', kind: 'dump', description: 'Scrap and salvage.' },
+        ],
+      },
+      {
+        // stock: null is the game's unlimited and MUST NOT read as a sell-out.
+        label: 'first visit — ammo nearly gone',
+        path: '/api/city/stores/14',
+        body: [
+          {
+            item_def_id: 301, name: '9mm Rounds', category: 'material', rarity: 'common',
+            description: 'Boxed, fifty to a carton.', icon_image_path: '/i/9mm.png',
+            buy_price: 40, sell_price: 12, stock: 2,
+          },
+          {
+            item_def_id: 302, name: '.45 ACP Rounds', category: 'material', rarity: 'common',
+            description: 'Heavy, slow, convincing.', icon_image_path: '/i/45.png',
+            buy_price: 65, sell_price: 20, stock: 0,
+          },
+          {
+            item_def_id: 310, name: 'Cleaning Kit', category: 'tool', rarity: 'common',
+            description: 'Keeps a barrel honest.', icon_image_path: '/i/kit.png',
+            buy_price: 90, sell_price: 30, stock: null,
+          },
+        ],
+      },
+      {
+        // A variant, because the harness keeps only the FIRST body per path and this is
+        // the same endpoint read a second time — which is the whole mechanism under test.
+        // Fire "first visit" first, then this one.
+        label: 'second visit — a refill happened somewhere in between',
+        path: '/api/city/stores/14',
+        variant: 'second-visit',
+        body: [
+          {
+            item_def_id: 301, name: '9mm Rounds', category: 'material', rarity: 'common',
+            description: 'Boxed, fifty to a carton.', icon_image_path: '/i/9mm.png',
+            buy_price: 40, sell_price: 12, stock: 24,
+          },
+          {
+            item_def_id: 302, name: '.45 ACP Rounds', category: 'material', rarity: 'common',
+            description: 'Heavy, slow, convincing.', icon_image_path: '/i/45.png',
+            buy_price: 65, sell_price: 20, stock: 12,
+          },
+          {
+            item_def_id: 310, name: 'Cleaning Kit', category: 'tool', rarity: 'common',
+            description: 'Keeps a barrel honest.', icon_image_path: '/i/kit.png',
+            buy_price: 90, sell_price: 30, stock: null,
+          },
+          {
+            // Absent from the first reading: logged as "appeared", not as a restock.
+            item_def_id: 315, name: 'Shotgun Shells', category: 'material', rarity: 'uncommon',
+            description: 'Twelve gauge, buck.', icon_image_path: '/i/12g.png',
+            buy_price: 120, sell_price: 40, stock: 6,
+          },
+        ],
+      },
+      {
+        label: 'the sell side (field census only)',
+        path: '/api/city/stores/14/sell',
+        body: [
+          {
+            item_def_id: 301, player_item_id: 90211, name: '9mm Rounds', category: 'material',
+            rarity: 'common', description: 'Boxed, fifty to a carton.',
+            icon_image_path: '/i/9mm.png', sell_price: 12, qty: 31,
+          },
+        ],
+      },
+      {
+        label: 'a purchase result (object, not an array — must be ignored)',
+        path: '/api/city/stores/14',
+        variant: 'mutation-result',
+        body: { ok: true, item_def_id: 301, qty: 5, balance: 4200 },
+      },
+      {
+        // NOT MEASURED. Nothing in the 2026-08-03 bundle reads a restock time, and no
+        // capture has been taken, so this shape is INVENTED — its only job is to prove
+        // the FIELDS tab lights up if the server ever does volunteer one. If a real
+        // reading ever shows the true shape, replace this and say so in docs/15.
+        label: 'HYPOTHETICAL — server volunteers fields the client drops',
+        path: '/api/city/stores/14',
+        variant: 'speculative',
+        body: [
+          {
+            item_def_id: 301, name: '9mm Rounds', category: 'material', subcategory: 'ammo',
+            rarity: 'common', description: 'Boxed, fifty to a carton.',
+            icon_image_path: '/i/9mm.png', buy_price: 40, sell_price: 12, stock: 24,
+            restocks_at: '2026-08-27T18:00:00Z', restock_qty: 24, max_stock: 48,
+          },
+        ],
+      },
+    ],
+  },
+
+  'market-watch': {
+    label: 'Market Watch',
+    hotkey: 'Alt+M',
+    source: 'docs/04-stocks-surface.md',
+    note: 'Fire the watchlist, then "prices moved" two or three times — a series is a '
+      + 'difference between readings, so one call charts nothing. market-watch taps '
+      + "onApi('*') on purpose, so the last call is charted too rather than ignored: "
+      + 'that is the documented behaviour, not a leak.',
+    calls: (() => {
+      // Fields per docs/04: price, bid and ask moved across the observed window;
+      // float_shares, spread_bps and ipo_game_day did not, and ipo_game_day read
+      // 1408 identically on every instrument. Symbols are the five that were seen.
+      const inst = (symbol, id, price, spread) => ({
+        id, symbol, price,
+        bid: +(price - spread / 2).toFixed(2),
+        ask: +(price + spread / 2).toFixed(2),
+        volume: id * 137,
+        spread_bps: Math.round((spread / price) * 10_000),
+        float_shares: id * 25_000,
+        ipo_game_day: 1408,
+      });
+      const book = (mult) => [
+        inst('PNRG', 10, +(28.70 * mult).toFixed(2), 0.14),
+        inst('RCRD', 11, +(12.53 * mult).toFixed(2), 0.06),
+        inst('SNTL', 12, +(4.02 * mult).toFixed(2), 0.03),
+        inst('USTL', 13, +(61.25 * mult).toFixed(2), 0.31),
+        inst('BRDL', 14, +(84.00 * mult).toFixed(2), 0.42),
+      ];
+      return [
+        {
+          label: 'watchlist (fire me first)',
+          path: '/api/stocks/instruments',
+          body: book(1),
+        },
+        {
+          label: 'prices moved — fire me repeatedly, that is what a series is',
+          path: '/api/stocks/instruments',
+          variant: 'moved',
+          body: book(1.043),
+        },
+        {
+          label: 'prices moved hard (trips a 3% rule)',
+          path: '/api/stocks/instruments',
+          variant: 'moved',
+          body: book(0.911),
+        },
+        {
+          label: 'holdings — what position sizing reads',
+          path: '/api/stocks/holdings',
+          body: [
+            { id: 77, instrument_id: 10, symbol: 'PNRG', shares: 92, avg_cost: 27.10 },
+            { id: 78, instrument_id: 13, symbol: 'USTL', shares: 5, avg_cost: 59.80 },
+          ],
+        },
+        {
+          label: 'trades',
+          path: '/api/stocks/trades?limit=50',
+          body: [
+            { id: 900, instrument_id: 10, symbol: 'PNRG', side: 'buy', shares: 92, price: 27.10 },
+            { id: 901, instrument_id: 13, symbol: 'USTL', side: 'sell', shares: 1, price: 60.40 },
+          ],
+        },
+        {
+          label: 'tax',
+          path: '/api/stocks/tax',
+          body: { owed: 1240, rate_bps: 1500, paid_this_year: 310 },
+        },
+        {
+          label: "a non-market payload (charted anyway — the '*' tap is deliberate)",
+          path: '/api/public/stats',
+          body: {
+            citizens: 291, online_now: 14, game_year: 7, game_day: 298,
+            active_corps: 15, bills_passed: 3, bills_killed: 89,
+          },
+        },
+      ];
+    })(),
+  },
+
 };

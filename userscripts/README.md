@@ -10,6 +10,11 @@ bannable, so the disclosure block is the contract.
 1. Install [Tampermonkey](https://www.tampermonkey.net/) (or Violentmonkey).
 2. Open the raw link for the tool you want and confirm the install prompt.
 
+[`INSTALL.md`](INSTALL.md) is the same list generated from the script headers, with
+paste-ready blocks sized for a Discord message and a check that each link is actually
+on `origin/main`. Regenerate it with `node tools/make-install-list.js` after a version
+bump; the table below is hand-kept and can drift.
+
 | tool | version | raw link |
 |---|---|---|
 | People Watch | 1.9.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
@@ -25,7 +30,8 @@ bannable, so the disclosure block is the contract.
 | Quick Jump | 0.4.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 | World Watch | 0.3.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
 | Gov Watch | 0.2.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
-| Poll Watch | 0.1.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
+| Poll Watch | 0.2.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
+| Shop Watch | 0.1.0 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, and the shared `PANEL KIT` and `FAB KIT` blocks).
@@ -63,7 +69,7 @@ repositions". `tools/test-placement.js` encodes both exceptions by name.
 
 ## The buttons
 
-`FAB KIT v3` is the same idea applied to the toggle button — the one part of any of this a
+`FAB KIT v4` is the same idea applied to the toggle button — the one part of any of this a
 player sees before they open anything. Install four of these tools and four buttons land on
 your screen, so they are a set rather than each tool's own flourish: **one 38px square, one
 three-or-four-letter word, all of them in one row.** (The row, and which button is which,
@@ -99,23 +105,33 @@ at all. Both were rendered against a stack of buttons before this one was picked
 own corner, so eleven tools meant eleven buttons scattered down both edges of the screen in
 an order nobody chose — finding the one you wanted meant remembering which corner that tool
 had claimed. They now default to a single line across the band above the game's header rule,
-which on any desktop layout is empty screen between the nav links and the account menu:
+which on any desktop layout is empty screen between the nav links and the account menu.
+**v4 widened that row from eleven slots to thirteen**, for `poll-watch` — the last tool
+still drawing its own button in a corner of its own choosing — and for `shop-watch`:
 
-| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 👁 | `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` | `SOCK` | `TIME` | `WRLD` | `XP` |
+| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 👁 | `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` | `SOCK` | `TIME` | `WRLD` | `XP` | `POLL` | `SHOP` |
 
-The eye leads because it is the mark of the set; the words are alphabetical after it. Slots
-are **fixed rather than packed**, which is the point — installing an eleventh tool does not
-shuffle the ten buttons you already know by position, and a tool you do not have simply
-leaves its slot empty.
+The eye leads because it is the mark of the set; the words are alphabetical after it — and
+then they stop being alphabetical, which is deliberate. `POLL` and `SHOP` arrived after the
+first eleven slots were handed out, and slots are **fixed rather than packed**: a tool that
+turns up later takes the next free number rather than sorting itself in. That is the point —
+installing a thirteenth tool does not shuffle the twelve buttons you already know by
+position, and a tool you do not have simply leaves its slot empty.
 
-The row is 498px wide (eleven 38px buttons, 8px apart) and centred on the window, with a
+The row is 590px wide (thirteen 38px buttons, 8px apart) and centred on the window, with a
 floor at 440px so it stops sliding left rather than climb onto the game's own nav links.
-Above about 1380px it is centred; between roughly 1090 and 1380 it sits at the floor; below
-about 1090 the last few buttons run under the account menu, and below 768 the game swaps in
+Above about 1470px it is centred; between roughly 1180 and 1470 it sits at the floor; below
+about 1180 the last few buttons run under the account menu, and below 768 the game swaps in
 a different header entirely. Drag them out of the row on a window that small — that is what
 dragging is for.
+
+Those three numbers move every time the row gains a slot, which is why adding one is a kit
+version bump rather than a one-line edit: half the row is a literal in the CSS, because CSS
+cannot count the tools you happen to have installed. `tools/test-placement.js` derives the
+half it expects from the number of tools on disk, so the build fails rather than letting the
+row quietly stop being centred.
 
 **Every one of them still drags anywhere and remembers, and a stored position always wins.**
 Which is also the one thing to know when this update lands: a button you have already
@@ -1206,6 +1222,108 @@ not off the wire.
 
 ---
 
+# Shop Watch
+
+Records the shop payloads the app already fetched when you walked into a store, and reports
+**every field the server sent that the client never renders**. Also brackets a restock
+whenever a stock number is higher than the last time you looked.
+
+Fully passive, zero added requests, and — deliberately — **no notifications of any kind**.
+
+## Read this part first
+
+It was asked for as a restock notifier for ammo. **That tool cannot be built**, and the
+reason is worth having in front of you before you install this one.
+
+Knowing a shop refilled while you are not standing in it requires calling
+`/api/city/stores/{id}` again. There is no restock event on any of the three sockets and
+none in the 10-second `/api/user/status` heartbeat, so there is no free signal to ride. That
+makes a background notifier an added request nobody initiated (clauses 1 and 5), about a
+page you are not viewing (clause 2), raising an alert in another window (clause 4). Three
+prohibitions, one feature, and the penalty is a ban on the only account you have.
+
+**The thing actually worth doing is not a script.** The game already ships a complete Web
+Push pipeline — service worker, VAPID keys, toggles in Settings — and its preference set is
+exactly four keys wide: `jail_release`, `hospital_release`, `hospitalized`,
+`travel_arrival`. A fifth for stock is a feature request, and the operator has form here:
+the same build that added the support desk also shipped a server-side auto-accept toggle for
+jail offers, which is the same pattern. `/contact` is now a threaded ticket system, so
+there is somewhere to ask.
+
+Full reasoning: [`docs/15-shop-surface.md`](../docs/15-shop-surface.md).
+
+## What it does instead
+
+**The client has no concept of when a shop refills.** No field it reads, no timer, no
+countdown — measured by grepping all 126 chunks of the 2026-08-03 bundle for `restock`,
+`replenish`, `stock_refresh`, `next_stock` and `inventory_reset`. The only hit is the word
+"replenishes" in a wiki paragraph about energy.
+
+But *the client not reading a field is not the server not sending one*, and telling those
+apart costs one shop visit. That is what the **FIELDS** tab is for, and it is the whole of
+0.1.0:
+
+| tab | what it is |
+|---|---|
+| **fields** | every key the server actually sent, with the ones no code path in the game renders marked, and the time-shaped ones flagged at the top |
+| **stock** | the last reading per shop, and every restock bracket built from your own visits |
+| **sources** | which screen fills which row, and what the tool refuses to do |
+
+If a `restocks_at` is on the wire, the FIELDS tab shows it the first time you open a shop
+and the cadence question is over. If it is not, the STOCK tab is the slow path.
+
+## A bracket is not a timestamp
+
+This tool cannot see a refill it was not looking at. So it never claims a restock happened
+*at* a time — it says it happened **between two readings** and prints that window on the
+row. A window three days wide is drawn three days wide, because it is. Same discipline as
+Gov Watch, and for the same reason: a window is the difference between a measurement and a
+guess.
+
+Two confounds it will not paper over:
+
+- **Selling to a shop may raise its own buy stock.** Unmeasured. A jump right after you
+  sold something is probably you.
+- **A sold-out line the server drops from the list** comes back as `appeared`, not
+  `restocked`, because those are different claims. `absent → 6` and `0 → 6` are printed
+  differently on purpose.
+
+## `stock` is nullable, and null means unlimited
+
+The game renders an em dash and treats the purchase ceiling as 9999. The panel prints `∞`.
+Folding that to zero would invent a sell-out, so it does not.
+
+Worth knowing for ammo specifically: the store payload's read set has `category` but **no
+`subcategory`**, and the shop's own filter tabs are built from `category` alone — so the
+game gives you a "material" tab that mixes ammo with construction supplies and weapon parts.
+If `subcategory` turns up in the FIELDS tab, an ammo-only view becomes free.
+
+## What it reads
+
+| call | what is taken |
+|---|---|
+| `GET /api/city` | building list — id, name, kind, description |
+| `GET /api/city/stores/{id}` | the buy list: field census, and every stock reading |
+| `GET /api/city/stores/{id}/sell` | field census only |
+| `GET /api/user/*` | **one string**: `current_location.name`, so a reading knows its city |
+
+Only **array** payloads are consumed for the two store endpoints. That shape gate is how the
+tool reads the listing a GET returns without ever reading the result object a purchase
+returns — and it needs no sight of the request to do it, which is what keeps the wrapper
+away from your request bodies and headers.
+
+The buy and sell mutation shapes are **absent from the file**, with
+`tools/test-shop-passive.js` failing the build if they appear — the same fence Market Watch
+got when its order seam was deleted.
+
+Everything is kept under `pksw:` keys in your browser, nothing is sent anywhere, and it
+originates **zero** requests.
+
+Still on its own `fetch` wrapper rather than the shared `HTTP TAP v1` block — that migration
+is deliberately one tool at a time and this one has not had its turn.
+
+---
+
 ## Tests
 
 Run from the repository root:
@@ -1231,6 +1349,8 @@ node userscripts/tools/test-world-passive.js
 node userscripts/tools/test-gov.js
 node userscripts/tools/test-gov-passive.js
 node userscripts/tools/test-poll-watch.js
+node userscripts/tools/test-shop-passive.js
+node userscripts/tools/test-http-tap.js
 ```
 
 Every suite slices the layer it covers straight out of the shipped script rather than
@@ -1249,6 +1369,14 @@ only until someone adds it back:
   both that a sentinel token planted in the subprotocol reaches no subscriber, *and* that
   it was still handed to the real constructor intact. Those are different properties and
   a tap needs both: dropping it would quietly break the game's poker table.
+- `test-shop-passive` fences shop-watch, which is the closest anything here sits to the
+  line: the tool it was asked to be is the one clause 4 describes. So the fence asserts the
+  refusals as absences, not settings — no `Notification`, no service worker, no sound, no
+  `document.title` poke, and no `window.focus`, because "off by default" is a flag someone
+  flips. It also bars the buy and sell mutation shapes outright (the Market Watch
+  precedent), and pins the **shape gate**: store payloads are consumed only when they are
+  arrays, which is how the tool reads a GET's listing without reading a purchase's result
+  object while never looking at the request.
 - `test-raid-passive` fences raid-watch, which reads a surface whose write endpoints
   surrender wars and impose flags. It fails on any mention of those paths, any non-GET
   verb, and any timer body that touches the network — the two ways to build a poll are
@@ -1333,7 +1461,12 @@ was checked in `tools/harness/` instead.
 
 `test-placement` covers the panel placement layer against a synthetic viewport: the button
 stays on screen and clear of the game's Comms dock, and the panel stays fully visible from
-whichever corner the button was dragged into.
+whichever corner the button was dragged into. **Added 2026-08-27:** it also reads every
+shipped script for a bare `paint*`/`render*`/`redraw*`/`draw*`/`sync*`/`resync*`/`update*`
+call and fails if the name is defined nowhere in that same file. It is a string check rather
+than a scope analysis, so it will not catch a helper declared in the wrong closure — but a
+name that is called and never defined is what a half-finished deletion leaves behind, which
+is exactly how market-watch lost most of its panel for three weeks.
 
 `test-world` covers world-watch's filing and its ingest, in that order of importance. The
 filing first, because everything the panel prints is a mean over issues split by axis, so a
@@ -1402,3 +1535,14 @@ re-render that reset the filter caret on every keystroke, and a first-run search
 to type. Its fixtures are also the right home for edge cases worth *seeing*: firing a
 casino body at a haulage corp is one click, and the panel either lists a warehouse under
 Casino or it does not.
+
+It found a fourth on market-watch, which had no fixtures until it was looked at: `refresh()`
+still called `paintArmBar()` and `paintWrites()`, two functions deleted along with the
+order-execution seam on 2026-08-07. The first threw inside the `requestAnimationFrame`
+callback and took the five paints queued behind it down with it, so the observed list, the
+rules list and the button's own state had not repainted since the panel was built —
+in a session with 42 series recorded, the panel showed none of them. The engine suites never
+saw it because they slice the sampler and the rule evaluator out of the file and never load
+the paint layer at all. `tools/test-placement.js` now fails the build on a bare
+`paint*`/`render*`/`sync*`/`update*` call that resolves to no definition in its own file,
+which is that whole class of bug across every tool rather than this one instance.

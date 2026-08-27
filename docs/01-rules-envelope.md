@@ -127,6 +127,30 @@ on the denylist, and any future use is an explicit operator decision, not a defa
   detection, whatever the intent, and it would be an undisclosed function besides. And a
   passive `fetch` tap will *see* them, which is fine, but they belong in the same bucket as
   the token: not stored, not rendered, not logged.
+
+  **The storage key, and the hazard it creates — measured 2026-08-27.** The five signals
+  are built by one function and cached whole under **`localStorage['device_signals']`**,
+  which is read back on every later call and only recomputed if the key is missing. So the
+  fingerprint is frozen at whatever the machine looked like the first time the game ran,
+  and the key belongs beside `auth` on the never-touch list: **clearing or rewriting
+  `device_signals` forces a recompute under whatever conditions happen to be current.**
+
+  That matters because of what `X-CT-Screen` actually reads:
+
+  ```js
+  screen: vi(() => `${window.screen.width}x${window.screen.height}x${window.devicePixelRatio||1}`)
+  ```
+
+  `window.screen` and `devicePixelRatio` — the physical monitor, **not** the viewport.
+  DevTools device emulation overrides exactly those three values. So the obvious way to
+  look at the game's mobile layout on a desktop is the one way that can rewrite the
+  fingerprint, and it only takes a cleared key to do it. Nothing about the intent
+  distinguishes that from the evasion this clause is enforced against.
+
+  The safe route to the same view is the boring one: narrow the window below 768px, or
+  shim `matchMedia` and rewrite the `@media` rules, neither of which `device_signals`
+  reads. Recorded here because the hazard is entirely non-obvious from the rules text —
+  it looks like a browser feature, not a scripting question.
 - **Account sharing** → nobody else operates the account. Relevant here: an agent
   driving the session counts as "having someone initiate processes on your behalf."
   **Claude must not click through game actions.** Read-only inspection of an

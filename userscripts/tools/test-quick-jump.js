@@ -24,12 +24,13 @@ const cut = (from, to) => {
   return SRC.slice(i, j);
 };
 
-// catalogue + ingest/dispatch + derived, with the fetch and XHR wraps cut out from
-// between them — those patch globals that do not exist here, and are the fence's job
-// (tools/test-quick-jump-passive.js). Nothing in any slice runs at definition time.
+// catalogue + ingest/dispatch + derived, with the tap subscription cut out from
+// between them — it calls onApi(), which belongs to HTTP TAP v1 and does not exist
+// here, and keeping the tap honest is the fence's job (test-quick-jump-passive.js).
+// Nothing in any slice runs at definition time.
 const SLICE =
   cut('  const CATALOG = [', '  // Ingest — everything below')
-  + cut('  const now = () => Date.now();', '  const origFetch = window.fetch;')
+  + cut('  const now = () => Date.now();', '  // Corporations and factions are the only ID-bearing')
   + cut('  const fmtAge = (ms) =>', '  // CSS');
 
 /** The slice closes over module state and over paint/save; inject inert versions. */

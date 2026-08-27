@@ -42,7 +42,7 @@ const check = (label, got, want) => {
 
 console.log('\n— the home row —');
 {
-  // FAB KIT v3: every button in this repo defaults to one slot of one row across the
+  // FAB KIT v4: every button in this repo defaults to one slot of one row across the
   // band above the game's header rule. people-watch holds slot 0 and places its own
   // button, so this is the JS half of that row — the CSS half is checked at the bottom
   // of this file, against these same numbers.
@@ -50,22 +50,27 @@ console.log('\n— the home row —');
   const d = s.defaultFabPos();
   check('sits in the header band, not in a corner', d.y, 7);
   check('the whole button clears the 52px band', d.y + CFG.FAB_SIZE <= 52, true);
-  check('centred on a wide window', d.x, 800 - 249);
+  check('centred on a wide window', d.x, 800 - 295);
 
-  // Below ~1380px the row would start climbing onto the game's own nav links, so it
+  // Below ~1470px the row would start climbing onto the game's own nav links, so it
   // stops sliding left instead. That floor is why the maths is a max() rather than a
   // subtraction, and it is the half most likely to get simplified away later.
+  //
+  // v4's two extra slots moved that threshold: the row got 92px wider, so it meets
+  // the floor 92px sooner. The two probes below straddle it deliberately — a test
+  // that only ever asked about 1200px would have passed the whole way through the
+  // bump and told you nothing about the number that actually changed.
   check('floored clear of the nav on a 1200px window', mkStage(1200, 800).defaultFabPos().x, 440);
-  check('...and centred again when there is room', mkStage(2560, 1440).defaultFabPos().x, 1280 - 249);
-  check('the floor engages below ~1380px', mkStage(1376, 900).defaultFabPos().x, 440);
-  check('...and not above it', mkStage(1382, 900).defaultFabPos().x, 442);
+  check('...and centred again when there is room', mkStage(2560, 1440).defaultFabPos().x, 1280 - 295);
+  check('the floor engages below ~1470px', mkStage(1464, 900).defaultFabPos().x, 440);
+  check('...and not above it', mkStage(1476, 900).defaultFabPos().x, 443);
 
-  // Eleven slots at a 46px pitch. Slot 10 is the far end of the row and has to stay on
-  // screen on the narrowest window where the row is still centred-or-floored.
-  const ROW = 11 * CFG.FAB_SIZE + 10 * 8;
-  check('eleven slots make a 498px row', ROW, 498);
-  check('...which is what 249 is half of', ROW, 249 * 2);
-  check('the far slot fits a 1200px window', 440 + 10 * 46 + CFG.FAB_SIZE <= 1200 - CFG.EDGE, true);
+  // Thirteen slots at a 46px pitch. Slot 12 is the far end of the row and has to stay
+  // on screen on the narrowest window where the row is still centred-or-floored.
+  const ROW = 13 * CFG.FAB_SIZE + 12 * 8;
+  check('thirteen slots make a 590px row', ROW, 590);
+  check('...which is what 295 is half of', ROW, 295 * 2);
+  check('the far slot fits a 1200px window', 440 + 12 * 46 + CFG.FAB_SIZE <= 1200 - CFG.EDGE, true);
 }
 
 console.log('\n— clamping —');
@@ -219,6 +224,57 @@ console.log('\n— PANEL KIT v2 is byte-identical everywhere —');
   if (variants.length > 1) {
     for (const [hash, files] of variants) console.log(`        ${hash}  ${files.join(', ')}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// HTTP TAP v1 is the third copy-verbatim block, and it is the one sitting on the
+// network path, so a divergence between copies is worse here than in the furniture:
+// the whole reason it exists is that eleven private fetch wrappers each cloned and
+// parsed every /api/ response before deciding they did not want it. One drifted copy
+// and a tool is back to installing a second layer nobody can see.
+// ---------------------------------------------------------------------------
+console.log('\n— HTTP TAP v1 is byte-identical everywhere —');
+{
+  const dir = path.join(__dirname, '..');
+  const all = fs.readdirSync(dir).filter((f) => f.endsWith('.user.js'));
+  const carriers = all.filter((f) => fs.readFileSync(path.join(dir, f), 'utf8').includes('const HTTP_TAP_VERSION ='));
+
+  check('the template carries the block', carriers.includes('_template.user.js'), true);
+
+  const seen = new Map();
+  for (const f of carriers) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const i = src.indexOf('  const HTTP_TAP_VERSION =');
+    const j = src.indexOf('    return api.subscribe;', i);
+    check(`${f} carries a whole tap`, i >= 0 && j > i, true);
+    const key = crypto.createHash('md5').update(src.slice(i, j)).digest('hex').slice(0, 12);
+    if (!seen.has(key)) seen.set(key, []);
+    seen.get(key).push(f);
+  }
+
+  const variants = [...seen.entries()];
+  check(`all ${carriers.length} copies agree`, variants.length, 1);
+  if (variants.length > 1) {
+    for (const [hash, files] of variants) console.log(`        ${hash}  ${files.join(', ')}`);
+  }
+
+  // A tool on the shared tap must not also keep its own wrapper — that is the
+  // stacking this block was written to end. Tools not yet migrated are expected to
+  // still have one, so this only checks the ones that carry the block.
+  for (const f of carriers) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const own = (src.match(/window\.fetch = /g) || []).length;
+    check(`${f} installs fetch once`, own, 1);
+    const xhr = (src.match(/XMLHttpRequest\.prototype\.(open|send) = /g) || []).length;
+    check(`${f} patches XHR at most once each`, xhr <= 2, true);
+  }
+
+  // Progress, printed rather than asserted: the migration is deliberately one tool
+  // at a time, and a half-migrated tree is a valid state.
+  const legacy = all.filter((f) => f !== '_template.user.js')
+    .filter((f) => !fs.readFileSync(path.join(dir, f), 'utf8').includes('const HTTP_TAP_VERSION ='))
+    .filter((f) => fs.readFileSync(path.join(dir, f), 'utf8').includes('window.fetch = '));
+  console.log(`        ${carriers.length - 1} tool(s) on the shared tap; ${legacy.length} still private${legacy.length ? ': ' + legacy.join(', ') : ''}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -464,7 +520,7 @@ console.log('\n— the drag handle survives a repaint —');
 }
 
 // ---------------------------------------------------------------------------
-// FAB KIT v3 — one button, eleven copies.
+// FAB KIT v4 — one button, thirteen copies.
 //
 // The toggle button is the only part of this repo a player sees before they open
 // anything, and several of these tools sit on the same screen at once. Before the
@@ -477,10 +533,10 @@ console.log('\n— the drag handle survives a repaint —');
 // the element actually wears the class, that the word is a word, and that a tool
 // doing its own placement maths agrees with the kit about how big the box is.
 // ---------------------------------------------------------------------------
-console.log('\n— FAB KIT v3 is one button everywhere —');
+console.log('\n— FAB KIT v4 is one button everywhere —');
 {
   const dir = path.join(__dirname, '..');
-  const A = '    /* FAB KIT v3 — shared verbatim block.';
+  const A = '    /* FAB KIT v4 — shared verbatim block.';
   const B = '    .pk-fab svg { width: 24px; height: 24px; display: block; }';
   const BOX = 38; // .pk-fab's width/height, and what CFG.FAB_SIZE has to agree with
 
@@ -645,7 +701,7 @@ console.log('\n— FAB KIT v3 is one button everywhere —');
 
 
 // ---------------------------------------------------------------------------
-// FAB KIT v3 — one row, eleven slots.
+// FAB KIT v4 — one row, thirteen slots.
 //
 // v3 took the last thing a tool still chose about its button: where it starts.
 // Eleven tools picking their own corner meant eleven buttons down both edges of
@@ -653,12 +709,18 @@ console.log('\n— FAB KIT v3 is one button everywhere —');
 // remembering which corner that tool had claimed. They now default to one row
 // across the band above the game's header rule, one slot each.
 //
+// v4 is that row two slots wider, for poll-watch and shop-watch. The
+// width is the only thing that moved, and it moved in three places at once — the
+// kit's CSS, the two tools that compute the row in JS, and the arithmetic below.
+// Half the row is the number that has to be re-derived every time a slot is added,
+// so it is derived here rather than restated: SLOTS is the one place to edit.
+//
 // A row only holds if nothing quietly steps out of it, and there are three ways to:
 // take an inset back in your own rule, forget to declare a slot, or — for the two
 // tools that place their own button — let the JS drift from the CSS. All three fail
 // silently and only on someone else's screen, so all three are checked here.
 // ---------------------------------------------------------------------------
-console.log('\n— FAB KIT v3 puts every button in one row —');
+console.log('\n— FAB KIT v4 puts every button in one row —');
 {
   const dir = path.join(__dirname, '..');
   const NO_FAB = new Set(['time-bridge.user.js', 'comms-move.user.js']);
@@ -673,11 +735,18 @@ console.log('\n— FAB KIT v3 puts every button in one row —');
   check('the kit places the row itself', !!row, true);
   const [TOP, FLOOR, HALF, PITCH] = row ? row.slice(1).map(Number) : [];
   check('...7px down, inside the 52px header band', [TOP, TOP + 38 <= 52], [7, true]);
-  check('...floored where the game nav ends, centred above that', [FLOOR, HALF], [440, 249]);
+  check('...floored where the game nav ends, centred above that', [FLOOR, HALF], [440, 295]);
   check('...at a 46px pitch, which is the 38px box and an 8px gap', PITCH, 38 + 8);
-  check('...and half the row is what eleven slots need', HALF, Math.round((11 * 38 + 10 * 8) / 2));
+  // Half the row, derived from what is actually installed rather than restated. The
+  // row is only centred if the width the kit declares matches the number of buttons
+  // standing in it, so poll-watch and shop-watch are what forced v4 and a fourteenth
+  // here until the kit is bumped again. That failure is the whole point: a row that
+  // has quietly stopped being centred looks exactly like a row that has not.
+  const SLOTS = mounted.length;
+  check(`...and half the row is what ${SLOTS} slots need`,
+    HALF, Math.round((SLOTS * 38 + (SLOTS - 1) * 8) / 2));
 
-  // Every tool declares a slot, and the eleven of them are exactly 0..10 — no
+  // Every tool declares a slot, and the thirteen of them are exactly 0..12 — no
   // duplicates (two buttons stacked on one square, and the one underneath is
   // unreachable) and no gaps that are really a typo.
   const RULE = /^[ \t]*([#.][\w.:#-]*fab[\w.:#-]*)[ \t]*\{([^}]*)\}/gmi;
@@ -752,7 +821,7 @@ console.log('\n— FAB KIT v3 puts every button in one row —');
   // market-watch and people-watch place their own button, so an inline left/top lands
   // on it every mount and the kit's rule never gets the last word. They carry the row
   // in JS instead, and the two copies have to say the same thing — a drift here is a
-  // button that sits one slot off, or 16px high, on two tools out of eleven.
+  // button that sits one slot off, or 16px high, on two tools out of thirteen.
   const SELF_PLACED = ['market-watch.user.js', 'people-watch.user.js'];
   for (const f of SELF_PLACED) {
     const s = src(f);
@@ -781,6 +850,64 @@ console.log('\n— FAB KIT v3 puts every button in one row —');
     if (!ok) stranded.push(f);
   }
   check('every button can be double-clicked back into its slot', stranded, []);
+}
+
+// ---------------------------------------------------------------------------
+// Every helper a render path calls has to exist.
+//
+// market-watch shipped with `paintArmBar()` and `paintWrites()` still standing in
+// its refresh(), three weeks after the order-execution seam they belonged to was
+// deleted — docs/01-rules-envelope.md, "its arming switch and the write-capture
+// that fed it are deleted". The deletion missed the two call sites. The first threw
+// a ReferenceError inside the requestAnimationFrame callback, and nothing in there
+// catches, so every paint queued behind it was skipped: the observed list, the
+// rules list and the FAB state stopped repainting the moment the panel was built.
+//
+// It stayed invisible for three reasons, and they are why this check is here:
+//   - the engine suites (test-harvest, test-sizing, test-views) slice the sampler
+//     and the rule evaluator out of the file and never load the paint layer at all;
+//   - the throw is inside a rAF callback, so it reaches no caller — the panel goes
+//     quiet rather than visibly breaking;
+//   - market-watch is the tool nobody opens.
+// Only the first is a thing a test can fix. This is the cheapest fix for it: a bare
+// call to a render-path helper must resolve to a definition in the same file. It is
+// a string check and not a scope analysis, so it will not catch a helper defined in
+// the wrong closure — but a name that is called and defined nowhere is exactly the
+// shape of this bug, and exactly the shape a half-finished deletion leaves behind.
+// ---------------------------------------------------------------------------
+console.log('\n— every helper a render path calls exists —');
+{
+  const dir = path.join(__dirname, '..');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.user.js')).sort();
+
+  // This repo's vocabulary for "redraw some part of the panel". Only bare calls —
+  // the leading class excludes a dot, so a method on an object is nobody's business
+  // here and cannot be resolved by reading one file anyway.
+  const CALL = /(^|[^.\w$])((?:paint|render|redraw|draw|sync|resync|update)[A-Z][\w$]*)\s*\(/g;
+
+  // The three shapes a helper is declared in across these files: a hoisted function,
+  // an assigned const/let/var, or a name destructured out of a kit's return. Anything
+  // else reads as missing and fails the build, which is the safe way to be wrong.
+  const declares = (src, n) => new RegExp(
+    String.raw`\bfunction\s+` + n + String.raw`\b`
+    + '|' + String.raw`\b(?:const|let|var)\s+` + n + String.raw`\s*=`
+    + '|' + String.raw`[{,]\s*` + n + String.raw`\s*[,}=:]`,
+  ).test(src);
+
+  const dangling = [];
+  let seen = 0;
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const called = new Set();
+    for (const m of src.matchAll(CALL)) called.add(m[2]);
+    seen += called.size;
+    for (const n of called) if (!declares(src, n)) dangling.push(`${f}: ${n}()`);
+  }
+
+  // A regex that quietly stops matching would pass this section by finding nothing,
+  // so the count is asserted too — the same reason the row above derives its half.
+  check('the scan is actually finding render calls', seen >= 25, true);
+  check(`no render-path call goes nowhere (${seen} checked)`, dangling, []);
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

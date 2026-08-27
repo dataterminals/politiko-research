@@ -49,13 +49,13 @@ enforceable line, and it is the main design constraint on this whole project.
 docs/     numbered findings + plan; 00 recon, 01 rules, 02 plan, 03 ideas,
           04 stocks, 05 people, 06 time, 07 alignment, 08 sleepers, 09 sockets,
           10 xp, 11 faction raids, 12 navigation, 13 world politics,
-          14 government motion
+          14 government motion, 15 shops
 tools/    recon helpers (PowerShell)
 userscripts/  _template.user.js — passive-tap skeleton + WS TAP + PANEL KIT;
               people-watch, market-watch, time-watch, align-watch, comms-move,
               time-bridge, ws-watch, xp-watch, raid-watch, sleeper-watch,
-              quick-jump, world-watch, gov-watch, poll-watch; README.md documents
-              them; tools/ holds their tests, and tools/harness/ is a browser bench
+              quick-jump, world-watch, gov-watch, poll-watch, shop-watch; README.md
+              documents them; tools/ holds their tests, and tools/harness/ is a bench
               that renders a panel against canned payloads with fetch/WebSocket/XHR
               stubbed out, so no panel work needs the live game. Every userscript
               ships from here — no separate repos
@@ -108,20 +108,26 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   than its body, a repaint has to restore **both** scroll axes, not just `scrollTop`.
 - **Every toggle button is the same button.** One 38px square, one three- or four-letter
   word — `ALGN`, `MKT`, `RAID`, `JUMP`. Install four tools and four of these land on one
-  screen, so the box is not the tool's to pick; copy the `FAB KIT v3` block from
+  screen, so the box is not the tool's to pick; copy the `FAB KIT v4` block from
   [`userscripts/_template.user.js`](userscripts/_template.user.js) verbatim, same
   bump-the-version rule as PANEL KIT. What a tool still owns is its slot in the row, its
   z-index, and its state colours, layered on top. No emoji — a 15px glyph is a coin toss
   across fonts, and four of them tell you nothing about which is which. people-watch is the
   one exception and is grandfathered: the eye of providence is its mark. `test-placement.js`
   hashes the copies and names that exception, so a second symbol button fails the build.
-- **Every button starts in the same row.** `FAB KIT v3` places them: one line across the
+- **Every button starts in the same row.** `FAB KIT v4` places them: one line across the
   band above the game's header rule, one slot each, declared as `--pk-slot: N` in the
   tool's own rule and *nothing else about position* — an inset in a tool's rule silently
   leaves the row and fails the build. Slots are fixed rather than packed, so a new tool
   never shuffles the buttons already on screen; the eye leads and the words are
-  alphabetical after it (see the block for the table, and for the three numbers that place
-  the row). A tool that positions its own button — market-watch, people-watch — computes
+  alphabetical after it, then later arrivals take the next free number rather than sorting
+  in (see the block for the table, and for the three numbers that place the row).
+  **Adding a slot is a version bump, not a one-line edit**: half the row is a literal in
+  the CSS because CSS cannot count the tools installed, so a new tool means a new kit
+  version, a pass over every copy, and the JS row in the two self-placing tools.
+  `test-placement.js` derives the expected half from the number of tools on disk and fails
+  the build rather than let the row quietly stop being centred — that is how v3's eleven
+  slots became v4's thirteen. A tool that positions its own button — market-watch, people-watch — computes
   the identical row in JS, because an inline `left/top` outranks the rule; `test-placement.js`
   reads both and fails on a drift. **Double-click is the only way back into the row**, so
   every button needs the `dblclick` that clears the stored position *and* calls `reset()`.

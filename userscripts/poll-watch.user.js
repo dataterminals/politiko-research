@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Poll Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.0
+// @version      0.2.0
 // @description  Keeps every opinion-poll memo you run — timestamped in real and game time, with the bloc spread, the per-issue trend since your last poll, and TSV/JSON export. Passive: it reads the memo the game already handed you and originates no requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -171,7 +171,7 @@
     // everywhere defaults ON: this one is a notebook, not a home-page mirror — you want
     // it open beside the media tab while picking a document, and beside activism while
     // picking an issue. The pin narrows it to the two pages it is *about*.
-    { open: true, view: 'latest', everywhere: true, x: null, y: null, fab: null, issue: null },
+    { open: true, view: 'latest', everywhere: true, x: null, y: null, fab: null, size: undefined, issue: null },
     readJSON(K.ui, {}),
   );
 
@@ -329,19 +329,125 @@
   // Panel
   // ---------------------------------------------------------------------------
   let root = null, panel = null, head = null, body = null, fab = null;
-  let title = null, pinBtn = null, drag = null, fabDrag = null;
+  let title = null, pinBtn = null, drag = null, fabDrag = null, resize = null;
 
   const CSS = `
-    /* Corner allocation across this repo's panels: bottom-left is align-watch,
-       top-left is time-watch, top-right is ws-watch, the right edge from bottom
-       150px up is the raid/quick-jump/sleeper stack, and bottom-right belongs to
-       the game's own Comms dock. That leaves the left edge just under time-watch,
-       which is where this one parks. Drag it anywhere; it remembers. */
-    .pkpw-fab { position: fixed; left: 12px; top: 56px; z-index: 2147482000;
-      width: 34px; height: 34px; border-radius: 17px; border: 1px solid #3f3f46;
-      background: #18181b; color: #e4e4e7; font-size: 14px; line-height: 32px;
-      text-align: center; cursor: pointer; user-select: none; opacity: .85; padding: 0; }
-    .pkpw-fab:hover { opacity: 1; }
+    /* FAB KIT v4 — shared verbatim block.
+       Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
+       bump the version here and in every tool carrying a copy, so the copies can
+       be diffed. Several of these tools are on screen at once, and buttons that
+       each picked their own shape read as several unrelated add-ons rather than
+       one set of tools. A 15px glyph is also a coin toss across fonts and
+       platforms, and four of them tell you nothing about which is which. So the
+       box is fixed here and only the word inside it belongs to the tool: three
+       or four letters, upper case, no emoji.
+
+       v2 adds .pk-open: the button is filled while its own panel is open. A dozen
+       of these can sit on one screen and every panel remembers whether it was open,
+       so the row of buttons was the one thing that could not tell you which
+       windows you already had — you found that out by clicking one and closing it.
+
+       v3 makes that row literal. Until now every tool picked its own corner, and
+       eleven tools meant eleven buttons scattered down both edges of the screen in
+       an order nobody chose: you hunted for the one you wanted. They now default
+       to one row, side by side, in the band above the game's header rule — the
+       header is 52px tall (py-3 either side of a 28px nav link) and the button is
+       38, so top: 7 centres it there, and on any desktop layout that band is empty
+       screen between the nav links and the account menu.
+
+       v4 widens the row to thirteen slots, for poll-watch and shop-watch, which
+       is the whole of the change. Half the row is written out below because CSS
+       cannot count the tools that happen to be installed, which means every slot
+       the row gains costs a version bump and a pass over every copy — the price
+       of the row being one row rather than each tool's guess at one.
+
+       The kit owns the row. A tool owns its SLOT and nothing else about position:
+
+         .pkxx-fab { --pk-slot: 13; z-index: 2147482000; }
+
+       Slots are fixed rather than packed, and that is the whole point — installing
+       a thirteenth tool does not shuffle the twelve buttons you already know by
+       position, and a tool you do not have simply leaves its slot empty. The eye
+       leads because it is the mark of the set; the words are alphabetical after it:
+
+         0  the eye  people-watch     7  SOCK  ws-watch
+         1  ALGN     align-watch      8  TIME  time-watch
+         2  GOV      gov-watch        9  WRLD  world-watch
+         3  JUMP     quick-jump      10  XP    xp-watch
+         4  MKT      market-watch    11  POLL  poll-watch
+         5  RAID     raid-watch      12  SHOP  shop-watch
+         6  SLP      sleeper-watch
+
+       POLL and SHOP are on the end rather than sorted in among the others, and
+       that is deliberate: the alphabet describes how the first eleven were handed
+       out, not a sort to be re-run. Slots are fixed, so a tool that arrives later
+       takes the next free number and nothing already on screen moves.
+
+       Thirteen 38px buttons 8px apart is a 590px row, so it runs 295px either side
+       of the middle of the viewport. The floor at 440px is where the game's own
+       chrome ends — 24px of padding, a 62px wordmark, 24px of gap and five nav
+       links, measured off the bundle — so above about 1470px the row is centred,
+       and below that it stops sliding left rather than climb onto the nav.
+
+       Three numbers, if that header ever changes shape: 7 (where the band is), 440
+       (where the nav ends), 295 (half the row). Nothing else in here is placement.
+
+       (No backticks anywhere in here, incidentally. This block is pasted INSIDE a
+       template literal in every tool that carries it, and one backtick in a comment
+       ends the literal and takes the rest of the file with it.)
+
+       The FILL is the open channel, and it is the one property the kit keeps for
+       itself. A tool's state rule comes after this block at the same specificity
+       and therefore wins on border-color and color: an open sleeper-watch
+       still reads green, an open market-watch still reads red, and both still read
+       as open. Put the open state in either of those two properties instead and a
+       tool's state colour erases it without a word. Hover does not outrank it
+       either — open is a state; a pointer passing over is not.
+
+       The fill is one palette step, #18181b to #3f3f46, and it does cost a state
+       colour some contrast while that panel is open: market-watch's red goes from
+       about 4.7:1 to 2.8:1. One step less (#27272a) buys that back, and at 38px it
+       stops reading as filled at all — the border ends up doing the work alone.
+       Both were rendered against a stack before this one was picked.
+
+       What this block deliberately leaves to the tool, because it IS the tool's:
+         - its slot in the row, and its z-index: --pk-slot / z-index
+         - state colour and badges layered on top (.hot, .live, .pkws-done)
+       The tool's own rule goes AFTER this block: same specificity, later wins.
+       An inset is no longer among them — a tool that sets top/left/right/bottom
+       has quietly left the row, and tools/test-placement.js fails that build.
+
+       Tools that also do their own placement maths keep CFG.FAB_SIZE in step
+       with the 38px below; tools/test-placement.js fails the build if one drifts.
+       They also have to compute this row themselves, because an inline left/top
+       outranks any rule here. Two do: market-watch and people-watch.
+
+       people-watch is the one exception to the word. It wears the eye of
+       providence, which is its mark and predates this block; the svg rule sizes
+       that inside the same square as everyone else's letters. */
+    .pk-fab {
+      box-sizing: border-box; width: 38px; height: 38px; padding: 0;
+      /* The home row. --pk-slot is the tool's; the three numbers are the kit's. */
+      position: fixed; top: 7px;
+      left: calc(max(440px, 50% - 295px) + var(--pk-slot, 0) * 46px);
+      display: grid; place-items: center;
+      background: #18181b; color: #e4e4e7;
+      border: 1px solid #3f3f46; border-radius: 3px;
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .08em; text-align: center;
+      cursor: pointer; user-select: none; touch-action: none;
+    }
+    .pk-fab:hover { border-color: #71717a; color: #fafafa; }
+    .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }
+    /* Open, and last: neither hover nor a drag may un-fill it. */
+    .pk-fab.pk-open { background: #3f3f46; border-color: #a1a1aa; color: #fafafa; }
+    .pk-fab svg { width: 24px; height: 24px; display: block; }
+    /* Slot 11 of the kit's home row. This tool used to park its own button on the
+       left edge just under time-watch, from the days when a free corner was a
+       thing each tool negotiated for; FAB KIT v4 widened the row by one to take
+       it, and the corner is nobody's now. Drag it anywhere; it remembers, and
+       double-clicking it gives the slot back. */
+    .pkpw-fab { --pk-slot: 11; z-index: 2147482000; }
     .pkpw-panel { position: fixed; left: 12px; top: 96px; z-index: 2147482000;
       width: min(360px, calc(100vw - 24px)); max-height: min(78vh, 780px);
       display: flex; flex-direction: column;
@@ -742,7 +848,8 @@
   };
 
   // ===========================================================================
-  // PANEL KIT v1 — shared verbatim block, see userscripts/_template.user.js.
+  // PANEL KIT v2 — shared verbatim block, see userscripts/_template.user.js.
+  // Every panel this repo ships is draggable and resizable, and remembers both.
   // ===========================================================================
   const draggable = (node, handle, onMove) => {
     const EDGE = 44; // px of the element that must stay reachable on screen
@@ -835,9 +942,116 @@
       },
       dragged: () => moved,
       fit, // call after mounting and after any render that changes the size
+
+      // Convert whatever CSS corner the element is anchored to into explicit
+      // left/top, without moving it. The browser's own resize grabber only grows a
+      // box right and down, so a panel still hanging off `right`/`bottom` grows
+      // away from the pointer; resizable() pins it the moment the grab starts.
+      pin: () => {
+        const r = node.getBoundingClientRect();
+        if (!r.width || !r.height) return false; // hidden: nothing to measure
+        place(r.left, r.top);
+        return true;
+      },
     };
   };
-  // ===================== end PANEL KIT v1 ====================================
+
+  // ---------------------------------------------------------------------------
+  //    resizable(node, onSize, opts) -> { apply(size), reset(), sized() }
+  //      node    the element that resizes (the same one draggable() moves)
+  //      onSize  called with {w, h} as CSS lengths, or null when reset
+  //      opts    { minW, minH, drag } — pass the draggable() for this same node so
+  //              a resize can re-pin and re-clamp it
+  //
+  //    The browser's own grabber does the dragging. There is deliberately no second
+  //    drag implementation here to keep in step with the one above: all this block
+  //    does is arm the grabber, keep it pointing the right way, and remember the
+  //    result. The grabber writes inline width/height, so inline values that differ
+  //    from what we last wrote can only have come from the user — content re-renders
+  //    never write them, which is what keeps auto-sizing intact until the first
+  //    deliberate resize.
+  // ---------------------------------------------------------------------------
+  const resizable = (node, onSize, opts = {}) => {
+    const GRAB = 18;                  // the corner the UA's grabber occupies
+    const drag = opts.drag || null;
+    let mine = null;                  // the last size WE wrote
+
+    // A viewport this small is a hidden tab or a minimised window rather than a
+    // real layout — the same trap the placement layers guard against. Capping
+    // against it would shrink the panel to nothing and the next report would make
+    // that permanent, so treat it as no information.
+    const usable = () => window.innerWidth > 120 && window.innerHeight > 120;
+
+    const floor = () => ({
+      w: Math.min(opts.minW || 220, Math.max(80, window.innerWidth - 16)),
+      h: Math.min(opts.minH || 140, Math.max(80, window.innerHeight - 16)),
+    });
+
+    // Cap growth at the viewport rather than at whatever vh the panel's own CSS
+    // picked: a `max-height: 74vh` silently fights a chosen height, so the panel
+    // stops growing while the pointer keeps going and then jumps on the way back.
+    // Only ever applied once a size has actually been chosen, so an untouched
+    // panel keeps its stylesheet's sizing exactly as written.
+    const cap = () => {
+      if (!usable()) return;
+      const f = floor();
+      node.style.minWidth = `${f.w}px`;
+      node.style.minHeight = `${f.h}px`;
+      node.style.maxWidth = `${Math.max(f.w, window.innerWidth - 16)}px`;
+      node.style.maxHeight = `${Math.max(f.h, window.innerHeight - 16)}px`;
+    };
+
+    node.style.resize = 'both';
+    node.style.overflow = 'hidden'; // `resize` is inert while overflow is visible
+
+    const report = () => {
+      const w = node.style.width, h = node.style.height;
+      if (!w && !h) return;                             // never resized: still auto
+      if (mine && mine.w === w && mine.h === h) return; // our own restore, not a gesture
+      mine = { w, h };
+      onSize(mine);
+      if (drag) drag.fit(); // a taller panel can push its own handle off-screen
+    };
+
+    // Capture phase: the panel's own handlers must not be able to swallow the grab.
+    // Nothing is preventDefault()ed — the UA still runs the resize itself.
+    node.addEventListener('pointerdown', (ev) => {
+      const r = node.getBoundingClientRect();
+      if (ev.clientX < r.right - GRAB || ev.clientY < r.bottom - GRAB) return;
+      cap();
+      if (drag) drag.pin();
+    }, true);
+
+    // Two ways in, because neither alone is sufficient. ResizeObserver is the
+    // precise one but it is delivered on the rendering lifecycle, so a page that is
+    // not compositing never gets the callback. pointerup is the backstop: the
+    // grabber is a pointer gesture, so releasing it always lands here. report() is
+    // idempotent, so both firing costs nothing.
+    if (typeof ResizeObserver === 'function') new ResizeObserver(report).observe(node);
+    node.addEventListener('pointerup', report);
+    window.addEventListener('resize', () => { if (mine) cap(); });
+
+    return {
+      apply: (size) => {
+        if (!size || !size.w || !size.h) return false;
+        mine = { w: String(size.w), h: String(size.h) };
+        node.style.width = mine.w;
+        node.style.height = mine.h;
+        cap();
+        if (drag) drag.pin(); // a restored size wants the same anchoring a grab does
+        return true;
+      },
+      reset: () => {
+        mine = null;
+        node.style.width = node.style.height = '';
+        node.style.minWidth = node.style.minHeight = '';
+        node.style.maxWidth = node.style.maxHeight = '';
+        onSize(null);
+      },
+      sized: () => !!mine,
+    };
+  };
+  // ===================== end PANEL KIT v2 ====================================
 
   // ---------------------------------------------------------------------------
   // Mount
@@ -853,12 +1067,17 @@
     const show = onStage();
     root.style.display = show ? '' : 'none';
     panel.style.display = show && ui.open ? 'flex' : 'none';
+    // The button says which window is already up. Both of these sit ABOVE the
+    // `show && ui.open` gate below, so closing the panel reaches them too — under
+    // the gate the class is only ever added and a closed panel leaves a lit button.
+    fab.classList.toggle('pk-open', ui.open);
     fab.setAttribute('aria-expanded', String(ui.open));
     pinBtn.dataset.on = ui.everywhere ? '1' : '0';
     title.textContent = data.polls.length ? `polls · ${data.polls.length}` : 'polls';
     for (const b of tabBar.children) b.dataset.on = b.dataset.view === ui.view ? '1' : '0';
     if (show && ui.open) {
       drag.apply(ui);
+      resize.apply(ui.size);   // display:none has no geometry, so restore on show
       render();      // content decides the height…
       drag.fit();    // …so only now can we be sure the header is still reachable
       fabDrag?.fit();
@@ -872,8 +1091,8 @@
     style.textContent = CSS;
     root.append(style);
 
-    fab = el('button', 'pkpw-fab', '◔');
-    fab.title = 'Politiko Poll Watch (passive) — drag to move';
+    fab = el('button', 'pk-fab pkpw-fab', 'POLL');
+    fab.title = 'Politiko Poll Watch (passive) — drag to move, double-click to put it back';
     fab.addEventListener('click', () => {
       if (fabDrag.dragged()) return; // that gesture was a drag, not a click
       ui.open = !ui.open; saveUI(); sync();
@@ -890,7 +1109,7 @@
     pinBtn.addEventListener('click', () => { ui.everywhere = !ui.everywhere; saveUI(); sync(); });
 
     const close = el('button', 'pkpw-btn', '×');
-    close.title = 'Hide (the ◔ button brings it back)';
+    close.title = 'Hide (the POLL button brings it back)';
     close.addEventListener('click', () => { ui.open = false; saveUI(); sync(); });
 
     head.append(title, pinBtn, close);
@@ -909,11 +1128,19 @@
     document.documentElement.append(root);
 
     drag = draggable(panel, head, (pos) => { Object.assign(ui, pos ?? { x: null, y: null }); saveUI(); });
-    head.addEventListener('dblclick', drag.reset);
+    resize = resizable(panel, (size) => { ui.size = size ?? undefined; saveUI(); },
+      { drag, minW: 260, minH: 160 });
+    // Double-click the header undoes both — the recovery path for a panel dragged
+    // or resized into uselessness.
+    head.addEventListener('dblclick', () => { drag.reset(); resize.reset(); });
 
     // the FAB moves too — it is UI in the way just as much as the panel is
     fabDrag = draggable(fab, fab, (pos) => { ui.fab = pos; saveUI(); });
     fabDrag.apply(ui.fab);
+    // Double-click puts it back in the row. reset() drops the stored position AND
+    // clears the inline left/top, which is the only thing that lets the kit's rule
+    // apply again — see FAB KIT v4.
+    fab.addEventListener('dblclick', () => { ui.fab = null; saveUI(); fabDrag.reset(); });
 
     sync();
   };

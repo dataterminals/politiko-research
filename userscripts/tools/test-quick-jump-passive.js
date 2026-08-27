@@ -54,15 +54,30 @@ absent('it names no write verb', /method:\s*['"`](POST|PUT|PATCH|DELETE)/gi);
 
 // `/api/` appears in this file, and should: the tap has to recognise the game's own
 // calls to know which ones to read. What must never appear is an /api/ path used as a
-// destination. So every quoted occurrence has to be a recogniser — an .includes() guard
-// — and every path-shaped one has to live in a regex, which cannot be fetched.
+// destination. Two shapes are legitimate. A recogniser — .includes()/.startsWith() —
+// and, since HTTP TAP v1, a subscription prefix: the shared tap is asked for the paths
+// this tool wants and parses nothing else, and naming a path is the whole of that API.
+// Prefixes are therefore allowed by identity, collected from the onApi() call itself,
+// so a quoted path that is NOT registered still fails. Everything path-shaped that is
+// used for matching still has to live in a regex, which cannot be fetched.
+const subPrefixes = new Set(
+  [...CODE.matchAll(/onApi\(\s*(\[[^\]]*\]|['"`][^'"`]*['"`])/g)]
+    .flatMap((m) => [...m[1].matchAll(/['"`](\/api\/[^'"`]*)['"`]/g)].map((x) => x[1])),
+);
+check('the tool subscribes to named paths, not to everything',
+  subPrefixes.size > 0 && !/onApi\(\s*['"`]\*['"`]/.test(CODE),
+  `prefixes: ${[...subPrefixes].join(', ') || 'none'}${/onApi\(\s*['"`]\*['"`]/.test(CODE) ? ' (and a * subscription)' : ''}`);
+
 const apiLiterals = [...CODE.matchAll(/.{16}['"`]\/api\/[^'"`]*['"`]/g)].map((m) => m[0]);
-check('every quoted /api/ is a recogniser, not a destination',
-  apiLiterals.length > 0 && apiLiterals.every((s) => /includes\(\s*['"`]\/api\/['"`]$/.test(s)),
-  `not a guard: ${apiLiterals.filter((s) => !/includes\(/.test(s)).join(' | ')}`);
+const legit = (s) => /(includes|startsWith)\(\s*['"`]\/api\/['"`]$/.test(s)
+  || [...subPrefixes].some((p) => s.endsWith(`'${p}'`) || s.endsWith(`"${p}"`) || s.endsWith(`\`${p}\``));
+check('every quoted /api/ is a recogniser or a subscription, not a destination',
+  apiLiterals.length > 0 && apiLiterals.every(legit),
+  `not a guard: ${apiLiterals.filter((s) => !legit(s)).join(' | ')}`);
 check('the path patterns are regexes, which cannot be called',
-  /casino:\s*\/\^\\\/api\\\//.test(CODE) && !/['"`]\/api\/corporations/.test(CODE),
-  'expected R.* to be regex literals and no quoted /api/corporations path');
+  /casino:\s*\/\^\\\/api\\\//.test(CODE)
+    && [...CODE.matchAll(/['"`](\/api\/corporations[^'"`]*)['"`]/g)].every((m) => subPrefixes.has(m[1])),
+  'expected R.* to be regex literals and no quoted /api/corporations path beyond the subscription');
 
 // The XHR wrap must only observe. `open` records the URL, `send` adds a load listener.
 check('the XHR wrap only observes',

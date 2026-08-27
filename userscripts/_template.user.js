@@ -41,32 +41,193 @@
   const TAG = '[politiko-tool]';
   const log = (...a) => console.debug(TAG, ...a);
 
-  // ---------------------------------------------------------------------------
-  // 1. Passive tap — observe responses the app requested on its own.
-  //    This ADDS NO REQUESTS. It only reads what was already in flight.
-  // ---------------------------------------------------------------------------
-  const listeners = new Set();
-  /** @param {(info: {url: string, status: number, data: any}) => void} fn */
-  const onApiResponse = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
+  // ===========================================================================
+  // 1. HTTP TAP v1 — shared verbatim block. Copy it as-is into any tool that
+  //    reads API responses, and if you must change it, bump the version here and
+  //    in every tool carrying a copy so they can be diffed. Same convention as
+  //    PANEL KIT and FAB KIT, and tools/test-placement.js md5s the copies.
+  //
+  //    This ADDS NO REQUESTS. It only reads what the app already had in flight.
+  //
+  //    onApi(prefix, fn) -> unsubscribe
+  //      prefix is a pathname prefix ('/api/government'), an array of them, or
+  //      the string '*' for every API response. fn receives a frozen record:
+  //        { url, path, method, status, ok, body, data }
+  //      `url` is the request URL untouched, so a tool that needs `?page=3` can
+  //      still read it; `path` is the pathname alone, which is what prefixes
+  //      match against. `data` is the parsed JSON body, or null if the response
+  //      was not JSON. `body` is the REQUEST body and only ever a string.
+  //
+  //    WHY THIS IS A SHARED BLOCK AND NOT A PRIVATE WRAPPER PER TOOL:
+  //
+  //    Eleven tools each installing their own window.fetch wrapper is eleven
+  //    nested layers on every response, and nine of them cloned and parsed every
+  //    /api/ body before checking whether they wanted it — so one /user/status,
+  //    which arrives every 10s on every authenticated route, was teed and parsed
+  //    nine times to be discarded eight. The app is built with no QueryClient
+  //    defaultOptions, so TanStack's refetchOnWindowFocus default holds and every
+  //    alt-tab back re-fires every mounted query at once; that multiplier landed
+  //    on all of it simultaneously. One tap, one clone, one parse, delivered only
+  //    to the tools that asked for the path.
+  //
+  //    FOUR THINGS THAT ARE NOT STYLE CHOICES:
+  //
+  //    a) First copy wins. Load order between userscripts is not guaranteed by
+  //       any manager, so every copy must be able to be the installer and every
+  //       other copy must find the one already there. A half-migrated install —
+  //       some tools on the block, some still carrying a private wrapper — is
+  //       exactly as correct as before, just less improved, which is what makes
+  //       the migration safe to do a tool at a time.
+  //
+  //    b) Nothing is cloned or parsed until a subscriber has asked for the path.
+  //       The prefix registry is the entire point; a '*' subscriber opts back
+  //       into the old cost and should be rare.
+  //
+  //    c) The parsed body is frozen once and the SAME object is handed to every
+  //       subscriber. Nine private parses used to make mutation harmless; sharing
+  //       does not, so the freeze is what keeps one tool from editing another
+  //       tool's view of a response. Unlike WS TAP's clean(), nothing here is
+  //       truncated or redacted: these payloads are already consumed whole by the
+  //       tools today, and a depth cap would silently change what they see.
+  //
+  //    d) The request is never touched. A Request object is not drained — only an
+  //       already-materialised string body is carried, which is the constraint
+  //       align-watch and poll-watch held privately before this block existed.
+  //       The tap does not retry, does not re-issue, and originates nothing.
+  // ===========================================================================
+  const HTTP_TAP_VERSION = 1;
 
-  const origFetch = window.fetch;
-  window.fetch = async function (...args) {
-    const res = await origFetch.apply(this, args);
-    try {
-      const url = typeof args[0] === 'string' ? args[0] : args[0]?.url ?? '';
-      if (url.includes('/api/') && res.headers.get('content-type')?.includes('json')) {
-        // clone so the app's own consumer still gets an unread body
-        res.clone().json().then(
-          (data) => listeners.forEach((fn) => { try { fn({ url, status: res.status, data }); } catch (e) { log('listener error', e); } }),
-          () => {},
-        );
+  const onApi = (() => {
+    const KEY = '__pkHttpTap';
+    const found = window[KEY];
+    if (found && typeof found.subscribe === 'function') return found.subscribe;
+
+    // An array, not a Set, for a reason that is about this repo rather than about
+    // data structures: the passive fences are deliberately blunt text searches, and
+    // several of them ban `.delete(` outright as an HTTP verb. A Set's own remove
+    // method reads exactly like one. This block lands in every tool, so it must not
+    // spend any tool's fence budget on a false positive.
+    const subs = [];
+
+    const tapPathOf = (u) => { try { return new URL(String(u), location.href).pathname; } catch { return ''; } };
+
+    // Which subscribers want this path. An empty result means the body is never
+    // read at all — no clone, no parse.
+    const wanting = (p) => {
+      const out = [];
+      for (const s of subs) {
+        if (s.prefixes === null || s.prefixes.some((x) => p.startsWith(x))) out.push(s);
       }
-    } catch (e) { log('tap error', e); }
-    return res;
-  };
+      return out;
+    };
+
+    // Freeze in place rather than copying: one traversal beats nine parses, and
+    // the isFrozen check both stops the recursion and makes a second call cheap.
+    const freeze = (v) => {
+      if (v === null || typeof v !== 'object' || Object.isFrozen(v)) return v;
+      Object.freeze(v);
+      for (const k of Object.keys(v)) freeze(v[k]);
+      return v;
+    };
+
+    const deliver = (want, rec) => {
+      const frozen = Object.freeze(rec);
+      for (const s of want) { try { s.fn(frozen); } catch (e) { log('subscriber error', e); } }
+    };
+
+    const origFetch = window.fetch;
+    window.fetch = async function (...args) {
+      const target = args[0];
+      const init = args[1];
+      const url = typeof target === 'string' ? target : (target?.url ?? '');
+      // String bodies only. A Request is never read — draining it would break the
+      // app's own send, and it is not ours to consume.
+      const body = typeof init?.body === 'string' ? init.body : null;
+      const method = String(
+        init?.method ?? (target && typeof target === 'object' ? target.method : null) ?? 'GET',
+      ).toUpperCase();
+
+      const res = await origFetch.apply(this, args);
+      try {
+        const path = tapPathOf(url);
+        if (path.startsWith('/api/')) {
+          const want = wanting(path);
+          if (want.length) {
+            const rec = { url, path, method, status: res.status, ok: res.ok, body };
+            if ((res.headers.get('content-type') || '').includes('json')) {
+              // clone so the app's own consumer still gets an unread body
+              res.clone().json().then(
+                (data) => deliver(want, { ...rec, data: freeze(data) }),
+                () => deliver(want, { ...rec, data: null }),
+              );
+            } else {
+              // Not JSON: still a fact worth reporting — a tool that watches for a
+              // failed action needs the status even when there is no body to read.
+              deliver(want, { ...rec, data: null });
+            }
+          }
+        }
+      } catch (e) { log('tap error', e); }
+      return res;
+    };
+
+    const origOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+      this.__pkTapUrl = url;
+      this.__pkTapMethod = String(method || 'GET').toUpperCase();
+      return origOpen.call(this, method, url, ...rest);
+    };
+
+    const origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function (...a) {
+      this.addEventListener('load', () => {
+        try {
+          const url = this.__pkTapUrl || '';
+          const path = tapPathOf(url);
+          if (!path.startsWith('/api/')) return;
+          const want = wanting(path);
+          if (!want.length) return; // the JSON.parse below is the expensive one
+          const rec = {
+            url, path, method: this.__pkTapMethod || 'GET',
+            status: this.status, ok: this.status >= 200 && this.status < 300, body: null,
+          };
+          if (!(this.getResponseHeader('content-type') || '').includes('json')) {
+            deliver(want, { ...rec, data: null });
+            return;
+          }
+          // responseType 'json' hands back an already-parsed object and makes
+          // responseText throw; anything text-shaped still needs parsing. That object
+          // belongs to the app, which may well mutate it, so it is copied before it is
+          // frozen — the freeze is ours to impose on subscribers, not on the game.
+          let data;
+          try {
+            const raw = (this.responseType === '' || this.responseType === 'text')
+              ? this.responseText : this.response;
+            data = typeof raw === 'string' ? JSON.parse(raw) : JSON.parse(JSON.stringify(raw));
+          } catch { return; }
+          if (data === null || typeof data !== 'object') return;
+          deliver(want, { ...rec, data: freeze(data) });
+        } catch (e) { log('xhr tap error', e); }
+      });
+      return origSend.apply(this, a);
+    };
+
+    const api = Object.freeze({
+      version: HTTP_TAP_VERSION,
+      subscribe: (prefix, fn) => {
+        const prefixes = prefix === '*' ? null : (Array.isArray(prefix) ? prefix.slice() : [prefix]);
+        const s = { prefixes, fn };
+        subs.push(s);
+        return () => { const i = subs.indexOf(s); if (i >= 0) subs.splice(i, 1); };
+      },
+    });
+    Object.defineProperty(window, KEY, { value: api, configurable: true });
+    log('tap installed, HTTP TAP v' + HTTP_TAP_VERSION);
+    return api.subscribe;
+  })();
 
   // ===========================================================================
-  // 2. WS TAP v1 — shared verbatim block. DELETE IT if your tool has no use for
+  // 2. WS TAP v2 — shared verbatim block. DELETE IT if your tool has no use for
   //    socket frames; keep it byte-identical if it does.
   //
   //    Same convention as PANEL KIT: copy as-is, and if you must change it, bump
@@ -438,11 +599,11 @@
   };
 
   // ===========================================================================
-  // 5. FAB KIT v3 — shared verbatim block.
+  // 5. FAB KIT v4 — shared verbatim block.
   //
   //    The toggle button, and the one piece of this repo a player sees before
-  //    they open anything. Ten tools can be on screen at once, so the button is
-  //    a set piece rather than each tool's own flourish: paste FAB_CSS into your
+  //    they open anything. Thirteen tools can be on screen at once, so the button
+  //    is a set piece rather than each tool's own flourish: paste FAB_CSS into your
   //    stylesheet as it stands, put `pk-fab` on the element, and put ONE three-
   //    or four-letter word inside it. Same rule as PANEL KIT — if the block has
   //    to change, bump the version in this header and in every tool carrying a
@@ -455,6 +616,13 @@
   //    position — see the block for the slot table and the three numbers that
   //    place the row.
   //
+  //    v4 widens that row from eleven slots to thirteen, for poll-watch and
+  //    shop-watch. Half the row is a number CSS cannot count for itself, so it
+  //    is written out — and a version bump is what adding a slot costs, every
+  //    time. Read the third number in the block as the row's declared CAPACITY
+  //    rather than a tally of what is installed: a tool you do not have leaves
+  //    its slot empty and the row stays where it is.
+  //
   //    The button also has to say whether ITS window is the one already open, so
   //    wire `pk-open` at the single place your tool writes the panel's display —
   //    `fab.classList.toggle('pk-open', ui.open)`, above any `if (!ui.open)
@@ -463,18 +631,18 @@
   //    the whole box with it. test-placement.js checks for both.
   //
   //    Pick the word the way you would pick a stock ticker: ALGN, MKT, RAID,
-  //    SLP, JUMP, SOCK, TIME, WRLD, XP. No emoji — a 15px glyph is a coin toss
-  //    across fonts and platforms, and four of them tell you nothing about which
-  //    is which. people-watch is the single exception, and it is grandfathered:
-  //    the eye of providence is its mark, and `.pk-fab svg` sizes it inside the
-  //    same square as everyone else's letters.
+  //    SLP, JUMP, SOCK, TIME, WRLD, XP, POLL, SHOP. No emoji — a 15px glyph is
+  //    coin toss across fonts and platforms, and four of them tell you nothing
+  //    about which is which. people-watch is the single exception, and it is
+  //    grandfathered: the eye of providence is its mark, and `.pk-fab svg`
+  //    sizes it inside the same square as everyone else's letters.
   //
   //    Your rule goes AFTER the block, same specificity, and carries only what
   //    is actually yours: your slot in the row, your z-index, and any state
   //    colour. No inset — top/left/right/bottom belong to the kit now, and
   //    test-placement.js fails the build if a tool takes one back.
   //
-  //      .pkxx-fab { --pk-slot: 11; z-index: 2147482000; }
+  //      .pkxx-fab { --pk-slot: 13; z-index: 2147482000; }
   //
   //    Tools that also do their own placement maths (defaultFabPos, clampFab)
   //    keep CFG.FAB_SIZE at 38 to match the box below, and have to compute the
@@ -482,7 +650,7 @@
   //    left/top inline. test-placement.js checks the two against each other.
   // ===========================================================================
   const FAB_CSS = `
-    /* FAB KIT v3 — shared verbatim block.
+    /* FAB KIT v4 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
        bump the version here and in every tool carrying a copy, so the copies can
        be diffed. Several of these tools are on screen at once, and buttons that
@@ -492,8 +660,8 @@
        box is fixed here and only the word inside it belongs to the tool: three
        or four letters, upper case, no emoji.
 
-       v2 adds .pk-open: the button is filled while its own panel is open. Ten of
-       these can sit on one screen and every panel remembers whether it was open,
+       v2 adds .pk-open: the button is filled while its own panel is open. A dozen
+       of these can sit on one screen and every panel remembers whether it was open,
        so the row of buttons was the one thing that could not tell you which
        windows you already had — you found that out by clicking one and closing it.
 
@@ -505,30 +673,42 @@
        38, so top: 7 centres it there, and on any desktop layout that band is empty
        screen between the nav links and the account menu.
 
+       v4 widens the row to thirteen slots, for poll-watch and shop-watch, which
+       is the whole of the change. Half the row is written out below because CSS
+       cannot count the tools that happen to be installed, which means every slot
+       the row gains costs a version bump and a pass over every copy — the price
+       of the row being one row rather than each tool's guess at one.
+
        The kit owns the row. A tool owns its SLOT and nothing else about position:
 
-         .pkxx-fab { --pk-slot: 11; z-index: 2147482000; }
+         .pkxx-fab { --pk-slot: 13; z-index: 2147482000; }
 
        Slots are fixed rather than packed, and that is the whole point — installing
-       an eleventh tool does not shuffle the ten buttons you already know by
+       a thirteenth tool does not shuffle the twelve buttons you already know by
        position, and a tool you do not have simply leaves its slot empty. The eye
        leads because it is the mark of the set; the words are alphabetical after it:
 
-         0  the eye  people-watch     6  SLP   sleeper-watch
-         1  ALGN     align-watch      7  SOCK  ws-watch
-         2  GOV      gov-watch        8  TIME  time-watch
-         3  JUMP     quick-jump       9  WRLD  world-watch
-         4  MKT      market-watch    10  XP    xp-watch
-         5  RAID     raid-watch
+         0  the eye  people-watch     7  SOCK  ws-watch
+         1  ALGN     align-watch      8  TIME  time-watch
+         2  GOV      gov-watch        9  WRLD  world-watch
+         3  JUMP     quick-jump      10  XP    xp-watch
+         4  MKT      market-watch    11  POLL  poll-watch
+         5  RAID     raid-watch      12  SHOP  shop-watch
+         6  SLP      sleeper-watch
 
-       Eleven 38px buttons 8px apart is a 498px row, so it runs 249px either side
+       POLL and SHOP are on the end rather than sorted in among the others, and
+       that is deliberate: the alphabet describes how the first eleven were handed
+       out, not a sort to be re-run. Slots are fixed, so a tool that arrives later
+       takes the next free number and nothing already on screen moves.
+
+       Thirteen 38px buttons 8px apart is a 590px row, so it runs 295px either side
        of the middle of the viewport. The floor at 440px is where the game's own
        chrome ends — 24px of padding, a 62px wordmark, 24px of gap and five nav
-       links, measured off the bundle — so above about 1380px the row is centred,
+       links, measured off the bundle — so above about 1470px the row is centred,
        and below that it stops sliding left rather than climb onto the nav.
 
        Three numbers, if that header ever changes shape: 7 (where the band is), 440
-       (where the nav ends), 249 (half the row). Nothing else in here is placement.
+       (where the nav ends), 295 (half the row). Nothing else in here is placement.
 
        (No backticks anywhere in here, incidentally. This block is pasted INSIDE a
        template literal in every tool that carries it, and one backtick in a comment
@@ -567,7 +747,7 @@
       box-sizing: border-box; width: 38px; height: 38px; padding: 0;
       /* The home row. --pk-slot is the tool's; the three numbers are the kit's. */
       position: fixed; top: 7px;
-      left: calc(max(440px, 50% - 249px) + var(--pk-slot, 0) * 46px);
+      left: calc(max(440px, 50% - 295px) + var(--pk-slot, 0) * 46px);
       display: grid; place-items: center;
       background: #18181b; color: #e4e4e7;
       border: 1px solid #3f3f46; border-radius: 3px;
@@ -588,7 +768,9 @@
   const boot = () => {
     log('ready');
     checkRoute();
-    onApiResponse(({ url, data }) => log('api', url, data));
+    // Ask for the paths this tool actually reads, never '*' unless it genuinely
+    // needs every response — the prefix is what keeps the shared tap cheap.
+    onApi(['/api/user/status', '/api/time'], ({ path, data }) => log('api', path, data));
     onSocketFrame((rec) => log('ws', rec.kind, rec.ev, rec.type ?? ''));
 
     // The button: one element, class `pk-fab`, one word. draggable() takes it as

@@ -60,12 +60,26 @@ noString('no faction sleeper write path is ever written down',
 noString('no other faction write path either',
   /factions\/[^'"`\s]*\/(disband|leave|kick|promote|invite|apply|deposit|withdraw)/i);
 
-// The only /api/ string in the file is the four-character filter the tap uses to decide
-// whether a response is worth looking at. Any real endpoint would need a longer one.
+// The bare /api/ string is the four-character filter the tap uses to decide whether a
+// response is worth looking at. Since HTTP TAP v1 there are also subscription prefixes:
+// naming the paths this tool wants is the whole of how the shared tap knows what to
+// parse, and a path nobody named is never read at all. Those are allowed by identity —
+// collected from the onApi() call in this very file — so a quoted endpoint that is NOT
+// a registered prefix still fails, which is the property this check exists for. A read
+// prefix is also not a write path: the five endpoints named at the top of this file are
+// fenced separately above, and none of them is a prefix of anything subscribed here.
+const subPrefixes = new Set(
+  [...CODE.matchAll(/onApi\(\s*(\[[^\]]*\]|['"`][^'"`]*['"`])/g)]
+    .flatMap((m) => [...m[1].matchAll(/['"`](\/api\/[^'"`]*)['"`]/g)].map((x) => x[1])),
+);
+const registered = (s) => subPrefixes.has(s.slice(1, -1));
+check('the tool subscribes to named paths, not to everything',
+  subPrefixes.size > 0 && !/onApi\(\s*['"`]\*['"`]/.test(CODE),
+  `prefixes: ${[...subPrefixes].join(', ') || 'none'}`);
 const apiStrings = STRINGS.filter((s) => s.includes('/api/'));
-check('the only /api/ string is the tap filter',
-  apiStrings.length > 0 && apiStrings.every((s) => s === "'/api/'"),
-  `found ${apiStrings.length}: ${[...new Set(apiStrings)].join(' | ')}`);
+check('every /api/ string is the tap filter or a named subscription',
+  apiStrings.length > 0 && apiStrings.every((s) => s === "'/api/'" || registered(s)),
+  `found: ${[...new Set(apiStrings)].filter((s) => s !== "'/api/'" && !registered(s)).join(' | ')}`);
 
 console.log('\n— no way to originate a request at all —');
 
@@ -133,7 +147,11 @@ const pushes = CODE.match(/pushState/g) || [];
 check('exactly one pushState', pushes.length === 1, `found ${pushes.length}`);
 // The bare '/api/' filter is fine and is checked above; what must not exist is a string
 // naming an actual endpoint — that prefix followed by anything but the closing quote.
-noString('no navigable string is an API endpoint', /^(['"`])\/api\/[^'"`]/);
+// A registered read subscription is exempt: it is handed to the tap, never to a jump,
+// and the single pushState below is fenced on its own.
+check('no navigable string is an API endpoint',
+  STRINGS.filter((s) => /^(['"`])\/api\/[^'"`]/.test(s)).every(registered),
+  `found: ${STRINGS.filter((s) => /^(['"`])\/api\/[^'"`]/.test(s) && !registered(s)).join(' | ')}`);
 // Nothing may click the game's own action buttons on your behalf. clickTab exists, and
 // it is allowed exactly one caller with exactly one argument: the faction page's tab
 // strip, which is local component state with no URL to link to.

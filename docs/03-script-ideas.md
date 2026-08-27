@@ -99,6 +99,22 @@ key. Its one side effect is disclosed in the header: an inline position beats th
 own `body.store-drawer-open` rule, so a parked dock stops making way for the store drawer
 until you double-click the bar to hand it back.
 
+### Shop cadence — **first light shipped 2026-08-27** as `shop-watch` 0.1.0
+A faction asked for a restock notifier; that is ruled out below and the reason is worth
+reading. What survives the cut is the useful half. The client has **no concept of when a
+shop refills** — no field, no timer, no countdown anywhere in 126 chunks — and `stock` is a
+single nullable integer where null means unlimited. So the cadence is unknown *and* nobody
+has to be asked for it: tap the `/city/stores/{id}` responses the operator's own shop
+visits already produce, diff the stock per `item_def_id`, and a number that went **up**
+brackets a restock. Same discipline as `gov-watch` — never "restocked at 14:02", always
+"between these two readings", window printed on every row. Once brackets converge there is
+nothing left to poll, because the next boundary is arithmetic: countdown plus a jump
+button, in-page and visible-tab only. Test both clocks — a restock on the game month at 52×
+is ~14 real hours, which would explain "bought out fast" better than any real-time
+schedule. Cheapest step first: one shop visit says whether the server is sending a
+`restocks_at` the client discards, which would make the inference apparatus unnecessary.
+Findings: [`15-shop-surface.md`](15-shop-surface.md).
+
 ### Wire-feed filter
 The live wire is firehose-shaped. Client-side filter/highlight on the events already
 streaming into the page you're viewing (your faction, your city, your rivals). Purely a
@@ -166,6 +182,14 @@ PANEL KIT v1, zero added requests.
   not by policy.
 - Anything touching the Cloudflare challenge
 - Sniping/notification tooling that fires while you're in another tab
+- **Shop restock notifier** — asked for by a faction-mate 2026-08-27 and ruled out the
+  same day. It is the two entries above wearing a different hat: there is no restock event
+  on any of the three sockets and none in `/user/status`, so observing a stock number
+  change means calling `/city/stores/{id}` again (clauses 1 + 5), about a shop you are not
+  looking at (clause 2), to raise an alert in another tab (clause 4). Three prohibitions,
+  one feature. The **passive** half is fine and is proposed above as `shop-watch`; the
+  notification half belongs in Politiko's own push preferences, which already exist and are
+  four keys wide. Findings: [`15-shop-surface.md`](15-shop-surface.md).
 
 ---
 

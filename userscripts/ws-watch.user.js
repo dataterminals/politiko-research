@@ -807,7 +807,7 @@
   };
 
   const CSS = `
-    /* FAB KIT v3 — shared verbatim block.
+    /* FAB KIT v4 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
        bump the version here and in every tool carrying a copy, so the copies can
        be diffed. Several of these tools are on screen at once, and buttons that
@@ -817,8 +817,8 @@
        box is fixed here and only the word inside it belongs to the tool: three
        or four letters, upper case, no emoji.
 
-       v2 adds .pk-open: the button is filled while its own panel is open. Ten of
-       these can sit on one screen and every panel remembers whether it was open,
+       v2 adds .pk-open: the button is filled while its own panel is open. A dozen
+       of these can sit on one screen and every panel remembers whether it was open,
        so the row of buttons was the one thing that could not tell you which
        windows you already had — you found that out by clicking one and closing it.
 
@@ -830,30 +830,42 @@
        38, so top: 7 centres it there, and on any desktop layout that band is empty
        screen between the nav links and the account menu.
 
+       v4 widens the row to thirteen slots, for poll-watch and shop-watch, which
+       is the whole of the change. Half the row is written out below because CSS
+       cannot count the tools that happen to be installed, which means every slot
+       the row gains costs a version bump and a pass over every copy — the price
+       of the row being one row rather than each tool's guess at one.
+
        The kit owns the row. A tool owns its SLOT and nothing else about position:
 
-         .pkxx-fab { --pk-slot: 11; z-index: 2147482000; }
+         .pkxx-fab { --pk-slot: 13; z-index: 2147482000; }
 
        Slots are fixed rather than packed, and that is the whole point — installing
-       an eleventh tool does not shuffle the ten buttons you already know by
+       a thirteenth tool does not shuffle the twelve buttons you already know by
        position, and a tool you do not have simply leaves its slot empty. The eye
        leads because it is the mark of the set; the words are alphabetical after it:
 
-         0  the eye  people-watch     6  SLP   sleeper-watch
-         1  ALGN     align-watch      7  SOCK  ws-watch
-         2  GOV      gov-watch        8  TIME  time-watch
-         3  JUMP     quick-jump       9  WRLD  world-watch
-         4  MKT      market-watch    10  XP    xp-watch
-         5  RAID     raid-watch
+         0  the eye  people-watch     7  SOCK  ws-watch
+         1  ALGN     align-watch      8  TIME  time-watch
+         2  GOV      gov-watch        9  WRLD  world-watch
+         3  JUMP     quick-jump      10  XP    xp-watch
+         4  MKT      market-watch    11  POLL  poll-watch
+         5  RAID     raid-watch      12  SHOP  shop-watch
+         6  SLP      sleeper-watch
 
-       Eleven 38px buttons 8px apart is a 498px row, so it runs 249px either side
+       POLL and SHOP are on the end rather than sorted in among the others, and
+       that is deliberate: the alphabet describes how the first eleven were handed
+       out, not a sort to be re-run. Slots are fixed, so a tool that arrives later
+       takes the next free number and nothing already on screen moves.
+
+       Thirteen 38px buttons 8px apart is a 590px row, so it runs 295px either side
        of the middle of the viewport. The floor at 440px is where the game's own
        chrome ends — 24px of padding, a 62px wordmark, 24px of gap and five nav
-       links, measured off the bundle — so above about 1380px the row is centred,
+       links, measured off the bundle — so above about 1470px the row is centred,
        and below that it stops sliding left rather than climb onto the nav.
 
        Three numbers, if that header ever changes shape: 7 (where the band is), 440
-       (where the nav ends), 249 (half the row). Nothing else in here is placement.
+       (where the nav ends), 295 (half the row). Nothing else in here is placement.
 
        (No backticks anywhere in here, incidentally. This block is pasted INSIDE a
        template literal in every tool that carries it, and one backtick in a comment
@@ -892,7 +904,7 @@
       box-sizing: border-box; width: 38px; height: 38px; padding: 0;
       /* The home row. --pk-slot is the tool's; the three numbers are the kit's. */
       position: fixed; top: 7px;
-      left: calc(max(440px, 50% - 249px) + var(--pk-slot, 0) * 46px);
+      left: calc(max(440px, 50% - 295px) + var(--pk-slot, 0) * 46px);
       display: grid; place-items: center;
       background: #18181b; color: #e4e4e7;
       border: 1px solid #3f3f46; border-radius: 3px;
@@ -1369,7 +1381,7 @@
     fab.addEventListener('click', () => { if (!fabDrag.dragged()) setOpen(!ui.open); });
     // Double-click puts it back in the row. reset() drops the stored position AND
     // clears the inline left/top, which is the only thing that lets the kit's rule
-    // apply again — see FAB KIT v3.
+    // apply again — see FAB KIT v4.
     fab.addEventListener('dblclick', () => { persistUi({ fab: null }); fabDrag.reset(); });
 
     setOpen(ui.open !== false);
