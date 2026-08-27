@@ -17,32 +17,59 @@ Tools are listed in the order their buttons sit on screen, left to right.
 Each script declares `@updateURL`, so fixes arrive on your script manager's own
 update check — no reinstall.
 
-> [!WARNING]
-> Held out of the paste blocks below — these links do not serve current code yet:
-> - **People Watch 1.9.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **Align Watch 0.5.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **Gov Watch 0.2.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **Quick Jump 0.5.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **Market Watch 1.3.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **Raid Watch 0.5.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **Sleeper Watch 0.5.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **WS Watch 0.6.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **Time Watch 0.7.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **World Watch 0.3.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **XP Watch 0.5.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **Poll Watch 0.2.0** — committed locally but not on `origin/main`; the raw link 404s.
-> - **Shop Watch 0.1.0** — committed locally but not on `origin/main`; the raw link 404s.
->
-> Push, re-run the generator, then post.
-
 ## Discord paste
 
-Discord's message limit is 2000 characters, so this is split into one message. Copy each block and post it.
+Discord's message limit is 2000 characters, so this is split into 2 messages. Copy each block and post them in order.
 
-**Message 1 of 1** — 691 characters
+**Message 1 of 2** — 1536 characters
 
 ```
-## Politiko userscripts — install links
+## Politiko userscripts — install links (1/2)
+
+**People Watch** · who you've seen: last-online, city, rank, least-active first
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js>
+
+**ALGN — Align Watch** · your political compass on the home page, with a change log
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js>
+
+**GOV — Gov Watch** · change ledger for the government: what moved between readings
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js>
+
+**JUMP — Quick Jump** · launcher for the 64 screens the sidebar can't reach
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js>
+
+**MKT — Market Watch** · charts market series locally and fires threshold alerts
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js>
+
+**RAID — Raid Watch** · records faction raids, their event log and post-mortems
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js>
+
+**SLP — Sleeper Watch** · keeps sleeper-recruitment timers running after you leave
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js>
+
+**SOCK — WS Watch** · read-only observer for the three sockets the game opens
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js>
+```
+
+**Message 2 of 2** — 1639 characters
+
+```
+## Politiko userscripts — install links (2/2)
+
+**TIME — Time Watch** · real to game clock, month schedule, next-September countdown
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js>
+
+**WRLD — World Watch** · plots law, opinion, street, media and citizens on one compass
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js>
+
+**XP — XP Watch** · ledger of your own stat and skill changes, action by action
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js>
+
+**POLL — Poll Watch** · keeps every opinion-poll memo, with bloc spread and trends
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js>
+
+**SHOP — Shop Watch** · shop fields the UI never shows, and brackets every restock
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js>
 
 **Comms Move** · adds a drag bar to the game's Comms dock so you can move it
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js>
