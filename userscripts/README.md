@@ -17,21 +17,22 @@ bump; the table below is hand-kept and can drift.
 
 | tool | version | raw link |
 |---|---|---|
-| People Watch | 1.9.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
-| Market Watch | 1.2.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
-| Time Watch | 0.7.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
-| Align Watch | 0.5.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
+| People Watch | 1.10.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| Market Watch | 1.4.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
+| Time Watch | 0.8.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
+| Align Watch | 0.6.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
 | Comms Move | 0.1.1 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
-| WS Watch | 0.6.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.5.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
-| Raid Watch | 0.4.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
-| Sleeper Watch | 0.4.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
-| Quick Jump | 0.4.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
-| World Watch | 0.3.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
-| Gov Watch | 0.2.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
-| Poll Watch | 0.2.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
-| Shop Watch | 0.1.0 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
+| WS Watch | 0.7.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
+| XP Watch | 0.6.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| Raid Watch | 0.6.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
+| Sleeper Watch | 0.6.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
+| Quick Jump | 0.6.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
+| World Watch | 0.4.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
+| Gov Watch | 0.3.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
+| Poll Watch | 0.3.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
+| Shop Watch | 0.2.0 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
+| Bar Watch | 0.1.0 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, and the shared `PANEL KIT` and `FAB KIT` blocks).
@@ -69,7 +70,7 @@ repositions". `tools/test-placement.js` encodes both exceptions by name.
 
 ## The buttons
 
-`FAB KIT v4` is the same idea applied to the toggle button — the one part of any of this a
+`FAB KIT v5` is the same idea applied to the toggle button — the one part of any of this a
 player sees before they open anything. Install four of these tools and four buttons land on
 your screen, so they are a set rather than each tool's own flourish: **one 38px square, one
 three-or-four-letter word, all of them in one row.** (The row, and which button is which,
@@ -107,23 +108,25 @@ an order nobody chose — finding the one you wanted meant remembering which cor
 had claimed. They now default to a single line across the band above the game's header rule,
 which on any desktop layout is empty screen between the nav links and the account menu.
 **v4 widened that row from eleven slots to thirteen**, for `poll-watch` — the last tool
-still drawing its own button in a corner of its own choosing — and for `shop-watch`:
+still drawing its own button in a corner of its own choosing — and for `shop-watch`.
+**v5 widens it to fourteen**, for `bar-watch`:
 
-| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 👁 | `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` | `SOCK` | `TIME` | `WRLD` | `XP` | `POLL` | `SHOP` |
+| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 👁 | `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` | `SOCK` | `TIME` | `WRLD` | `XP` | `POLL` | `SHOP` | `BARS` |
 
 The eye leads because it is the mark of the set; the words are alphabetical after it — and
 then they stop being alphabetical, which is deliberate. `POLL` and `SHOP` arrived after the
 first eleven slots were handed out, and slots are **fixed rather than packed**: a tool that
-turns up later takes the next free number rather than sorting itself in. That is the point —
-installing a thirteenth tool does not shuffle the twelve buttons you already know by
-position, and a tool you do not have simply leaves its slot empty.
+turns up later takes the next free number rather than sorting itself in. `BARS` is the third
+of those. That is the point — installing a fourteenth tool does not shuffle the thirteen
+buttons you already know by position, and a tool you do not have simply leaves its slot
+empty.
 
-The row is 590px wide (thirteen 38px buttons, 8px apart) and centred on the window, with a
+The row is 636px wide (fourteen 38px buttons, 8px apart) and centred on the window, with a
 floor at 440px so it stops sliding left rather than climb onto the game's own nav links.
-Above about 1470px it is centred; between roughly 1180 and 1470 it sits at the floor; below
-about 1180 the last few buttons run under the account menu, and below 768 the game swaps in
+Above about 1516px it is centred; between roughly 1226 and 1516 it sits at the floor; below
+about 1226 the last few buttons run under the account menu, and below 768 the game swaps in
 a different header entirely. Drag them out of the row on a window that small — that is what
 dragging is for.
 
@@ -1324,6 +1327,119 @@ is deliberately one tool at a time and this one has not had its turn.
 
 ---
 
+# Bar Watch
+
+**Time to full for Energy, Juice and HP** — the one thing the game's own bars never tell
+you — with an alert when a bar reaches a level you choose.
+
+Fully passive, zero added requests.
+
+## Why this is not the Shop Watch answer
+
+Read the Shop Watch section above and this looks like the same request getting the opposite
+answer: "tell me when it refills." The difference is measured, not a judgement call.
+
+A shop's stock only changes on the server, so knowing it changed means asking again. **A bar
+does not.** `/api/attributes` sends `CurrentValue`, `MaxValue`, `BaseRegenRate`,
+`CustomRegenRate` and `LastUpdate`, and `CurrentValue` is the value *at* `LastUpdate` —
+everything after that is computed locally, by the game itself:
+
+```js
+value = CurrentValue + floor((now - LastUpdate) / 60000 * (CustomRegenRate ?? BaseRegenRate))
+```
+
+So a payload from twenty minutes ago gives exactly the same answer as one from this second,
+and a countdown to full needs **no request at all** — not a new one, not even a fresh one.
+The passive surface here is not a degraded version of the polling one, it is identical to
+it. [`docs/17-attribute-surface.md`](../docs/17-attribute-surface.md) has the measurement.
+
+## What the game shows, and what it doesn't
+
+The sidebar draws `value / max`, a ten-pip meter, and a countdown. That countdown is seconds
+to the **next whole point** — and the client takes the *maximum* of it across all three bars
+and prints that same number on every row, next to a per-bar `+N`.
+
+So the game tells you when something ticks, three times, about whichever bar is slowest.
+**Nothing in the client computes when a bar will be full.** Energy at 2/min sitting sixty
+points short is fifty minutes from full, and the sidebar says `0:30`.
+
+| | the game | this |
+|---|---|---|
+| value now | yes | yes |
+| seconds to next point | yes, but the slowest bar's, on every row | per bar |
+| **time to full** | **nowhere** | per bar |
+| time to *your* level | no | per bar, you set it |
+| the rate in use | no | shown, and flagged when it is not the base rate |
+| effect that changes the rate | on another screen | named next to the countdown it affects |
+
+## Tell me at
+
+Each bar takes a level. Blank means full, which is what you usually want; a number means
+"tell me at N", which is what you want when the thing you are waiting to afford costs N —
+50 energy for a protest, 5 juice for a disobedience. The row then reads `50 in 12:30`
+instead of `full in 26:40`.
+
+An alert fires **on the crossing** and re-arms when the bar drops back below the level. A
+bar that is already full when you load the game does not fire: arriving to something you can
+already see is not news.
+
+## The four channels
+
+Only the first is on by default. The other three are one click each, in the panel.
+
+| | reaches | default |
+|---|---|---|
+| `PAGE` | the row lights, the `BARS` button goes hot, a line appears in the panel | **on** |
+| `TITLE` | prefixes the tab title, so it reads `[E] Politiko` from another tab | off |
+| `ICON` | swaps the favicon for a coloured dot | off |
+| `SOUND` | one short two-note tone, synthesised — no audio file is fetched | off |
+
+**There is no desktop notification, and that is not a gap to be filled later.** It is the
+case [`docs/01-rules-envelope.md`](../docs/01-rules-envelope.md) names outright, and the
+`Notification` API does not appear in the file at all — not disabled, not behind a flag,
+absent. `tools/test-bar-passive.js` fails the build if it ever appears.
+
+The three that can be perceived from a tab you are not looking at ship off, behind a switch
+each, because that is a decision to make deliberately rather than a default to inherit. The
+argument for them, and its weak point, is written up in the rules envelope. Every one of
+them puts the tab back exactly as it found it — when the alert clears, when you switch the
+channel off, and on `pagehide`.
+
+## The countdown can be wrong, and says so
+
+`/api/effects` carries `regen_modifier` and `damage_over_time` rows, and radiation is
+special-cased in the game's own renderer as *"HP -1/min, regen paused"*.
+
+Whether the server folds a modifier into `CustomRegenRate` before sending it is **not
+measurable from the client**, so this tool does not model effects. It computes exactly what
+the game computes, which means it agrees with the sidebar by construction — and it *names*
+any active effect that touches a bar, with its remaining time, next to the countdown that
+effect might invalidate. When regen is paused the rate is zero, the ETA reads `no ETA`
+rather than a number, and the line underneath says which effect took it away.
+
+The rate column also flags when the rate in use is `CustomRegenRate` rather than
+`BaseRegenRate`. That is not decoration: watching whether it moves when you take a
+regen-modifying item is what answers the open question above, and it costs nothing.
+
+## What it reads
+
+| call | what is taken |
+|---|---|
+| `GET /api/attributes` | the three bars, as the sidebar's own 10-second poll receives them |
+| `GET /api/effects` | `effect_key`, `effect_type`, `target_key`, `value`, `modifier_type`, `expires_at`, `source_item_name` — only for effects that could touch a bar |
+
+Both are gated on the payload being an array. Nothing else is read, and **no game data is
+persisted**: every number in the panel comes from the payload currently in memory and is
+gone on reload. `pkbw:ui` holds panel geometry, your channel switches and your levels.
+
+One thing worth knowing about the shape of it: the client sets no
+`refetchIntervalInBackground`, so **its own polling stops when the tab loses focus**. That is
+fine here and it is the reason the design works — there is no gap to fill, because the
+projection is exact from a held payload. It is also why nothing in this tool has any reason
+to originate a request.
+
+---
+
 ## Tests
 
 Run from the repository root:
@@ -1350,6 +1466,7 @@ node userscripts/tools/test-gov.js
 node userscripts/tools/test-gov-passive.js
 node userscripts/tools/test-poll-watch.js
 node userscripts/tools/test-shop-passive.js
+node userscripts/tools/test-bar-passive.js
 node userscripts/tools/test-http-tap.js
 ```
 
@@ -1377,6 +1494,18 @@ only until someone adds it back:
   precedent), and pins the **shape gate**: store payloads are consumed only when they are
   arrays, which is how the tool reads a GET's listing without reading a purchase's result
   object while never looking at the request.
+- `test-bar-passive` fences bar-watch, and is the first fence in the repo whose job is
+  not purely to assert absences. Three of that tool's four alert channels are off by
+  default, and two of them can be perceived from a tab you are not looking at — so the
+  fence pins the *defaults themselves* (`PAGE` on, `TITLE`/`ICON`/`SOUND` off), pins that
+  each channel checks its own switch at the point it writes rather than only where it is
+  offered, and pins that every raise has a matching clear on all three exits: the alert
+  ending, the switch going off, and `pagehide`. A channel that can be raised and not
+  cleared leaves a permanent mark on a browser the tool does not own. `Notification`, the
+  service worker and the push manager stay absent outright, and so does any canvas. It
+  also pins the projection to the client's own `CustomRegenRate ?? BaseRegenRate` and
+  fails on a rate hardcoded from the wiki, because a countdown that disagrees with the
+  sidebar is worse than no countdown.
 - `test-raid-passive` fences raid-watch, which reads a surface whose write endpoints
   surrender wars and impose flags. It fails on any mention of those paths, any non-GET
   verb, and any timer body that touches the network — the two ways to build a poll are

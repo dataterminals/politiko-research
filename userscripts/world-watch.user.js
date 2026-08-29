@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — World Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.0
+// @version      0.4.0
 // @description  Plots the game world on the same political compass the game draws for your character — the law, public opinion, the street, the media and the citizens you have seen, as five separate readings — and breaks the same thing down city by city. Reads only responses the app already fetched. Passive; zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -693,7 +693,7 @@
   let title = null, drag = null, fabDrag = null, resize = null;
 
   const CSS = `
-    /* FAB KIT v4 — shared verbatim block.
+    /* FAB KIT v5 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
        bump the version here and in every tool carrying a copy, so the copies can
        be diffed. Several of these tools are on screen at once, and buttons that
@@ -716,18 +716,19 @@
        38, so top: 7 centres it there, and on any desktop layout that band is empty
        screen between the nav links and the account menu.
 
-       v4 widens the row to thirteen slots, for poll-watch and shop-watch, which
-       is the whole of the change. Half the row is written out below because CSS
-       cannot count the tools that happen to be installed, which means every slot
-       the row gains costs a version bump and a pass over every copy — the price
-       of the row being one row rather than each tool's guess at one.
+       v4 widened the row to thirteen slots, for poll-watch and shop-watch; v5
+       widens it to fourteen for bar-watch, and that is the whole of the change.
+       Half the row is written out below because CSS cannot count the tools that
+       happen to be installed, which means every slot the row gains costs a version
+       bump and a pass over every copy — the price of the row being one row rather
+       than each tool's guess at one.
 
        The kit owns the row. A tool owns its SLOT and nothing else about position:
 
-         .pkxx-fab { --pk-slot: 13; z-index: 2147482000; }
+         .pkxx-fab { --pk-slot: 14; z-index: 2147482000; }
 
        Slots are fixed rather than packed, and that is the whole point — installing
-       a thirteenth tool does not shuffle the twelve buttons you already know by
+       a fourteenth tool does not shuffle the thirteen buttons you already know by
        position, and a tool you do not have simply leaves its slot empty. The eye
        leads because it is the mark of the set; the words are alphabetical after it:
 
@@ -737,21 +738,21 @@
          3  JUMP     quick-jump      10  XP    xp-watch
          4  MKT      market-watch    11  POLL  poll-watch
          5  RAID     raid-watch      12  SHOP  shop-watch
-         6  SLP      sleeper-watch
+         6  SLP      sleeper-watch   13  BARS  bar-watch
 
-       POLL and SHOP are on the end rather than sorted in among the others, and
-       that is deliberate: the alphabet describes how the first eleven were handed
-       out, not a sort to be re-run. Slots are fixed, so a tool that arrives later
-       takes the next free number and nothing already on screen moves.
+       POLL, SHOP and BARS are on the end rather than sorted in among the others,
+       and that is deliberate: the alphabet describes how the first eleven were
+       handed out, not a sort to be re-run. Slots are fixed, so a tool that arrives
+       later takes the next free number and nothing already on screen moves.
 
-       Thirteen 38px buttons 8px apart is a 590px row, so it runs 295px either side
+       Fourteen 38px buttons 8px apart is a 636px row, so it runs 318px either side
        of the middle of the viewport. The floor at 440px is where the game's own
        chrome ends — 24px of padding, a 62px wordmark, 24px of gap and five nav
-       links, measured off the bundle — so above about 1470px the row is centred,
+       links, measured off the bundle — so above about 1516px the row is centred,
        and below that it stops sliding left rather than climb onto the nav.
 
        Three numbers, if that header ever changes shape: 7 (where the band is), 440
-       (where the nav ends), 295 (half the row). Nothing else in here is placement.
+       (where the nav ends), 318 (half the row). Nothing else in here is placement.
 
        (No backticks anywhere in here, incidentally. This block is pasted INSIDE a
        template literal in every tool that carries it, and one backtick in a comment
@@ -790,7 +791,7 @@
       box-sizing: border-box; width: 38px; height: 38px; padding: 0;
       /* The home row. --pk-slot is the tool's; the three numbers are the kit's. */
       position: fixed; top: 7px;
-      left: calc(max(440px, 50% - 295px) + var(--pk-slot, 0) * 46px);
+      left: calc(max(440px, 50% - 318px) + var(--pk-slot, 0) * 46px);
       display: grid; place-items: center;
       background: #18181b; color: #e4e4e7;
       border: 1px solid #3f3f46; border-radius: 3px;

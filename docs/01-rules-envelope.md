@@ -41,7 +41,8 @@ Penalty: game ban.
 | Background-poll `/api/...` for cooldowns while you're on another tab | ❌ | Extra requests, unfocused page, alerting |
 | Prefetch or crawl routes to build a market/player index | ❌ | Pages you aren't viewing |
 | ^ *departed from 2026-07-28, **retired 2026-08-07** — see note below* | | |
-| Desktop/tab notifications sourced from a script | ❌ | "Draw attention to itself or another window" — and the game already does this via Web Push |
+| Desktop notifications sourced from a script | ❌ | "Draw attention to itself or another window" — the clause's own worked example |
+| ^ *tab title / favicon / sound, on a countdown computed while focused* | ⚠️ | *operator decision 2026-08-27, below — narrower than the row above and argued separately* |
 | Anything that touches the Cloudflare challenge | ❌ | CAPTCHA bypass, named directly |
 | Automating game actions (auto-travel, auto-attack, auto-deal) | ❌ | Requests not manually initiated by the user |
 | ^ *superseded in part by operator decision 2026-07-28 — see note below* | | |
@@ -104,6 +105,59 @@ act is to **put a `join` frame on the wire** — and nothing in the shipped clie
 dispatches that event. It reads like a free page-level API and it is not one: using it
 would make a script the only caller in existence of a path that originates traffic. It is
 on the denylist, and any future use is an explicit operator decision, not a default.
+
+### Bar-fill alerts — operator decision, 2026-08-27
+
+`bar-watch` ships three alert channels that can be perceived from a tab you are not looking
+at: a `document.title` prefix, a favicon swap, and a synthesised tone. All three are **off by
+default and behind a switch each**. This section is the reasoning, because the table above
+says ❌ to a row that looks like it covers them and the difference is worth being able to
+re-read rather than re-derive.
+
+**What the clause actually prohibits.** Clause 4 bans *"extracting data from unfocused pages
+in order to send it elsewhere, raise alerts, or draw attention to itself or another window."*
+The prohibited act is conditioned on **extracting data from an unfocused page**. That is the
+hinge, and it is the whole argument.
+
+**Why this tool does not do that.** Measured, in
+[`17-attribute-surface.md`](17-attribute-surface.md):
+
+- `/api/attributes` sends `CurrentValue` as the value *at* `LastUpdate`, plus a rate. The
+  bar's value at any later moment is arithmetic the **client itself** performs — it does not
+  ask the server what the bar says now, it works it out.
+- The client sets no `refetchIntervalInBackground`, so **its own polling stops when the tab
+  loses focus.** There is nothing arriving from an unfocused page to extract, and this tool
+  originates nothing to change that.
+
+So a countdown that completes while you are in another tab was computed from a payload
+captured while the page was in front of you. What crosses the tab boundary is arithmetic on
+already-consumed data, not data pulled from a page nobody is viewing.
+
+**The counter-reading, stated plainly, because it is not weak.** One can read clause 4 as
+targeting the *effect* — attention drawn to a window you are not looking at — with
+"extracting data from unfocused pages" as description rather than condition. Under that
+reading these three channels are out, and the argument above is exactly the kind of
+close reading that reads well in a document and badly in a ban appeal. Nothing here resolves
+that; the decision was taken knowing it.
+
+**What made it a decision rather than a default:**
+
+1. **The cheap unlock does not exist.** This file's standing advice is to reach first for a
+   server-side switch the game already ships. Measured: Politiko's push vocabulary is
+   exactly four keys — `jail_release`, `hospital_release`, `hospitalized`, `travel_arrival`
+   — and none of them is a bar. There is nothing to reach for.
+2. **The desktop notification stays refused.** The channel the clause names as its own
+   worked example is not shipped, not disabled, not flagged — the `Notification` API is
+   absent from the file, with `tools/test-bar-passive.js` failing the build if it appears.
+   The decision taken is strictly narrower than the row in the table.
+3. **The default is the safe one.** `PAGE` — an in-page banner and a lit button — is on, and
+   is unambiguously inside the clause on any reading. The other three are one deliberate
+   click each, and every one of them restores the tab exactly as it found it.
+
+**The thing that retires this decision, in the same shape as the July ones:** a `bars_full`
+key in Politiko's own push preferences. It costs the operator nothing to ask for, the
+`/contact` ticket system exists to ask in, and it is cheap to append to the sanctioned-API
+question this file has been holding since July. If it lands, these three channels come out.
 
 ## Three more rules with teeth
 

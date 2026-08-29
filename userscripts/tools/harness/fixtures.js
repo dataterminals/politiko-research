@@ -1040,4 +1040,89 @@ window.HARNESS_FIXTURES = {
     })(),
   },
 
+  'bar-watch': {
+    label: 'Bar Watch',
+    source: 'docs/17-attribute-surface.md',
+    note: 'LastUpdate is stamped relative to when this page loaded, so the countdowns '
+      + 'tick for real. Fire "bars" and watch; fire "energy already full" to see the '
+      + 'alert fire, and "hp regen paused" to see a countdown correctly refuse to exist.',
+    calls: (() => {
+      // The projection is anchored on LastUpdate, so a hardcoded timestamp would render
+      // a bar that filled up in 2026 and stayed there. These are stamped at load.
+      const ago = (mins) => new Date(Date.now() - mins * 60000).toISOString();
+      return [
+        {
+          label: 'bars — mid fill',
+          path: '/api/attributes',
+          body: [
+            // 47 + floor(3 * 2) = 53 of 100 at 2/min: about 23 minutes from full.
+            { AttributeID: 1, AttributeName: 'energy', CurrentValue: 47, MaxValue: 100,
+              BaseRegenRate: 2, CustomRegenRate: null, LastUpdate: ago(3) },
+            // A custom rate, so the RATE column has something to show — whether the
+            // server folds effects into this field is the open question in docs/17.
+            { AttributeID: 2, AttributeName: 'juice', CurrentValue: 12, MaxValue: 40,
+              BaseRegenRate: 3, CustomRegenRate: 4.5, LastUpdate: ago(1) },
+            { AttributeID: 3, AttributeName: 'hp', CurrentValue: 88, MaxValue: 100,
+              BaseRegenRate: 6, CustomRegenRate: null, LastUpdate: ago(0.5) },
+          ],
+        },
+        {
+          label: 'bars — energy already full',
+          path: '/api/attributes',
+          variant: true,
+          body: [
+            { AttributeID: 1, AttributeName: 'energy', CurrentValue: 100, MaxValue: 100,
+              BaseRegenRate: 2, CustomRegenRate: null, LastUpdate: ago(30) },
+            { AttributeID: 2, AttributeName: 'juice', CurrentValue: 12, MaxValue: 40,
+              BaseRegenRate: 3, CustomRegenRate: null, LastUpdate: ago(1) },
+            { AttributeID: 3, AttributeName: 'hp', CurrentValue: 88, MaxValue: 100,
+              BaseRegenRate: 6, CustomRegenRate: null, LastUpdate: ago(0.5) },
+          ],
+        },
+        {
+          label: 'bars — hp regen paused (rate 0)',
+          path: '/api/attributes',
+          variant: true,
+          body: [
+            { AttributeID: 1, AttributeName: 'energy', CurrentValue: 47, MaxValue: 100,
+              BaseRegenRate: 2, CustomRegenRate: null, LastUpdate: ago(3) },
+            { AttributeID: 2, AttributeName: 'juice', CurrentValue: 12, MaxValue: 40,
+              BaseRegenRate: 3, CustomRegenRate: null, LastUpdate: ago(1) },
+            // The game's own us()/ds() return CurrentValue and null here, so the panel
+            // must print no ETA rather than an infinite one.
+            { AttributeID: 3, AttributeName: 'hp', CurrentValue: 41, MaxValue: 100,
+              BaseRegenRate: 6, CustomRegenRate: 0, LastUpdate: ago(9) },
+          ],
+        },
+        {
+          label: 'effects — none',
+          path: '/api/effects',
+          body: [],
+        },
+        {
+          label: 'effects — radiation (regen paused)',
+          path: '/api/effects',
+          variant: true,
+          body: [
+            { id: 71, effect_key: 'radiation', effect_type: 'damage_over_time',
+              target_key: 'hp', value: -1, modifier_type: 'flat',
+              expires_at: new Date(Date.now() + 22 * 60000).toISOString(),
+              source_item_name: null },
+          ],
+        },
+        {
+          label: 'effects — a juice regen modifier',
+          path: '/api/effects',
+          variant: true,
+          body: [
+            { id: 72, effect_key: 'stim', effect_type: 'regen_modifier',
+              target_key: 'juice', value: 50, modifier_type: 'percent',
+              expires_at: new Date(Date.now() + 8 * 60000).toISOString(),
+              source_item_name: 'Cheap Stimulant' },
+          ],
+        },
+      ];
+    })(),
+  },
+
 };

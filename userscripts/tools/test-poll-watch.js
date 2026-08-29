@@ -108,7 +108,7 @@ console.log('\n— it stays auditable —');
 check('@grant none', /@grant\s+none/.test(SRC), 'any other grant sandboxes window and blinds the tap');
 check('the disclosure block names Requests: ZERO', /Requests:\s*ZERO/.test(SRC), 'clause 6');
 check('PANEL KIT v2 is present', /PANEL KIT v2 — shared verbatim block/.test(SRC), 'panels must be movable AND resizable');
-check('FAB KIT v4 is present', /FAB KIT v4 — shared verbatim block/.test(SRC), 'the button belongs to the home row');
+check('FAB KIT v5 is present', /FAB KIT v5 — shared verbatim block/.test(SRC), 'the button belongs to the home row');
 check('fit() runs after render', /render\(\);\s*\n\s*drag\.fit\(\)/.test(CODE), 'an off-screen handle is unrecoverable');
 absent('no hashed chunk name is hardcoded', /-[A-Za-z0-9_-]{8}\.js/g);
 absent('it sends nothing anywhere', /https?:\/\/(?!politiko\.io|raw\.github|github\.com)/g);

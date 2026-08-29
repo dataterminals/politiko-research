@@ -49,12 +49,13 @@ enforceable line, and it is the main design constraint on this whole project.
 docs/     numbered findings + plan; 00 recon, 01 rules, 02 plan, 03 ideas,
           04 stocks, 05 people, 06 time, 07 alignment, 08 sleepers, 09 sockets,
           10 xp, 11 faction raids, 12 navigation, 13 world politics,
-          14 government motion, 15 shops
+          14 government motion, 15 shops, 16 client cost, 17 attributes
 tools/    recon helpers (PowerShell)
 userscripts/  _template.user.js — passive-tap skeleton + WS TAP + PANEL KIT;
               people-watch, market-watch, time-watch, align-watch, comms-move,
               time-bridge, ws-watch, xp-watch, raid-watch, sleeper-watch,
-              quick-jump, world-watch, gov-watch, poll-watch, shop-watch; README.md
+              quick-jump, world-watch, gov-watch, poll-watch, shop-watch, bar-watch;
+              README.md
               documents them; tools/ holds their tests, and tools/harness/ is a bench
               that renders a panel against canned payloads with fetch/WebSocket/XHR
               stubbed out, so no panel work needs the live game. Every userscript
@@ -108,14 +109,14 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   than its body, a repaint has to restore **both** scroll axes, not just `scrollTop`.
 - **Every toggle button is the same button.** One 38px square, one three- or four-letter
   word — `ALGN`, `MKT`, `RAID`, `JUMP`. Install four tools and four of these land on one
-  screen, so the box is not the tool's to pick; copy the `FAB KIT v4` block from
+  screen, so the box is not the tool's to pick; copy the `FAB KIT v5` block from
   [`userscripts/_template.user.js`](userscripts/_template.user.js) verbatim, same
   bump-the-version rule as PANEL KIT. What a tool still owns is its slot in the row, its
   z-index, and its state colours, layered on top. No emoji — a 15px glyph is a coin toss
   across fonts, and four of them tell you nothing about which is which. people-watch is the
   one exception and is grandfathered: the eye of providence is its mark. `test-placement.js`
   hashes the copies and names that exception, so a second symbol button fails the build.
-- **Every button starts in the same row.** `FAB KIT v4` places them: one line across the
+- **Every button starts in the same row.** `FAB KIT v5` places them: one line across the
   band above the game's header rule, one slot each, declared as `--pk-slot: N` in the
   tool's own rule and *nothing else about position* — an inset in a tool's rule silently
   leaves the row and fails the build. Slots are fixed rather than packed, so a new tool
@@ -127,7 +128,7 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   version, a pass over every copy, and the JS row in the two self-placing tools.
   `test-placement.js` derives the expected half from the number of tools on disk and fails
   the build rather than let the row quietly stop being centred — that is how v3's eleven
-  slots became v4's thirteen. A tool that positions its own button — market-watch, people-watch — computes
+  slots became v4's thirteen, and v4's thirteen became v5's fourteen. A tool that positions its own button — market-watch, people-watch — computes
   the identical row in JS, because an inline `left/top` outranks the rule; `test-placement.js`
   reads both and fails on a drift. **Double-click is the only way back into the row**, so
   every button needs the `dblclick` that clears the stored position *and* calls `reset()`.
@@ -138,5 +139,18 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   takes the whole box with it, and a bare `add()` needs a `remove()` somewhere else to
   agree with it. The kit owns the **fill** and nothing else, so a tool's state colour
   still reads through an open button. `test-placement.js` checks all three.
+- **An alert that leaves the page is a decision, not a feature.** In-page is free — a lit
+  button, a banner, a row that changes colour — and every tool may do it. Anything a
+  player can perceive while looking at another tab (`document.title`, the favicon, sound)
+  ships **off, behind its own switch**, is disclosed by name and default in the header,
+  and needs a written operator decision in `docs/01-rules-envelope.md` before it is built;
+  `bar-watch` is the only carrier and the argument for it is recorded there. A desktop
+  notification is **not** on that spectrum: clause 4 names it, so the `Notification` API
+  stays absent from every file — not disabled, not flagged, absent, with a fence test
+  saying so. Before proposing any of this, check whether the game's own Web Push covers
+  it: the vocabulary is four keys (`jail_release`, `hospital_release`, `hospitalized`,
+  `travel_arrival`), and asking staff for a fifth is always cheaper than shipping a
+  channel. Whatever writes to the tab must put it back — when the alert clears, when the
+  switch goes off, and on `pagehide`.
 - Windows box: `git commit -F <file>` rather than `-m` (PowerShell mangles quoted `-m`).
   `.gitattributes` handles the CRLF situation.

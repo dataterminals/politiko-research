@@ -115,6 +115,31 @@ schedule. Cheapest step first: one shop visit says whether the server is sending
 `restocks_at` the client discards, which would make the inference apparatus unnecessary.
 Findings: [`15-shop-surface.md`](15-shop-surface.md).
 
+### Bar fill alerts — **shipped 2026-08-27** as `bar-watch` 0.1.0
+Asked for as "notify me when Energy, Juice and HP replenish", which reads like the shop
+notifier ruled out below and is not. The distinction is measured. A shop's stock only moves
+on the server, so knowing it moved means asking again; **a bar's does not.** `/api/attributes`
+sends `CurrentValue` as the value *at* `LastUpdate` alongside a per-minute rate, and the
+client projects forward from there itself — so a payload from twenty minutes ago answers the
+question exactly as well as a fresh one, and a countdown to full costs **zero requests**.
+This is the one case where the passive surface is not a weaker version of the polling one.
+
+The gap it fills is real and narrow: the sidebar's countdown is seconds to the **next whole
+point**, taken as the *maximum across all three bars* and printed on every row. Nothing in
+the client computes time-to-full. Energy at 2/min sixty points short is fifty minutes out and
+the game says `0:30`.
+
+Two things shaped the build. `/api/effects` carries `regen_modifier` and `damage_over_time`,
+and radiation is special-cased as "regen paused" — whether the server folds a modifier into
+`CustomRegenRate` is **not measurable from the client**, so the tool computes exactly what
+the game computes and *names* the effect beside the countdown rather than modelling it. And
+the alert channels split: in-page is the default; tab title, favicon and a synthesised tone
+are off behind a switch each and are an explicit operator decision
+([`01-rules-envelope.md`](01-rules-envelope.md)); a desktop notification is absent from the
+file entirely. Politiko's own push vocabulary is four keys wide and none is a bar — asking
+for a `bars_full` key is what would retire the three optional channels.
+Findings: [`17-attribute-surface.md`](17-attribute-surface.md).
+
 ### Wire-feed filter
 The live wire is firehose-shaped. Client-side filter/highlight on the events already
 streaming into the page you're viewing (your faction, your city, your rivals). Purely a
