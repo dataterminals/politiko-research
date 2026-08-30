@@ -70,7 +70,7 @@ repositions". `tools/test-placement.js` encodes both exceptions by name.
 
 ## The buttons
 
-`FAB KIT v5` is the same idea applied to the toggle button — the one part of any of this a
+`FAB KIT v6` is the same idea applied to the toggle button — the one part of any of this a
 player sees before they open anything. Install four of these tools and four buttons land on
 your screen, so they are a set rather than each tool's own flourish: **one 38px square, one
 three-or-four-letter word, all of them in one row.** (The row, and which button is which,
@@ -109,23 +109,24 @@ had claimed. They now default to a single line across the band above the game's 
 which on any desktop layout is empty screen between the nav links and the account menu.
 **v4 widened that row from eleven slots to thirteen**, for `poll-watch` — the last tool
 still drawing its own button in a corner of its own choosing — and for `shop-watch`.
-**v5 widens it to fourteen**, for `bar-watch`:
+**v5 widened it to fourteen** for `bar-watch`, and **v6 widens it to fifteen** for
+`slot-watch`:
 
-| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 👁 | `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` | `SOCK` | `TIME` | `WRLD` | `XP` | `POLL` | `SHOP` | `BARS` |
+| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 👁 | `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` | `SOCK` | `TIME` | `WRLD` | `XP` | `POLL` | `SHOP` | `BARS` | `SLOT` |
 
 The eye leads because it is the mark of the set; the words are alphabetical after it — and
 then they stop being alphabetical, which is deliberate. `POLL` and `SHOP` arrived after the
 first eleven slots were handed out, and slots are **fixed rather than packed**: a tool that
-turns up later takes the next free number rather than sorting itself in. `BARS` is the third
-of those. That is the point — installing a fourteenth tool does not shuffle the thirteen
-buttons you already know by position, and a tool you do not have simply leaves its slot
-empty.
+turns up later takes the next free number rather than sorting itself in. `BARS` and `SLOT`
+are the next two. That is the point — installing a fifteenth tool does not shuffle the
+fourteen buttons you already know by position, and a tool you do not have simply leaves its
+slot empty.
 
-The row is 636px wide (fourteen 38px buttons, 8px apart) and centred on the window, with a
+The row is 682px wide (fifteen 38px buttons, 8px apart) and centred on the window, with a
 floor at 440px so it stops sliding left rather than climb onto the game's own nav links.
-Above about 1516px it is centred; between roughly 1226 and 1516 it sits at the floor; below
+Above about 1562px it is centred; between roughly 1226 and 1562 it sits at the floor; below
 about 1226 the last few buttons run under the account menu, and below 768 the game swaps in
 a different header entirely. Drag them out of the row on a window that small — that is what
 dragging is for.
@@ -1440,6 +1441,178 @@ to originate a request.
 
 ---
 
+# Slot Watch
+
+`SLOT` · slot 14 · `slot-watch.user.js` · storage `pksl:`
+
+Keeps the settlement receipts the Capitol Cash slot machine prints once and forgets, draws
+your bankroll against what the house edge says it should be, and prices a
+wager-by-autospin run before you place it.
+
+Everything it knows arrived because the game asked for it while you were looking at the
+page. It adds **no requests**, and — unusually even for this repo — it cannot tell a GET
+from a POST. More on that below, because it is the design.
+
+## The page it sits on is a canvas
+
+This is the first screen in the repo that a DOM tool could not have read.
+
+`CasinoSlotsPage` mounts a **Phaser game** into an `aria-hidden` div and paints the reels,
+the credits panel, the BET/AUTO/SPIN controls and the RTP readout into a `<canvas>`. None
+of it is in the DOM. Two things escape: an `aria-live` sentence for screen readers, and
+the **Last session** settlement receipt below the machine — four cells, Wager / Spins /
+Gross-Tax / Net result.
+
+That receipt is what was asked for and it *is* scrapable. This tool does not scrape it,
+because the payload behind it carries strictly more than the four numbers it renders —
+see the next section. Full measurements: [`docs/18-casino-slots-surface.md`](../docs/18-casino-slots-surface.md).
+
+## Two things the game fetches and throws away
+
+Both are free, and they are why this tool has history the moment you install it rather
+than only from the moment you install it.
+
+**The history array.** The page calls `GET …/casino/slots/history`, gets back
+`{ sessions: [...] }`, renders `sessions[0]` as "Last session", and drops the rest —
+fetched, parsed, cached by TanStack, never shown. A passive tap gets the whole
+back-catalogue on the first poll. How deep it goes is not knowable from the client (it
+sends no page or limit parameter), so the panel treats the depth as observed rather than
+assumed.
+
+**The per-spin record.** The receipt you get for pressing SPIN carries `spins[]`, which
+drives the reel animation and is then dropped — the page keeps only the last one. Each
+element carries `player_balance_after`, so a session's spins *are* a bankroll curve
+already. Nobody draws it. This tool does.
+
+Both GETs re-fire on a 15-second interval the client sets itself, so the panel stays
+current while you sit at the table without anything here asking for anything.
+
+## It cannot tell a GET from a POST
+
+The one thing on this screen a script should not learn is how to press SPIN. Market
+Watch's order-execution seam was deleted on 2026-08-07 for exactly this reason — a tool
+that carries the endpoint and the payload shape is a bot with the last line commented out.
+
+So this tool recognises payloads **by shape, never by path or method**. Anything carrying
+all six receipt fields (`id`, `total_wager`, `spin_count`, `gross_payout`, `tax_amount`,
+`net_payout`) is a session; anything carrying `slots_min_bet` and `theoretical_rtp_bps` is
+a table config. It subscribes to one prefix, `/api/corporations/`, and reads only `path`
+and the parsed response body off each tap record — never the method, never the request,
+never the status. The consequence is that the receipt for a spin *you* pressed is consumed
+by the same code path as the history poll, and the string needed to place one is not in
+the file at all. `tools/test-slot-passive.js` fails the build if any of that changes.
+
+There is also no argument for adding it. The rules envelope's standing advice is to reach
+first for something that removes the need to originate a request — and here the game has
+already done it. **Auto-spin is shipped**, client-side, with 10/25/50/100 presets. There is
+no tedium left for a script to relieve.
+
+## The tax is the point
+
+The header block on the page quotes an RTP and an edge, and both are honest. They are also
+quoted **on gross**, and you are not paid gross.
+
+The House rules aside says it plainly: tax is levied *on aggregate positive session
+profit*. Your session's actual P&L is `net_payout − total_wager`, and `net_payout` is
+already net of tax. So what the machine costs you is the advertised edge **plus a tax
+drag** — and the drag is asymmetric, because tax lands on winning sessions and gives
+nothing back on losing ones.
+
+The panel measures it rather than modelling it:
+
+```
+tax drag       = Σ tax_amount  / Σ total_wager      a division of two observed sums
+effective edge = stated edge + tax drag
+realized RTP   = Σ gross_payout / Σ total_wager     what actually happened to you
+```
+
+Nothing about tax drag is assumed. The rate and any bracket are server-side and are not on
+the wire, so it is not derivable — but it does not need to be, because it is observable.
+
+There is one lever this exposes that the page cannot: **tax is assessed per session**, so a
+single long auto-spin run nets winning spins against losing ones before the assessment, and
+a string of short sessions does not. That is the one part of this you control, and it is
+invisible on a screen that only ever shows you the last receipt.
+
+## The three tabs
+
+**MONEY** — the chart and the headline. Two lines on one SVG: your actual bankroll, and
+the stake less what the effective edge says the run should have cost. The gap between them
+is the whole of the luck. Toggle the x-axis between **session** (one point per receipt,
+the whole ledger) and **spin** (the latest session that still holds its per-spin record).
+If nothing holds one, it says so and draws sessions rather than inventing a curve.
+
+The **stake** — what you had when you sat down — is the one number nothing on the wire
+says. It is seeded from your current cash minus everything the ledger accounts for, which
+anchors the curve so its right-hand end *is* your cash; it is editable, and `auto` puts the
+seed back.
+
+**PLAN** — wager × spins, with the game's own 10/25/50/100 auto-spin presets and min/max
+from the table's limits. What comes out is graded by how much it assumes:
+
+| | | |
+|---|---|---|
+| **staked**, **expected loss**, **covers** | *exact* | the table states its own house edge; "covers" is cash ÷ wager, and assumes nothing at all |
+| **after tax drag**, **bankroll after** | *measured* | the stated edge plus your own observed drag |
+| **± 1 SD** | *estimated* | one sample deviation of your own per-spin returns, always shown with its sample count |
+
+**It will not quote you a risk of ruin.** Slot returns are heavy-tailed — a 150× line lives
+in the same distribution as a hundred zeros — so a normal-shaped band understates the tail
+in both directions. A band is drawn as a band; no probability is computed anywhere in the
+file, and the fence checks that.
+
+**LOG** — every receipt held, newest first, with a `copy` button that puts the ledger on
+the clipboard as TSV. A blue session id means its per-spin record is still held.
+
+## What it reads
+
+| call | what is taken |
+|---|---|
+| `GET /api/corporations/{id}/casino/slots` | bet limits, increment, your cash, reserve, coverable ceiling, the access/operational/suspended gates, `theoretical_rtp_bps`, `house_edge_bps`, `reel_config_version` |
+| `GET /api/corporations/{id}/casino/slots/history` | the whole `sessions[]` array |
+| the settlement receipt for a spin you pressed | the six receipt fields, both balances, and `spins[]` |
+
+Everything is kept **per casino**, because the numbers are per table: two casinos quote
+different RTP, different limits and different reserves, and rolling them together averages
+two machines and describes neither.
+
+Per spin it keeps four numbers — stake, return, balance after, and whether it was free —
+and **discards the reel grid and the winning lines**, which are most of the payload's
+weight and no arithmetic here needs them. The ledger caps at 400 receipts per table; the
+newest 40 keep their per-spin record.
+
+## Two things it will not claim
+
+**It does not know when anything happened.** Nothing on this surface carries a timestamp —
+not the session, not the spin, not anywhere the client reads, and the same is true of the
+roulette and craps receipts next door. Every clock in the panel is the local moment this
+tool *first saw* the receipt, is labelled "seen", and ordering is by session id because
+that is the only ordering the wire gives.
+
+**It does not verify the advertised RTP.** The reel strips are server-side —
+`reel_config_version` is a version string and nothing else — so theoretical RTP is not
+derivable from anything the client holds. The panel prints the stated number and the
+realized one side by side and lets you compare them; it does not pretend to have checked.
+
+If `gross − tax` ever stops equalling `net` on a receipt, the panel says so in a banner and
+tells you to treat every figure below it as unreliable, because every figure below it
+assumes that identity holds.
+
+## A note on the table
+
+The LOG table uses a **fixed layout** with declared column widths, so it can never be wider
+than the panel — the property CLAUDE.md identifies as the load-bearing half of the table
+rule, since auto layout will not make a column narrower than its content at any price and
+six columns of currency in a 240px margin push you into sideways scrolling to read column
+one. Cells truncate with an ellipsis and carry their full value in a `title`.
+
+It does **not** carry People Watch's draggable column dividers. That kit is still a
+one-carrier feature; this table has six narrow numeric columns rather than eleven of mixed
+width, and the fixed layout is what a margin actually needs. Worth revisiting if the table
+grows.
+
+---
+
 ## Tests
 
 Run from the repository root:
@@ -1467,6 +1640,8 @@ node userscripts/tools/test-gov-passive.js
 node userscripts/tools/test-poll-watch.js
 node userscripts/tools/test-shop-passive.js
 node userscripts/tools/test-bar-passive.js
+node userscripts/tools/test-slot-ev.js
+node userscripts/tools/test-slot-passive.js
 node userscripts/tools/test-http-tap.js
 ```
 

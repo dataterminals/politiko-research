@@ -599,10 +599,10 @@
   };
 
   // ===========================================================================
-  // 5. FAB KIT v5 — shared verbatim block.
+  // 5. FAB KIT v6 — shared verbatim block.
   //
   //    The toggle button, and the one piece of this repo a player sees before
-  //    they open anything. Fourteen tools can be on screen at once, so the button
+  //    they open anything. Fifteen tools can be on screen at once, so the button
   //    is a set piece rather than each tool's own flourish: paste FAB_CSS into your
   //    stylesheet as it stands, put `pk-fab` on the element, and put ONE three-
   //    or four-letter word inside it. Same rule as PANEL KIT — if the block has
@@ -616,12 +616,13 @@
   //    position — see the block for the slot table and the three numbers that
   //    place the row.
   //
-  //    v4 widened that row from eleven slots to thirteen, and v5 widens it to
-  //    fourteen for bar-watch. Half the row is a number CSS cannot count for
-  //    itself, so it is written out — and a version bump is what adding a slot
-  //    costs, every time. Read the third number in the block as the row's declared
-  //    CAPACITY rather than a tally of what is installed: a tool you do not have
-  //    leaves its slot empty and the row stays where it is.
+  //    v4 widened that row from eleven slots to thirteen, v5 widened it to
+  //    fourteen for bar-watch, and v6 widens it to fifteen for slot-watch. Half the
+  //    row is a number CSS cannot count for itself, so it is written out — and a
+  //    version bump is what adding a slot costs, every time. Read the third number
+  //    in the block as the row's declared CAPACITY rather than a tally of what is
+  //    installed: a tool you do not have leaves its slot empty and the row stays
+  //    where it is.
   //
   //    The button also has to say whether ITS window is the one already open, so
   //    wire `pk-open` at the single place your tool writes the panel's display —
@@ -631,7 +632,7 @@
   //    the whole box with it. test-placement.js checks for both.
   //
   //    Pick the word the way you would pick a stock ticker: ALGN, MKT, RAID,
-  //    SLP, JUMP, SOCK, TIME, WRLD, XP, POLL, SHOP, BARS. No emoji — a 15px glyph is
+  //    SLP, JUMP, SOCK, TIME, WRLD, XP, POLL, SHOP, BARS, SLOT. No emoji — a 15px glyph is
   //    coin toss across fonts and platforms, and four of them tell you nothing
   //    about which is which. people-watch is the single exception, and it is
   //    grandfathered: the eye of providence is its mark, and `.pk-fab svg`
@@ -642,7 +643,7 @@
   //    colour. No inset — top/left/right/bottom belong to the kit now, and
   //    test-placement.js fails the build if a tool takes one back.
   //
-  //      .pkxx-fab { --pk-slot: 14; z-index: 2147482000; }
+  //      .pkxx-fab { --pk-slot: 15; z-index: 2147482000; }
   //
   //    Tools that also do their own placement maths (defaultFabPos, clampFab)
   //    keep CFG.FAB_SIZE at 38 to match the box below, and have to compute the
@@ -650,7 +651,7 @@
   //    left/top inline. test-placement.js checks the two against each other.
   // ===========================================================================
   const FAB_CSS = `
-    /* FAB KIT v5 — shared verbatim block.
+    /* FAB KIT v6 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
        bump the version here and in every tool carrying a copy, so the copies can
        be diffed. Several of these tools are on screen at once, and buttons that
@@ -674,42 +675,43 @@
        screen between the nav links and the account menu.
 
        v4 widened the row to thirteen slots, for poll-watch and shop-watch; v5
-       widens it to fourteen for bar-watch, and that is the whole of the change.
-       Half the row is written out below because CSS cannot count the tools that
-       happen to be installed, which means every slot the row gains costs a version
-       bump and a pass over every copy — the price of the row being one row rather
-       than each tool's guess at one.
+       widened it to fourteen for bar-watch, and v6 widens it to fifteen for
+       slot-watch. Half the row is written out below because CSS cannot count the
+       tools that happen to be installed, which means every slot the row gains costs
+       a version bump and a pass over every copy — the price of the row being one row
+       rather than each tool's guess at one.
 
        The kit owns the row. A tool owns its SLOT and nothing else about position:
 
-         .pkxx-fab { --pk-slot: 14; z-index: 2147482000; }
+         .pkxx-fab { --pk-slot: 15; z-index: 2147482000; }
 
        Slots are fixed rather than packed, and that is the whole point — installing
-       a fourteenth tool does not shuffle the thirteen buttons you already know by
+       a fifteenth tool does not shuffle the fourteen buttons you already know by
        position, and a tool you do not have simply leaves its slot empty. The eye
        leads because it is the mark of the set; the words are alphabetical after it:
 
-         0  the eye  people-watch     7  SOCK  ws-watch
-         1  ALGN     align-watch      8  TIME  time-watch
-         2  GOV      gov-watch        9  WRLD  world-watch
-         3  JUMP     quick-jump      10  XP    xp-watch
-         4  MKT      market-watch    11  POLL  poll-watch
-         5  RAID     raid-watch      12  SHOP  shop-watch
-         6  SLP      sleeper-watch   13  BARS  bar-watch
+         0  the eye  people-watch     8  TIME  time-watch
+         1  ALGN     align-watch      9  WRLD  world-watch
+         2  GOV      gov-watch       10  XP    xp-watch
+         3  JUMP     quick-jump      11  POLL  poll-watch
+         4  MKT      market-watch    12  SHOP  shop-watch
+         5  RAID     raid-watch      13  BARS  bar-watch
+         6  SLP      sleeper-watch   14  SLOT  slot-watch
+         7  SOCK     ws-watch
 
-       POLL, SHOP and BARS are on the end rather than sorted in among the others,
-       and that is deliberate: the alphabet describes how the first eleven were
-       handed out, not a sort to be re-run. Slots are fixed, so a tool that arrives
-       later takes the next free number and nothing already on screen moves.
+       POLL, SHOP, BARS and SLOT are on the end rather than sorted in among the
+       others, and that is deliberate: the alphabet describes how the first eleven
+       were handed out, not a sort to be re-run. Slots are fixed, so a tool that
+       arrives later takes the next free number and nothing already on screen moves.
 
-       Fourteen 38px buttons 8px apart is a 636px row, so it runs 318px either side
+       Fifteen 38px buttons 8px apart is a 682px row, so it runs 341px either side
        of the middle of the viewport. The floor at 440px is where the game's own
        chrome ends — 24px of padding, a 62px wordmark, 24px of gap and five nav
-       links, measured off the bundle — so above about 1516px the row is centred,
+       links, measured off the bundle — so above about 1562px the row is centred,
        and below that it stops sliding left rather than climb onto the nav.
 
        Three numbers, if that header ever changes shape: 7 (where the band is), 440
-       (where the nav ends), 318 (half the row). Nothing else in here is placement.
+       (where the nav ends), 341 (half the row). Nothing else in here is placement.
 
        (No backticks anywhere in here, incidentally. This block is pasted INSIDE a
        template literal in every tool that carries it, and one backtick in a comment
@@ -748,7 +750,7 @@
       box-sizing: border-box; width: 38px; height: 38px; padding: 0;
       /* The home row. --pk-slot is the tool's; the three numbers are the kit's. */
       position: fixed; top: 7px;
-      left: calc(max(440px, 50% - 318px) + var(--pk-slot, 0) * 46px);
+      left: calc(max(440px, 50% - 341px) + var(--pk-slot, 0) * 46px);
       display: grid; place-items: center;
       background: #18181b; color: #e4e4e7;
       border: 1px solid #3f3f46; border-radius: 3px;

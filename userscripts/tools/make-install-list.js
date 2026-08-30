@@ -47,6 +47,7 @@ const TOOLS = {
   'poll-watch': { word: 'POLL', blurb: 'keeps every opinion-poll memo, with bloc spread and trends' },
   'shop-watch': { word: 'SHOP', blurb: 'shop fields the UI never shows, and brackets every restock' },
   'bar-watch': { word: 'BARS', blurb: 'time to full for Energy, Juice and HP, with alerts you set' },
+  'slot-watch': { word: 'SLOT', blurb: 'slots bankroll against the house edge, and what a run really costs' },
   'comms-move': { word: null, blurb: "adds a drag bar to the game's Comms dock so you can move it" },
   'time-bridge': { word: null, blurb: "hands Time Watch's clock anchor to the Time Wire planner" },
 };

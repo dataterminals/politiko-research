@@ -140,6 +140,37 @@ file entirely. Politiko's own push vocabulary is four keys wide and none is a ba
 for a `bars_full` key is what would retire the three optional channels.
 Findings: [`17-attribute-surface.md`](17-attribute-surface.md).
 
+### Slots bankroll and EV — **shipped 2026-08-30** as `slot-watch` 0.1.0
+Asked for as a tracker for the "last session" receipt on the Capitol Cash slot machine, with
+a graph of how the money moves and some EV arithmetic. It is a good fit for the passive
+surface for a reason that took reading the bundle to see: **the client fetches strictly more
+than it renders, twice over.** `GET …/casino/slots/history` returns `{ sessions: [...] }` and
+the page displays `sessions[0]`; the receipt for a spin carries `spins[]`, each element with
+a `player_balance_after`, and the page animates it and drops it. A tap gets the whole ledger
+and a per-spin bankroll curve for nothing, and both GETs re-fire on a 15-second interval the
+client sets itself.
+
+Also the first screen here a DOM tool could not have read: the machine is **Phaser on a
+`<canvas>`**, and only the settlement receipt and an `aria-live` sentence reach the DOM.
+
+Two things shaped the build. First, the EV that matters is not the one on the page. Stated
+RTP is quoted on **gross**, and the House rules charge tax "on aggregate positive session
+profit" — so the real cost is the stated edge **plus a tax drag** that lands on winning
+sessions and returns nothing on losing ones. The rate is server-side and not on the wire, so
+the tool *measures* it (`Σ tax / Σ staked`) rather than modelling it, and it surfaces the one
+lever this exposes: tax is assessed per session, so one long auto-spin run nets its winning
+spins against its losing ones before assessment and a string of short sessions does not.
+
+Second, this is the screen where originating a request would be most tempting and least
+excusable, so the tool **recognises payloads by shape and never reads a method, a request
+body or a status** — it cannot tell a GET from a POST, and the endpoint that places a spin is
+not in the file. There was never an argument for adding it: the game already ships auto-spin,
+client-side, with 10/25/50/100 presets, so the cheap unlock `01-rules-envelope.md` tells us to
+reach for first already exists. The panel also refuses to quote a risk of ruin — slot returns
+are heavy-tailed, so the ±1 SD band is drawn as a band, carries its sample count, and no
+probability is computed anywhere.
+Findings: [`18-casino-slots-surface.md`](18-casino-slots-surface.md).
+
 ### Wire-feed filter
 The live wire is firehose-shaped. Client-side filter/highlight on the events already
 streaming into the page you're viewing (your faction, your city, your rivals). Purely a

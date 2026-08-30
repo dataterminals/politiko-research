@@ -1124,5 +1124,138 @@ window.HARNESS_FIXTURES = {
       ];
     })(),
   },
+'slot-watch': {
+    label: 'Slot Watch',
+    source: 'docs/18-casino-slots-surface.md',
+    note: 'Fire the config first — it is what teaches the panel the table’s stated edge, '
+        + 'and without an edge there is no expectation line to draw against. Then history, '
+        + 'then the receipt: the receipt is the only payload that carries spins[], so it is '
+        + 'what unlocks the SPIN chart and the per-spin sample.',
+    calls: (() => {
+      // A session, built the way the server states them: gross is what came back, tax is
+      // withheld from the profit, net is what was credited. The panel re-derives nothing,
+      // so these have to reconcile or its own warning fires — which is worth seeing too,
+      // and is the last variant below.
+      const sess = (id, wager, spins, gross, tax) => ({
+        id, total_wager: wager, spin_count: spins,
+        gross_payout: gross, tax_amount: tax, net_payout: gross - tax,
+      });
+
+      // A run of paid spins that walks a balance, plus a free spin at the end — free spins
+      // stake nothing, so they must not step the expectation line down. That is the case
+      // test-slot-ev.js pins and this is where it is looked at.
+      const run = (start, wager, gains) => {
+        let bal = start;
+        return gains.map((g, i) => {
+          bal += g - (i === gains.length - 1 ? 0 : wager);
+          return {
+            effective_wager: i === gains.length - 1 ? 0 : wager,
+            gross_payout: g,
+            player_balance_after: bal,
+            spin_type: i === gains.length - 1 ? 'free' : 'paid',
+            spin_index: i + 1,
+            scatter_count: g > 0 ? 3 : 0,
+            free_spins_awarded: i === gains.length - 2 ? 8 : 0,
+            // The two fields slimSpin() throws away, present so it can be seen doing it.
+            grid: new Array(15).fill('cherry'),
+            line_wins: g > 0 ? [{ line_id: 4, count: 3 }] : [],
+          };
+        });
+      };
+
+      return [
+        {
+          label: 'table config — 96% RTP',
+          path: '/api/corporations/7/casino/slots',
+          body: {
+            slots_min_bet: 100, slots_max_bet: 25000, wager_increment: 100,
+            player_cash: 184300, free_reserve: 2400000, max_coverable_wager: 25000,
+            current_city_access: true, operational: true, wagering_suspended: false,
+            theoretical_rtp_bps: 9600, house_edge_bps: 400,
+            reel_config_version: 'cc-2026-08-14',
+            rules: {
+              paytable: { cherry: [2, 5, 15], missile: [8, 25, 100], gold_dome: [10, 40, 150] },
+              scatter: { 3: { multiplier: 2 }, 4: { multiplier: 10 }, 5: { multiplier: 50 } },
+            },
+          },
+        },
+        {
+          label: 'history — six sessions',
+          path: '/api/corporations/7/casino/slots/history',
+          // Newest first, the way the page reads sessions[0] as "last session". Two of the
+          // six are taxed wins, which is what makes the tax drag a number rather than zero.
+          body: {
+            sessions: [
+              sess(4106, 10000, 100, 8200, 0),
+              sess(4098, 2500, 25, 4100, 240),
+              sess(4091, 1000, 10, 300, 0),
+              sess(4077, 5000, 50, 4600, 0),
+              sess(4052, 2500, 25, 6900, 660),
+              sess(4031, 1000, 10, 700, 0),
+            ],
+          },
+        },
+        {
+          label: 'a spin receipt — carries spins[]',
+          path: '/api/corporations/7/casino/slots/spins',
+          body: {
+            session: {
+              ...sess(4112, 1000, 11, 1450, 45),
+              player_balance_before: 184300,
+              player_balance_after: 184300 + 1450 - 45 - 1000,
+              spins: run(184300, 100, [0, 0, 250, 0, 0, 0, 400, 0, 0, 500, 300]),
+            },
+          },
+        },
+        {
+          label: 'a losing receipt',
+          path: '/api/corporations/7/casino/slots/spins',
+          variant: true,
+          body: {
+            session: {
+              ...sess(4118, 2500, 25, 900, 0),
+              player_balance_before: 184695,
+              player_balance_after: 184695 - 1600,
+              spins: run(184695, 100, [0, 0, 0, 200, 0, 0, 0, 0, 0, 0, 0, 0, 300, 0, 0,
+                0, 0, 0, 0, 0, 0, 400, 0, 0, 0]),
+            },
+          },
+        },
+        {
+          label: 'a second table — 91% RTP, wrong city',
+          path: '/api/corporations/40/casino/slots',
+          body: {
+            slots_min_bet: 500, slots_max_bet: 100000, wager_increment: 500,
+            player_cash: 184300, free_reserve: 90000, max_coverable_wager: 45000,
+            current_city_access: false, operational: true, wagering_suspended: false,
+            theoretical_rtp_bps: 9100, house_edge_bps: 900,
+            reel_config_version: 'cc-2026-07-02',
+            rules: { paytable: { cherry: [2, 5, 15] }, scatter: { 3: { multiplier: 2 } } },
+          },
+        },
+        {
+          label: 'the table is fined — wagering suspended',
+          path: '/api/corporations/7/casino/slots',
+          variant: true,
+          body: {
+            slots_min_bet: 100, slots_max_bet: 25000, wager_increment: 100,
+            player_cash: 184300, free_reserve: 0, max_coverable_wager: 0,
+            current_city_access: true, operational: true, wagering_suspended: true,
+            theoretical_rtp_bps: 9600, house_edge_bps: 400,
+            reel_config_version: 'cc-2026-08-14',
+            rules: { paytable: { cherry: [2, 5, 15] }, scatter: { 3: { multiplier: 2 } } },
+          },
+        },
+        {
+          label: 'a receipt that does not add up',
+          path: '/api/corporations/7/casino/slots/history',
+          variant: true,
+          // gross - tax does not equal net. The panel must say so rather than print
+          // figures built on an assumption that has stopped holding.
+          body: { sessions: [{ ...sess(4120, 1000, 10, 1500, 100), net_payout: 999 }] },
+        },
+      ];
+    })(),
+  },
 
 };
