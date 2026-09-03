@@ -240,6 +240,37 @@ check('...and the panel labels it as first-seen, not as played',
   /first SAW/.test(SRC) && /nothing on this surface carries a timestamp/i.test(SRC),
   'the disclosure and the panel must both say what the clock means');
 
+console.log('\n— clearing the panel hides, and never deletes —');
+
+// "Clear" starts the figures at your next session. It must do that with a FLOOR rather
+// than by removing rows, and that is a correctness requirement rather than a preference:
+// the game re-fetches the whole history array every fifteen seconds, ingest is
+// shape-driven and cannot tell a re-sighting from a new receipt, so a clear that deleted
+// would be undone by the next poll — in front of you, with no error. The check is
+// therefore on the deletions themselves.
+const drops = [...CODE.matchAll(/delete\s+c\.sessions\[/g)].length;
+check('the only receipt ever removed is the one the cap pushes out',
+  drops === 1 && /for \(const s of all\.slice\(MAX_SESSIONS\)\) delete c\.sessions\[s\.id\];/.test(CODE),
+  `${drops} deletion(s) of a stored session; expected exactly the one in prune()`);
+check('...so the mark is a floor, applied in one place',
+  /const above = \(list, floor\) => \(num\(floor\) === null \? list : list\.filter\(\(s\) => s\.id > floor\)\);/.test(CODE)
+    && [...CODE.matchAll(/above\(held, floor\)/g)].length === 1,
+  'expected a single id floor and exactly one call site for it');
+check('...and every figure is computed over what is left, not over the ledger',
+  /const list = above\(held, floor\);/.test(CODE) && /const roll = rollup\(list\);/.test(CODE)
+    && /const returns = spinReturns\(list\);/.test(CODE),
+  'the rollup and the per-spin sample must both read the filtered list');
+
+// A panel showing a subset of your own money has to say so. The title bar carries it from
+// every tab, and the count of what is behind the mark is on screen with the way back.
+check('the panel says when it is showing you a subset',
+  /subtitle\.textContent = v\.floor === null \? where : `\$\{where\} · from #\$\{v\.floor\}`;/.test(CODE)
+    && /pksl-scope/.test(CODE) && /Showing this run only/.test(CODE),
+  'a mark must be named in the title bar and explained above the tab');
+check('...and the way back is always reachable',
+  /delete ui\.mark\[v\.id\]/.test(CODE) && /if \(!v\.held\) \{/.test(CODE),
+  'an "all" button must exist, and an empty view must not early-return past it');
+
 console.log('\n— it stays inside its own storage —');
 
 // First argument only — setItem's second is a JSON.stringify(...) whose own paren would

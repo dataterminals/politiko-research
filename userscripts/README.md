@@ -1562,7 +1562,53 @@ in both directions. A band is drawn as a band; no probability is computed anywhe
 file, and the fence checks that.
 
 **LOG** — every receipt held, newest first, with a `copy` button that puts the ledger on
-the clipboard as TSV. A blue session id means its per-spin record is still held.
+the clipboard as TSV. A blue session id means its per-spin record is still held. It also
+carries `clear`, which is the next section.
+
+## Clearing the panel for a new sitting
+
+Every figure in this tool is a sum over the ledger, and a night at the machine is invisible
+inside a month of them. The question you actually have when you sit down is not "how have I
+done since I installed this" but "how is this run going" — so LOG's **`clear`** starts the
+figures at your next session. It takes two clicks, because it changes every number in the
+panel.
+
+It sets a **floor** at the newest receipt held. It does not delete anything, and could not:
+
+> the game re-fetches the whole `history` array every fifteen seconds, and ingest is
+> shape-driven — it cannot tell a re-sighting from a new receipt. A clear that removed rows
+> would be silently undone by the next poll, in front of you, with no error.
+
+A floor survives that by construction, and it is reversible where a delete is not. The
+receipts sit intact behind it, they are still counted on screen, and **`all`** lifts it. The
+mark is per table, like everything else here, and is stored in `pksl:ui` rather than being
+computed — a sitting is a thing you declared, not a gap this tool inferred from your play.
+
+Two consequences worth knowing:
+
+- It scopes **everything**, PLAN included. Tax drag and the ±1 SD band are measured off the
+  same slice as MONEY's headline, so a fresh mark takes the sample down with it. That is
+  why the band has always carried its sample count, and why the tab says `only 3 spins
+  sampled` rather than quietly drawing a band from nothing.
+- Your **stake** goes back to being read off your cash, which after a clear is exactly the
+  number wanted: what you had when you sat down. Any manual override is dropped, and it
+  stays editable as before.
+
+While a mark is in force the title bar reads `table 7 · from #4106` from every tab, and a
+line above the tab says what is showing and how much is behind it. A panel quietly showing
+a subset of your own money is worse than one showing all of it.
+
+`tools/test-slot-passive.js` fences the whole of that: the only receipt the tool may ever
+remove is the one the 400-cap pushes out, the floor has one call site, the rollup and the
+per-spin sample both read the filtered list, and the way back cannot be early-returned past
+by the empty view. `tools/test-slot-ev.js` drives the filter itself — including the case
+that matters most, a freshly cleared panel, where every rate has to come back *null* rather
+than zero, because a realized RTP of zero is a claim about a machine nobody has played.
+
+One more thing it does not do: it never marks by itself. There is no "it has been a while,
+shall I start a new run" — the tool cannot see when anything happened (nothing on this
+surface carries a timestamp) and a panel that silently decided your history began an hour
+ago would be inventing exactly the number it refuses to invent everywhere else.
 
 ## What it reads
 

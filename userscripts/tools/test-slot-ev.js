@@ -45,7 +45,8 @@ if (i < 0 || j <= i) throw new Error('engine markers not found in slot-watch.use
 // If that ever stops being true this line is where it breaks, which is the point.
 const E = new Function(`${SRC.slice(i, j)}
   return { num, bpsRate, RECEIPT, isReceipt, netOf, slimSpin, slimSession, mergeSession,
-           rollup, mean, stdev, spinReturns, plan, curveBySession, curveBySpin, extent };`)();
+           above, rollup, mean, stdev, spinReturns, plan, curveBySession, curveBySpin,
+           extent };`)();
 
 let fail = 0;
 const check = (label, got, want) => {
@@ -257,6 +258,36 @@ check('no opening balance, no per-spin curve',
   E.curveBySpin({ ...A1, spins: [{ w: 1, g: 0, b: 2, f: false }] }, 0.06), null);
 check('a gap in the balances is not a curve',
   E.curveBySpin({ ...A1, player_balance_before: 5000, spins: [{ w: 1, g: 0, b: null, f: false }] }, 0.06), null);
+
+console.log('\n— clearing the panel for a new run —');
+{
+  // The floor is exclusive: a mark is set AT the newest receipt held, so that receipt is
+  // the last one of the old sitting and must not survive into the new one.
+  const held = [A2, A1];                       // newest first, as the panel holds them
+  check('a floor at the newest hides everything', E.above(held, 12).map((s) => s.id), []);
+  check('a floor below it keeps what came after', E.above(held, 11).map((s) => s.id), [12]);
+  check('no floor is the whole ledger', E.above(held, null).map((s) => s.id), [12, 11]);
+  check('...and so is a floor that never got set', E.above(held, undefined).length, 2);
+  check('the ledger handed in is not modified', held.map((s) => s.id), [12, 11]);
+}
+{
+  // What the panel is FOR after a clear: what is left rolls up as if the earlier sessions
+  // had never been seen. If the filter ever leaks, this is where it shows.
+  const r = E.rollup(E.above([A2, A1], 11));
+  check('the run rolls up alone', [r.n, r.wagered, r.net], [1, 1000, -500]);
+  check('...to exactly what that session alone gives',
+    JSON.stringify(r), JSON.stringify(E.rollup([A2])));
+}
+{
+  // The empty case is a real screen rather than an error: you have just cleared and have
+  // not spun yet. Every rate has to come back null rather than zero, because a realized
+  // RTP of zero is a claim about a machine nobody has played.
+  const r = E.rollup(E.above([A2, A1], 12));
+  check('a freshly cleared panel claims nothing',
+    [r.n, r.realizedRTP, r.taxDrag, r.winRate], [0, null, null, null]);
+  // One point is not a line — the chart says so rather than drawing a flat run.
+  check('...and has no curve to draw', E.curveBySession([], 5000, 0.06).length, 1);
+}
 
 console.log('\n— the drawing extent —');
 {

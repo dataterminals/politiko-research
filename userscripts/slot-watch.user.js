@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Slot Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.0
+// @version      0.2.0
 // @description  Keeps the settlement receipts the Capitol Cash slot machine prints once and forgets, draws your bankroll against what the house edge says it should be, and prices a wager-by-autospin run before you place it. Reads only responses the game already fetched. Passive; zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -57,9 +57,10 @@
  *             if the shape of one appears.
  *
  *   Storage:  localStorage keys prefixed `pksl:` — the session ledger, the table configs
- *             it was read against, your opening stake, the planner inputs, and panel
- *             state. Per spin it keeps four numbers (stake, return, balance after, and
- *             whether it was free) and discards the reel grid and the winning lines.
+ *             it was read against, your opening stake, the planner inputs, the mark that
+ *             scopes the panel to one sitting, and panel state. Per spin it keeps four
+ *             numbers (stake, return, balance after, and whether it was free) and
+ *             discards the reel grid and the winning lines.
  *
  *   Alerts:   none. No notifications, no sound, no title or favicon writes, nothing
  *             raised from an unfocused tab. The panel is in-page and that is all.
@@ -96,6 +97,22 @@
  * timestamp — not the session, not the spin, not anywhere the client reads. Every clock
  * in this panel is the local time this tool FIRST SAW the receipt, and is labelled
  * "seen". Order is by session id, which is the only ordering the wire gives.
+ *
+ * ONE SITTING, OR ALL OF THEM
+ *
+ * Every figure above is a sum over the ledger, and a night at the machine is invisible
+ * inside a month of them. So LOG carries a "clear", and it starts the panel's figures at
+ * your next session — which is the shape of the question you actually have when you sit
+ * down: not "how have I done since I installed this", but "how is this run going".
+ *
+ * It sets a floor at the newest receipt held. It does not delete, and could not: the
+ * history poll re-sends the whole array every fifteen seconds, so a clear that removed
+ * rows would be silently undone by the next poll while you watched. A floor survives that
+ * by construction, is reversible where a delete is not, and costs nothing — the ledger
+ * sits intact behind it and "all" lifts it.
+ *
+ * Whichever is in force is named in the title bar and counted on the LOG tab, because a
+ * panel quietly showing a subset of your own money is worse than one showing all of it.
  */
 
 (() => {
@@ -178,6 +195,18 @@
     out.seen = old.seen;              // first seen is first seen; it never moves
     return out;
   };
+
+  // A sitting is a SLICE of the ledger, never a shorter ledger. "Clear the panel" puts a
+  // floor under it and every figure the panel prints is computed over what is left; the
+  // receipts below the floor are still held, still counted on screen, and still one click
+  // from coming back.
+  //
+  // A floor rather than a delete, for a reason that is about this surface rather than
+  // about taste: the game re-fetches the whole history array every fifteen seconds, and
+  // ingest is shape-driven and cannot tell a re-sighting from a new receipt. Deleting rows
+  // would therefore undo itself on the next poll, in front of you, with no error. Nothing
+  // below is defensive about that — it simply never arises.
+  const above = (list, floor) => (num(floor) === null ? list : list.filter((s) => s.id > floor));
 
   const rollup = (list) => {
     let n = 0, spins = 0, wagered = 0, gross = 0, tax = 0, credited = 0, wins = 0, taxed = 0;
@@ -898,6 +927,13 @@
     .pksl-warn { font-size: 10px; color: #fbbf24; border: 1px solid #78350f;
                  background: #1c1207; border-radius: 3px; padding: 5px 7px;
                  margin-bottom: 9px; }
+    /* Deliberately not the warn colour. A mark is a thing you chose, not a fault — but it
+       changes what every number below it means, so it is a standing line rather than a
+       footnote, and the bar down its left edge is what makes it read as one at a glance. */
+    .pksl-scope { font-size: 9.5px; line-height: 1.5; color: #71717a;
+                  border: 1px solid #1f1f23; border-left: 2px solid #3f3f46;
+                  background: #0d0d10; border-radius: 3px; padding: 4px 7px;
+                  margin-bottom: 9px; }
   `;
 
   // ---------------------------------------------------------------------------
@@ -920,6 +956,10 @@
   if (!['SPIN', 'SESSION'].includes(ui.axis)) ui.axis = 'SESSION';
   if (!ui.stake || typeof ui.stake !== 'object') ui.stake = {};
   if (!ui.planner || typeof ui.planner !== 'object') ui.planner = {};
+  // corp id -> the session id the panel's figures start above. Per table, like everything
+  // else here: you can be mid-run at one machine and looking at the whole history of
+  // another, and one shared floor would make each of those a lie about the other.
+  if (!ui.mark || typeof ui.mark !== 'object') ui.mark = {};
 
   const saveData = () => writeJSON(K.data, data);
   const saveUI = () => writeJSON(K.ui, ui);
@@ -1210,7 +1250,12 @@
     const id = active && data.corps[active] ? active : known()[known().length - 1];
     if (!id) return null;
     const c = data.corps[id];
-    const list = sessionsOf(id);          // newest first
+    const held = sessionsOf(id);          // newest first, everything this table has given up
+    // One place applies the mark, and everything downstream — the rollup, the curve, the
+    // per-spin sample, the log, the button's colour — is computed from `list` alone. That
+    // is the whole of why the scoping cannot half-apply: there is no second list.
+    const floor = num(ui.mark[id]);
+    const list = above(held, floor);
     const asc = list.slice().reverse();   // oldest first, which is how money moves
     const roll = rollup(list);
     const cfg = c.cfg || {};
@@ -1245,6 +1290,10 @@
     const returns = spinReturns(list);
     return {
       id, cfg, list, asc, roll, edge, rtp, stake, seed, manual,
+      // What the mark is doing, in the three forms the panel needs to say it: where the
+      // floor is, how much is behind it, and the id a fresh mark would be set to.
+      floor, held: held.length, hidden: held.length - list.length,
+      newest: held.length ? held[0].id : null,
       stakeNote: stake === null ? 'not set' : (manual ? 'yours' : seedSrc),
       effEdge: edge === null ? null : edge + (drag2 ?? 0),
       sd: stdev(returns), sdN: returns.length, avgReturn: mean(returns),
@@ -1323,7 +1372,8 @@
     const net = v.roll.net;
     stat(g, 'now', money(v.now), null, 'stake ' + v.stakeNote);
     stat(g, 'net', signed(net), net > 0 ? 'up' : net < 0 ? 'down' : null,
-      `${v.roll.n} session${v.roll.n === 1 ? '' : 's'}`);
+      `${v.roll.n} session${v.roll.n === 1 ? '' : 's'}`
+      + (v.floor === null ? '' : ` since #${v.floor}`));
     stat(g, 'staked', money(v.roll.wagered), null, `${v.roll.spins} spins`);
     stat(g, 'returned', money(v.roll.credited), null, 'after tax');
     stat(g, 'tax paid', money(v.roll.tax), v.roll.tax > 0 ? 'down' : null,
@@ -1441,7 +1491,9 @@
   };
 
   const renderLog = (v) => {
-    if (!v.list.length) {
+    // Nothing held at all is a different state from everything held behind a mark, and it
+    // gets a different screen: the second one still needs its way back.
+    if (!v.held) {
       body.append(el('div', 'pksl-empty',
         'no receipts yet. Open a Capitol Cash table — the history the game fetches on arrival '
         + 'lands here on its own, without this tool asking for anything.'));
@@ -1450,7 +1502,9 @@
 
     const bar = el('div', 'pksl-bar');
     const copy = el('button', 'pksl-btn', 'copy');
-    copy.title = 'the ledger as TSV, to the clipboard';
+    copy.title = v.floor === null
+      ? 'the ledger as TSV, to the clipboard'
+      : 'this run as TSV, to the clipboard — the rows behind the mark are not included';
     copy.addEventListener('click', () => {
       const rows = [['id', 'spins', 'wager', 'gross', 'tax', 'net', 'seen'].join('\t')];
       for (const s of v.list) {
@@ -1463,8 +1517,54 @@
       );
     });
     bar.append(copy);
-    bar.append(el('span', 'pksl-lbl', `${v.list.length} held · ${MAX_SESSIONS} max`));
+
+    // Starting a new sitting. Two clicks, because it changes every number in the panel —
+    // and armed in the button rather than on a timer: this file is allowed exactly one
+    // timer (tools/test-slot-passive.js) and it belongs to "copied". The arm therefore
+    // lives in the DOM node and dies with it, which any repaint does — including the one
+    // the table's own fifteen-second poll causes. That is a short window to confirm in,
+    // and it is the right way round: an armed destructive-looking button that survives you
+    // walking away is worse than one you press twice.
+    const clear = el('button', 'pksl-btn', 'clear');
+    clear.title = 'start the figures at your next session — for when you sit down to a new run.'
+      + ' Nothing is deleted: the receipts stay held behind a mark and "all" brings them back.'
+      + ' Your stake goes back to being read off your cash.';
+    clear.addEventListener('click', () => {
+      if (clear.dataset.on !== '1') {
+        clear.dataset.on = '1';
+        clear.classList.add('on');
+        clear.textContent = 'clear?';
+        return;
+      }
+      ui.mark[v.id] = v.newest;
+      // The stake is "what you had when you sat down", so a new sitting invalidates the
+      // old answer. Dropping the override re-seeds it from your cash, which after a clear
+      // is exactly the number wanted — and it stays editable, as it was before.
+      delete ui.stake[v.id];
+      saveUI();
+      render();
+    });
+    bar.append(clear);
+
+    if (v.floor !== null) {
+      const all = el('button', 'pksl-btn', 'all');
+      all.title = `back to every receipt held at this table — ${v.hidden} behind the mark at #${v.floor}`;
+      all.addEventListener('click', () => { delete ui.mark[v.id]; saveUI(); render(); });
+      bar.append(all);
+    }
+
+    bar.append(el('span', 'pksl-lbl', v.floor === null
+      ? `${v.held} held · ${MAX_SESSIONS} max`
+      : `${v.list.length} of ${v.held} · ${v.hidden} behind #${v.floor}`));
     body.append(bar);
+
+    if (!v.list.length) {
+      body.append(el('div', 'pksl-empty',
+        `cleared at #${v.floor}. The ${v.hidden} receipt${v.hidden === 1 ? '' : 's'} held here `
+        + 'before that are still held — "all" brings them back — and the next session you play '
+        + 'lands in an empty ledger.'));
+      return;
+    }
 
     const t = el('table', 'pksl-tbl');
     const cg = el('colgroup');
@@ -1520,6 +1620,7 @@
     fab.classList.toggle('down', !!v && v.roll.n > 0 && n < 0);
     fab.title = v && v.roll.n
       ? `Slot Watch — ${signed(n)} over ${v.roll.n} session${v.roll.n === 1 ? '' : 's'}`
+        + (v.floor === null ? '' : ` since #${v.floor}`)
       : 'Slot Watch — bankroll and EV for Capitol Cash';
 
     if (!ui.open) return;
@@ -1538,8 +1639,11 @@
     }
 
     const tables = known();
-    subtitle.textContent = tables.length > 1
-      ? `table ${v.id} of ${tables.length}` : `table ${v.id}`;
+    const where = tables.length > 1 ? `table ${v.id} of ${tables.length}` : `table ${v.id}`;
+    // The title bar is the one line on screen from every tab, so it is where the scope
+    // goes. A panel showing a subset of your own money has to say so somewhere you cannot
+    // scroll past.
+    subtitle.textContent = v.floor === null ? where : `${where} · from #${v.floor}`;
 
     if (v.cfg.suspended) {
       body.append(el('div', 'pksl-warn', 'This casino has an unpaid regulatory fine — wagering is suspended.'));
@@ -1547,6 +1651,15 @@
       body.append(el('div', 'pksl-warn', 'This casino has no casino-type property; the table is not operational.'));
     } else if (v.cfg.access === false) {
       body.append(el('div', 'pksl-warn', 'You are not in a city with one of this casino\'s venues.'));
+    }
+
+    // Said once, above whichever tab is up, rather than three times inside them: PLAN's
+    // drag and its band are measured off the same slice as MONEY's headline, so a mark
+    // scopes that tab too and it would be the easiest one to read as lifetime.
+    if (v.floor !== null) {
+      body.append(el('div', 'pksl-scope',
+        `Showing this run only — ${v.roll.n} session${v.roll.n === 1 ? '' : 's'} after `
+        + `#${v.floor}, with ${v.hidden} held behind it. LOG's "all" brings them back.`));
     }
 
     if (ui.tab === 'MONEY') renderMoney(v);
