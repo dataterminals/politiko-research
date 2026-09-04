@@ -1,6 +1,7 @@
 # Time surface — how game time maps to real time
 
-Measured **2026-08-03**. Sources, in evidence order: (a) the client bundles pulled once via
+Measured **2026-08-03**; the registration-month rule corrected **2026-09-03** (see
+[Registration months](#registration-months-specifically)). Sources, in evidence order: (a) the client bundles pulled once via
 `tools/fetch-bundles.ps1` (static assets only), (b) the wiki articles that ship *inside*
 those bundles as static content, (c) a small number of manually-initiated, UTC-timestamped
 reads of `GET /api/public/stats` — the same public, unauthenticated endpoint
@@ -207,16 +208,29 @@ drift ≤33 s/week if acceleration is exactly 52.14, zero if it is 365/7):
 EST on 2026-11-01 every Eastern label moves one hour earlier — the UTC schedule is the
 stable one.)
 
-### September, specifically
+### Registration months, specifically
 
-- **September = Monday.** It opens Mon ~11:52 UTC (~7:52 AM Eastern) and lasts
-  13 h 48 m — through Mon ~9:40 PM Eastern. This is exactly the observed
-  "wake up around 7 AM to enroll" experience.
-- College registration is gated server-side: `GET /api/education` returns
-  `registration_open` (plus `game_month_name`/`game_year`), and the Education page just
-  renders the flag. The bundle contains **no** month logic for it — September-only is a
-  server rule, operator-observed, not client-visible. Whether it opens exactly at
-  Sep 1 00:00 game time, and whether it runs the whole month, is still unmeasured.
+- **College registration opens twice a game year — January *and* September.** Each is a
+  whole month on the schedule above, so each is a ~13 h 48 m real-time *window*, not a
+  moment:
+
+| Window | Opens (UTC) | Opens (Eastern, EDT) | Closes (Eastern, EDT) |
+|---|---|---|---|
+| **January** | Wed 21:23 | **Wed 5:23 PM** | Thu 7:12 AM |
+| **September** | Mon 11:52 | **Mon 7:52 AM** | Mon 9:40 PM |
+
+- **The two windows sit on different weekdays and at opposite ends of the day**, which is
+  the planning consequence. For a US Eastern crew, September is the "wake up around 7 AM
+  to enroll" one; January is a Wednesday *evening* that needs no alarm at all. And
+  because there are two, **missing one costs four or eight game months (~2¼ or ~4½ real
+  days), not a whole game year.**
+- Registration is gated server-side: `GET /api/education` returns `registration_open`
+  (plus `game_month_name`/`game_year`), and the Education page just renders the flag. The
+  bundle contains **no** month logic for it — *which* months open is a server rule,
+  operator-observed, not client-visible. That is exactly why this entry was wrong until
+  2026-09-03: there is nothing in the client to read it off, so the list of months is only
+  ever as good as what play has actually shown. Whether a window opens exactly at 00:00
+  game time on the 1st, and whether it runs the whole month, is still unmeasured.
 - Course durations are quoted in game months (13 h 48 m real each); completion is
   granted by a background job when the completion game-month arrives (wiki).
 
@@ -242,24 +256,25 @@ There is **one global game clock**, server-authoritative (`/api/time` sends the 
 per-timezone). Your timezone changes only the *label* your wall clock puts on the fixed
 UTC instants above. Practical consequences:
 
-- Every player on Earth sees September open at the same moment — Mon 11:55 UTC. What
-  differs is whether that moment is breakfast or bedtime:
+- Every player on Earth sees a registration window open at the same moment — Wed 21:23
+  UTC in January, Mon 11:52 UTC in September. What differs is whether that moment is
+  breakfast or bedtime, and the two windows answer that differently for the same person:
 
-| Zone (offset) | September opens |
-|---|---|
-| US Pacific (PDT, −7) | Mon 4:52 AM |
-| US Central (CDT, −5) | Mon 6:52 AM |
-| **US Eastern (EDT, −4)** | **Mon 7:52 AM** |
-| UTC | Mon 11:52 AM |
-| UK (BST, +1) | Mon 12:52 PM |
-| Central Europe (CEST, +2) | Mon 1:52 PM |
-| India (IST, +5:30) | Mon 5:22 PM |
-| Japan (JST, +9) | Mon 8:52 PM |
-| Sydney (AEST, +10) | Mon 9:52 PM |
+| Zone (offset) | January opens | September opens |
+|---|---|---|
+| US Pacific (PDT, −7) | Wed 2:23 PM | Mon 4:52 AM |
+| US Central (CDT, −5) | Wed 4:23 PM | Mon 6:52 AM |
+| **US Eastern (EDT, −4)** | **Wed 5:23 PM** | **Mon 7:52 AM** |
+| UTC | Wed 9:23 PM | Mon 11:52 AM |
+| UK (BST, +1) | Wed 10:23 PM | Mon 12:52 PM |
+| Central Europe (CEST, +2) | Wed 11:23 PM | Mon 1:52 PM |
+| India (IST, +5:30) | Thu 2:53 AM | Mon 5:22 PM |
+| Japan (JST, +9) | Thu 6:23 AM | Mon 8:52 PM |
+| Sydney (AEST, +10) | Thu 7:23 AM | Mon 9:52 PM |
 
 - **DST moves your label, not the event.** When the US falls back (2026-11-01), the same
-  September window becomes Mon 6:52 AM Eastern. European and Australian DST changes on
-  their own dates likewise shift only those players' labels.
+  two windows become Wed 4:23 PM and Mon 6:52 AM Eastern. European and Australian DST
+  changes on their own dates likewise shift only those players' labels.
 - If the server's acceleration is exactly 52.14 rather than 365/7, the whole weekly
   pattern also creeps 33 s later per week (≈ 29 min/year) — slow enough to ignore for
   planning, fast enough to eventually notice. The tap (below) settles it.
@@ -272,8 +287,8 @@ UTC instants above. Practical consequences:
 - records `{realMs, gameSeconds, acceleration}` samples (localStorage `pktw:`),
 - displays the live game clock, the acceleration the server actually sends, an
   independently *measured* acceleration once its own baseline spans ≥30 min,
-- renders this doc's month table for the viewer's local timezone, with a next-September
-  countdown,
+- renders this doc's month table for the viewer's local timezone, with a
+  next-registration countdown that names the window after it too,
 - and will expose any server-side re-anchoring (maintenance, deploys) as a residual jump.
 
 One capture resolves the ±2.4 min phase and the day-basis ambiguity; a day of casual
@@ -309,7 +324,8 @@ makes is both safer and strictly more precise than anything the planner could fe
 
 - Exact `acceleration` value the server sends (52.14 vs 365/7 vs something else).
 - Whether `stats.game_day` is 0- or 1-based (27.6 min offset on everything above).
-- Registration's exact open/close within September (server-side; observe, don't probe).
+- Registration's exact open/close within January and September (server-side; observe,
+  don't probe). The two-month rule itself is operator-observed, not measured here.
 - Whether the game clock has ever been re-anchored (deploys/maintenance). The A1↔A2
   consistency says not between Jul 28 and Aug 3.
 - Whether the WebSocket pushes time ticks (would make even the 60 s poll observable

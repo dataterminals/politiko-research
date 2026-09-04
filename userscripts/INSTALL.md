@@ -51,12 +51,12 @@ Discord's message limit is 2000 characters, so this is split into 3 messages. Co
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js>
 ```
 
-**Message 2 of 3** — 1566 characters
+**Message 2 of 3** — 1569 characters
 
 ```
 ## Politiko userscripts — install links (2/3)
 
-**TIME — Time Watch** · real to game clock, month schedule, next-September countdown
+**TIME — Time Watch** · real to game clock, month schedule, next-registration countdown
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js>
 
 **WRLD — World Watch** · plots law, opinion, street, media and citizens on one compass
@@ -107,14 +107,14 @@ Install Tampermonkey first, then click a link and confirm the prompt. Every one 
 | 5 | `RAID` | Raid Watch | 0.7.0 | records faction raids, their event log and post-mortems | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
 | 6 | `SLP` | Sleeper Watch | 0.7.0 | keeps sleeper-recruitment timers running after you leave | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
 | 7 | `SOCK` | WS Watch | 0.8.0 | read-only observer for the three sockets the game opens | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| 8 | `TIME` | Time Watch | 0.9.0 | real to game clock, month schedule, next-September countdown | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
+| 8 | `TIME` | Time Watch | 0.10.0 | real to game clock, month schedule, next-registration countdown | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
 | 9 | `WRLD` | World Watch | 0.5.0 | plots law, opinion, street, media and citizens on one compass | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
 | 10 | `XP` | XP Watch | 0.7.0 | ledger of your own stat and skill changes, action by action | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 | 11 | `POLL` | Poll Watch | 0.4.0 | keeps every opinion-poll memo, with bloc spread and trends | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
 | 12 | `SHOP` | Shop Watch | 0.3.0 | shop fields the UI never shows, and brackets every restock | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
 | 13 | `BARS` | Bar Watch | 0.2.0 | time to full for Energy, Juice and HP, with alerts you set | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
 | 14 | `SLOT` | Slot Watch | 0.2.0 | slots bankroll against the house edge, and what a run really costs | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
-| 15 | `JACK` | Jack Watch | 0.3.0 | blackjack solved: the right play, the chances, the count, the money | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
+| 15 | `JACK` | Jack Watch | 0.3.1 | blackjack solved: the right play, the chances, the count, the money | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
 | — | — | Comms Move | 0.1.1 | adds a drag bar to the game's Comms dock so you can move it | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | — | — | Time Bridge | 0.1.0 | hands Time Watch's clock anchor to the Time Wire planner | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 

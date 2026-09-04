@@ -40,8 +40,8 @@ memorize the manual.
 ### Game-clock calibrator — **shipped 2026-08-03** as `time-watch.user.js`
 Passive tap on the `/api/time` responses the app already polls every 60 s. Records
 `{realMs, gameSeconds, acceleration}`, shows the live game clock, measures the true
-acceleration against its own baseline, and renders the month schedule / next-September
-countdown in local time. Zero added requests. Findings that motivated it:
+acceleration against its own baseline, and renders the month schedule / next-registration
+countdown in local time (registration opens in January *and* September). Zero added requests. Findings that motivated it:
 [`06-time-surface.md`](06-time-surface.md).
 
 ### Alignment mirror — **shipped 2026-08-07** as `align-watch.user.js`

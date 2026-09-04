@@ -41,7 +41,7 @@ const TOOLS = {
   'raid-watch': { word: 'RAID', blurb: 'records faction raids, their event log and post-mortems' },
   'sleeper-watch': { word: 'SLP', blurb: 'keeps sleeper-recruitment timers running after you leave' },
   'ws-watch': { word: 'SOCK', blurb: 'read-only observer for the three sockets the game opens' },
-  'time-watch': { word: 'TIME', blurb: 'real to game clock, month schedule, next-September countdown' },
+  'time-watch': { word: 'TIME', blurb: 'real to game clock, month schedule, next-registration countdown' },
   'world-watch': { word: 'WRLD', blurb: 'plots law, opinion, street, media and citizens on one compass' },
   'xp-watch': { word: 'XP', blurb: 'ledger of your own stat and skill changes, action by action' },
   'poll-watch': { word: 'POLL', blurb: 'keeps every opinion-poll memo, with bloc spread and trends' },
