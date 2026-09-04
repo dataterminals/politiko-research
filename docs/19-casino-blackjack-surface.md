@@ -10,6 +10,14 @@ the money in and out, and prices the chances, the strategy and the tactics. It b
 `jack-watch`. Read [`18-casino-slots-surface.md`](18-casino-slots-surface.md) alongside
 this: the two tables are wired the same way and the interesting part is where they differ.
 
+**The whole casino is at most a month old, and there is only one of it.** Measured from the
+two bundle pulls this repo holds: the 126-file set from **2026-08-03 contains no mention of
+the word "casino" anywhere**, and the set from **2026-09-03 carries seven casino chunks** —
+lobby, blackjack, slots, roulette, craps, poker, predictions. And the operator confirms only
+one corporation runs one. Both facts turn up again below, because between them they explain
+why hand ids are in the hundreds rather than the millions, and they retire an argument this
+document made before either was known.
+
 ## The one difference that matters
 
 The slots page hands you `theoretical_rtp_bps` and `house_edge_bps` and asks you to take
@@ -314,46 +322,48 @@ install's first poll — has already fired here. It is recoverable, though: "cle
 floor and deletes nothing, so those pre-install rounds are still in `pkbj:data` behind the
 mark, and LOG's "all" brings them back with a count.
 
-### Hand ids look like they belong to the player
+### Hand ids: open, and two arguments retracted
 
-339 through 389 with **no gaps at all** across 51 consecutive rounds. Either the id sequence
-is per-player, or that casino saw no other blackjack for twelve minutes.
+339 through 389 with **no gaps at all** across 51 consecutive rounds, and 311 through 335
+before that. Then one gap: the mark set by LOG's "clear" was `#335`, and the next hand
+actually played came back **#339**. So 336, 337 and 338 were allocated in the 72 seconds
+between, and never appeared in this casino's history.
 
-**And then one gap, which is the interesting part.** The mark set by LOG's "clear" was
-`#335` — the newest hand the ledger held at the time, back-filled from before the tool was
-installed — and the next hand actually played came back as **#339**. So 336, 337 and 338
-were allocated and never appeared in that casino's history, at a table whose next 51 ids
-ran without a single break.
+Two readings, and this section previously argued for the second on grounds that have since
+been withdrawn. Both retractions are the operator's, and both matter:
 
-That one gap is worth more than the 51 contiguous ids, because it is the only thing here
-that discriminates:
+**Retracted 1 — "those three are hands at a different corporation's casino."** There is only
+one casino in the game. The explanation was not weak, it was impossible, and `jack-watch`'s
+per-corporation ledger — correct as defensive generality — will only ever hold one corp.
 
-- **if the counter is the player's**, those three are hands played at a *different*
-  corporation's casino. `jack-watch` keeps a ledger per corporation, so they would be
-  sitting in another one, and the sequence is intact.
-- **if the counter is the casino's**, those three belong to somebody else — and the 51
-  unbroken ids that follow mean nobody else played there for twelve minutes, which is
-  possible but is a coincidence sitting right next to the gap that needs explaining.
+**Retracted 2 — "339 is far too low for a counter shared by every hand a casino ever dealt."**
+That assumed an established casino. It is not one: **there is no mention of the word
+"casino" anywhere in the 126-file bundle set pulled 2026-08-03**, and seven casino chunks in
+the set pulled 2026-09-03. The whole casino is **at most a month old**. Four hundred
+blackjack hands game-wide over a few weeks is entirely ordinary, so the size argues for
+nothing.
 
-Nothing available settles it. The one measurement that would is cheap and has not been
-taken: **play a hand at another corporation's casino.** If the id continues from where this
-table left off, the counter is the player's; if it starts somewhere unrelated, it belongs to
-the table or the corporation.
+What is left is genuinely open:
 
-This corrects a guess made when the panel was built — that ids are shared across everyone at
-the casino, so id differences would measure the house's traffic. That guess came from
-invented harness fixtures rather than from data, and the data points the other way. The
-design decision it was used to justify is unchanged and still right, but for a different
-reason: `jack-watch` counts the gap between shoe breaks in **rounds its ledger holds**,
-because the *ledger* is what has holes in it — hands from before you installed it, hands
-history had already dropped, hands the cap pruned. The cadence being measured is a cadence
-of observations.
+- **the counter is the player's** — then those three are hands this tool did not see, which
+  is easy enough: they fall in the window where the script was being installed.
+- **the counter is the casino's, shared by everyone** — then those three belong to another
+  player, and the 76 unbroken ids around them mean the only blackjack table in a young game
+  was otherwise idle for a quarter of an hour. At 1 a.m. Eastern that is not much of a
+  stretch either.
 
-The operator's own reading is that the number is a **lifetime hand count for the player**,
-and the size supports it: 339 is far too low for a counter shared by every blackjack hand a
-casino has ever dealt, and about right for one person's play. If that is correct the id is
-not only an ordering key — hand #339 is your 339th — which would make it the single quantity
-on this surface carrying any history at all, on a surface with no timestamps anywhere.
+**The test that survives:** a second player installs `jack-watch` and compares hand ids over
+the same evening. Interleaved and disjoint means one shared sequence; overlapping ranges
+mean each player has their own. That is one friend and one paste, and it is the only
+instrument left — no alt account, ever ([`01-rules-envelope.md`](01-rules-envelope.md)).
+
+One thing this section got right and keeps: the guess made when the panel was built — that
+ids are shared, so id differences would measure house traffic — came from invented harness
+fixtures rather than data, and should never have been asserted. The design decision it was
+used to justify is unchanged and right for a better reason: `jack-watch` counts the gap
+between shoe breaks in **rounds its ledger holds**, because the *ledger* is what has holes in
+it — hands from before you installed it, hands history had already dropped, hands the cap
+pruned. The cadence being measured is a cadence of observations.
 
 Nothing in `jack-watch` depends on the answer. It orders by id and measures shoe cadence in
 rounds, and both hold under either reading — which is the whole reason the id question can
@@ -420,9 +430,9 @@ after that carries its own stamp per round. So `GET …/blackjack/history` retur
 still unmeasured.
 
 The three missing ids sit exactly between the back-fill and live play — 336, 337 and 338,
-dealt in the 72 seconds between them. They are absent from *this* casino's ledger, and
-`jack-watch` keeps one ledger per corporation, so if they were played at another casino they
-are in another ledger and the per-player counter reading survives intact.
+dealt in the 72 seconds between them, which is the window the script was being installed in.
+They cannot be hands at another casino, because there is only one; see the id section above
+for what is left of that question.
 
 ### Pace: the shoe experiment costs about ten minutes
 
