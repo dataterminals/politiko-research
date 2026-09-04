@@ -171,6 +171,49 @@ are heavy-tailed, so the ±1 SD band is drawn as a band, carries its sample coun
 probability is computed anywhere.
 Findings: [`18-casino-slots-surface.md`](18-casino-slots-surface.md).
 
+### Blackjack, solved — **shipped 2026-09-03** as `jack-watch` 0.1.0
+Asked for as a tool that watches the table in whatever state it is in and handles the money,
+the chances, the card counts and the strategy. It is the same wiring as the slot machine —
+Phaser on a `<canvas>`, two GETs on a 15-second refetch the client sets itself, a history
+array the page renders one element of — and the **exact mirror** of it on the one thing that
+decides what a tool can honestly say.
+
+Slots states its RTP and hides the reel strips, so its headline number is stated and
+unverifiable. Blackjack states **no number at all** — there is no edge or RTP field on this
+surface or on the casino summary next door — but it prints the complete rule set on the
+page: six decks, 3:2, S17, one split, DAS, split aces one card, peek, no surrender. A stated
+rule set makes blackjack a solved game, so the headline number here is unstated and *exactly
+computable*, and the tool computes it: **0.4593%** to the house under perfect play, by
+summing over every deal. `tools/test-jack-ev.js` checks that against the canonical basic
+strategy table cell for cell, the published edge for this rule set, and a Monte Carlo.
+
+Three things shaped the build.
+
+**The temptation is real here in a way it was not on slots.** There, the game ships
+auto-spin, so a scripted spin bought nothing and the question answered itself. Blackjack
+ships no automation whatsoever: every deal and every action is a button, and the tool knows
+the right one. So the distance between a reader and a bot is one POST, and the fence is what
+holds it — both endpoints, both payload keys and any way of minting an idempotency key are
+absent from the file rather than disabled, on the same shape-gate idiom `slot-watch` uses.
+
+**Counting is possible and mostly meaningless, and saying which is the interesting part.**
+Six decks with a card-by-card record is the setup for a running count. Whether it means
+anything turns on whether the shoe persists between hands, and nothing on the wire says —
+no shoe, penetration or discard field exists; the six decks are a text label. It is
+measurable one-sidedly, though, and the tool measures it: cards carry suits, a six-deck shoe
+holds six of each of 52 codes, and a **seventh sighting proves a reshuffle**. That test can
+prove a reshuffle and can never prove the absence of one, and the panel says so in the
+branch that will be showing almost all the time. Three further limits ride with it — you
+only see your own table, the hole card is face down while you act, and a count is only a
+proxy. So the solver runs against the composition directly and nothing is derived from the
+count at all.
+
+**The tax asymmetry is the same and its lever is the opposite.** Tax lands on positive
+*round* profit, so the effective cost is the computed edge plus a measured drag — but where
+slots is assessed per session and rewards long runs, a blackjack round is one hand and there
+is nothing to arrange.
+Findings: [`19-casino-blackjack-surface.md`](19-casino-blackjack-surface.md).
+
 ### Wire-feed filter
 The live wire is firehose-shaped. Client-side filter/highlight on the events already
 streaming into the page you're viewing (your faction, your city, your rivals). Purely a

@@ -42,37 +42,38 @@ const check = (label, got, want) => {
 
 console.log('\n— the home row —');
 {
-  // FAB KIT v6: every button in this repo defaults to one slot of one row across the
+  // FAB KIT v7: every button in this repo defaults to one slot of one row across the
   // band above the game's header rule. people-watch holds slot 0 and places its own
   // button, so this is the JS half of that row — the CSS half is checked at the bottom
   // of this file, against these same numbers.
-  const s = mkStage(1600, 900);
+  const s = mkStage(1700, 900);
   const d = s.defaultFabPos();
   check('sits in the header band, not in a corner', d.y, 7);
   check('the whole button clears the 52px band', d.y + CFG.FAB_SIZE <= 52, true);
-  check('centred on a wide window', d.x, 800 - 341);
+  check('centred on a wide window', d.x, 850 - 364);
 
   // Below ~1470px the row would start climbing onto the game's own nav links, so it
   // stops sliding left instead. That floor is why the maths is a max() rather than a
   // subtraction, and it is the half most likely to get simplified away later.
   //
-  // Every slot the row gains moves that threshold: the row gets 46px wider, so it
-  // meets the floor 46px sooner. v4's two slots moved it from ~1378 to ~1470, v5's one
-  // moved it to ~1516, and v6's one moves it to ~1562. The two probes below straddle
-  // it deliberately — a test that only ever asked about 1200px would have passed the
-  // whole way through every bump and told you nothing about the number that actually
-  // changed.
+  // Every slot the row gains moves that threshold: the row gets 46px wider, so it meets
+  // the floor 46px sooner. v4's two slots moved it from ~1378 to ~1470, v5's one moved
+  // it to ~1516, v6's to ~1562 and v7's to ~1608 — which is why the probe above had to
+  // move too: a 1600px window used to be a wide one and is now a floored one. The two
+  // probes below straddle the threshold deliberately, because a test that only ever
+  // asked about 1200px would have passed the whole way through every bump and told you
+  // nothing about the number that actually changed.
   check('floored clear of the nav on a 1200px window', mkStage(1200, 800).defaultFabPos().x, 440);
-  check('...and centred again when there is room', mkStage(2560, 1440).defaultFabPos().x, 1280 - 341);
-  check('the floor engages below ~1562px', mkStage(1556, 900).defaultFabPos().x, 440);
-  check('...and not above it', mkStage(1568, 900).defaultFabPos().x, 443);
+  check('...and centred again when there is room', mkStage(2560, 1440).defaultFabPos().x, 1280 - 364);
+  check('the floor engages below ~1608px', mkStage(1602, 900).defaultFabPos().x, 440);
+  check('...and not above it', mkStage(1614, 900).defaultFabPos().x, 443);
 
-  // Fifteen slots at a 46px pitch. Slot 14 is the far end of the row and has to stay
+  // Sixteen slots at a 46px pitch. Slot 15 is the far end of the row and has to stay
   // on screen on the narrowest window where the row is still centred-or-floored.
-  const ROW = 15 * CFG.FAB_SIZE + 14 * 8;
-  check('fifteen slots make a 682px row', ROW, 682);
-  check('...which is what 341 is half of', ROW, 341 * 2);
-  check('the far slot fits a 1200px window', 440 + 14 * 46 + CFG.FAB_SIZE <= 1200 - CFG.EDGE, true);
+  const ROW = 16 * CFG.FAB_SIZE + 15 * 8;
+  check('sixteen slots make a 728px row', ROW, 728);
+  check('...which is what 364 is half of', ROW, 364 * 2);
+  check('the far slot fits a 1200px window', 440 + 15 * 46 + CFG.FAB_SIZE <= 1200 - CFG.EDGE, true);
 }
 
 console.log('\n— clamping —');
@@ -522,7 +523,7 @@ console.log('\n— the drag handle survives a repaint —');
 }
 
 // ---------------------------------------------------------------------------
-// FAB KIT v6 — one button, fifteen copies.
+// FAB KIT v7 — one button, sixteen copies.
 //
 // The toggle button is the only part of this repo a player sees before they open
 // anything, and several of these tools sit on the same screen at once. Before the
@@ -535,10 +536,10 @@ console.log('\n— the drag handle survives a repaint —');
 // the element actually wears the class, that the word is a word, and that a tool
 // doing its own placement maths agrees with the kit about how big the box is.
 // ---------------------------------------------------------------------------
-console.log('\n— FAB KIT v6 is one button everywhere —');
+console.log('\n— FAB KIT v7 is one button everywhere —');
 {
   const dir = path.join(__dirname, '..');
-  const A = '    /* FAB KIT v6 — shared verbatim block.';
+  const A = '    /* FAB KIT v7 — shared verbatim block.';
   const B = '    .pk-fab svg { width: 24px; height: 24px; display: block; }';
   const BOX = 38; // .pk-fab's width/height, and what CFG.FAB_SIZE has to agree with
 
@@ -703,7 +704,7 @@ console.log('\n— FAB KIT v6 is one button everywhere —');
 
 
 // ---------------------------------------------------------------------------
-// FAB KIT v6 — one row, fifteen slots.
+// FAB KIT v7 — one row, sixteen slots.
 //
 // v3 took the last thing a tool still chose about its button: where it starts.
 // Eleven tools picking their own corner meant eleven buttons down both edges of
@@ -712,9 +713,10 @@ console.log('\n— FAB KIT v6 is one button everywhere —');
 // across the band above the game's header rule, one slot each.
 //
 // v4 was that row two slots wider, for poll-watch and shop-watch, v5 was one wider
-// again for bar-watch, and v6 is one wider again for slot-watch. The width is the only
-// thing that moved, and it moved in three places at once — the kit's CSS, the two
-// tools that compute the row in JS, and the arithmetic below.
+// again for bar-watch, v6 one wider again for slot-watch, and v7 one wider again for
+// jack-watch. The width is the only thing that moved, and it moved in three places at
+// once — the kit's CSS, the two tools that compute the row in JS, and the arithmetic
+// below.
 // Half the row is the number that has to be re-derived every time a slot is added,
 // so it is derived here rather than restated: SLOTS is the one place to edit.
 //
@@ -723,7 +725,7 @@ console.log('\n— FAB KIT v6 is one button everywhere —');
 // tools that place their own button — let the JS drift from the CSS. All three fail
 // silently and only on someone else's screen, so all three are checked here.
 // ---------------------------------------------------------------------------
-console.log('\n— FAB KIT v6 puts every button in one row —');
+console.log('\n— FAB KIT v7 puts every button in one row —');
 {
   const dir = path.join(__dirname, '..');
   const NO_FAB = new Set(['time-bridge.user.js', 'comms-move.user.js']);
@@ -738,18 +740,18 @@ console.log('\n— FAB KIT v6 puts every button in one row —');
   check('the kit places the row itself', !!row, true);
   const [TOP, FLOOR, HALF, PITCH] = row ? row.slice(1).map(Number) : [];
   check('...7px down, inside the 52px header band', [TOP, TOP + 38 <= 52], [7, true]);
-  check('...floored where the game nav ends, centred above that', [FLOOR, HALF], [440, 341]);
+  check('...floored where the game nav ends, centred above that', [FLOOR, HALF], [440, 364]);
   check('...at a 46px pitch, which is the 38px box and an 8px gap', PITCH, 38 + 8);
   // Half the row, derived from what is actually installed rather than restated. The
   // row is only centred if the width the kit declares matches the number of buttons
-  // standing in it, so slot-watch is what forced v6 and a sixteenth tool will fail
+  // standing in it, so jack-watch is what forced v7 and a seventeenth tool will fail
   // here until the kit is bumped again. That failure is the whole point: a row that
   // has quietly stopped being centred looks exactly like a row that has not.
   const SLOTS = mounted.length;
   check(`...and half the row is what ${SLOTS} slots need`,
     HALF, Math.round((SLOTS * 38 + (SLOTS - 1) * 8) / 2));
 
-  // Every tool declares a slot, and the fifteen of them are exactly 0..14 — no
+  // Every tool declares a slot, and the sixteen of them are exactly 0..15 — no
   // duplicates (two buttons stacked on one square, and the one underneath is
   // unreachable) and no gaps that are really a typo.
   const RULE = /^[ \t]*([#.][\w.:#-]*fab[\w.:#-]*)[ \t]*\{([^}]*)\}/gmi;

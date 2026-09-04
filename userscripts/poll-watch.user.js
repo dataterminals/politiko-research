@@ -332,7 +332,7 @@
   let title = null, pinBtn = null, drag = null, fabDrag = null, resize = null;
 
   const CSS = `
-    /* FAB KIT v6 — shared verbatim block.
+    /* FAB KIT v7 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
        bump the version here and in every tool carrying a copy, so the copies can
        be diffed. Several of these tools are on screen at once, and buttons that
@@ -356,18 +356,18 @@
        screen between the nav links and the account menu.
 
        v4 widened the row to thirteen slots, for poll-watch and shop-watch; v5
-       widened it to fourteen for bar-watch, and v6 widens it to fifteen for
-       slot-watch. Half the row is written out below because CSS cannot count the
-       tools that happen to be installed, which means every slot the row gains costs
-       a version bump and a pass over every copy — the price of the row being one row
-       rather than each tool's guess at one.
+       widened it to fourteen for bar-watch, v6 to fifteen for slot-watch, and v7 to
+       sixteen for jack-watch. Half the row is written out below because CSS cannot
+       count the tools that happen to be installed, which means every slot the row
+       gains costs a version bump and a pass over every copy — the price of the row
+       being one row rather than each tool's guess at one.
 
        The kit owns the row. A tool owns its SLOT and nothing else about position:
 
-         .pkxx-fab { --pk-slot: 15; z-index: 2147482000; }
+         .pkxx-fab { --pk-slot: 16; z-index: 2147482000; }
 
        Slots are fixed rather than packed, and that is the whole point — installing
-       a fifteenth tool does not shuffle the fourteen buttons you already know by
+       a sixteenth tool does not shuffle the fifteen buttons you already know by
        position, and a tool you do not have simply leaves its slot empty. The eye
        leads because it is the mark of the set; the words are alphabetical after it:
 
@@ -378,21 +378,21 @@
          4  MKT      market-watch    12  SHOP  shop-watch
          5  RAID     raid-watch      13  BARS  bar-watch
          6  SLP      sleeper-watch   14  SLOT  slot-watch
-         7  SOCK     ws-watch
+         7  SOCK     ws-watch        15  JACK  jack-watch
 
-       POLL, SHOP, BARS and SLOT are on the end rather than sorted in among the
-       others, and that is deliberate: the alphabet describes how the first eleven
-       were handed out, not a sort to be re-run. Slots are fixed, so a tool that
-       arrives later takes the next free number and nothing already on screen moves.
+       POLL, SHOP, BARS, SLOT and JACK are on the end rather than sorted in among
+       the others, and that is deliberate: the alphabet describes how the first
+       eleven were handed out, not a sort to be re-run. Slots are fixed, so a tool
+       that arrives later takes the next free number and nothing already on screen
 
-       Fifteen 38px buttons 8px apart is a 682px row, so it runs 341px either side
+       Sixteen 38px buttons 8px apart is a 728px row, so it runs 364px either side
        of the middle of the viewport. The floor at 440px is where the game's own
        chrome ends — 24px of padding, a 62px wordmark, 24px of gap and five nav
-       links, measured off the bundle — so above about 1562px the row is centred,
+       links, measured off the bundle — so above about 1608px the row is centred,
        and below that it stops sliding left rather than climb onto the nav.
 
        Three numbers, if that header ever changes shape: 7 (where the band is), 440
-       (where the nav ends), 341 (half the row). Nothing else in here is placement.
+       (where the nav ends), 364 (half the row). Nothing else in here is placement.
 
        (No backticks anywhere in here, incidentally. This block is pasted INSIDE a
        template literal in every tool that carries it, and one backtick in a comment
@@ -431,7 +431,7 @@
       box-sizing: border-box; width: 38px; height: 38px; padding: 0;
       /* The home row. --pk-slot is the tool's; the three numbers are the kit's. */
       position: fixed; top: 7px;
-      left: calc(max(440px, 50% - 341px) + var(--pk-slot, 0) * 46px);
+      left: calc(max(440px, 50% - 364px) + var(--pk-slot, 0) * 46px);
       display: grid; place-items: center;
       background: #18181b; color: #e4e4e7;
       border: 1px solid #3f3f46; border-radius: 3px;

@@ -48,6 +48,7 @@ const TOOLS = {
   'shop-watch': { word: 'SHOP', blurb: 'shop fields the UI never shows, and brackets every restock' },
   'bar-watch': { word: 'BARS', blurb: 'time to full for Energy, Juice and HP, with alerts you set' },
   'slot-watch': { word: 'SLOT', blurb: 'slots bankroll against the house edge, and what a run really costs' },
+  'jack-watch': { word: 'JACK', blurb: 'blackjack solved: the right play, the chances, the count, the money' },
   'comms-move': { word: null, blurb: "adds a drag bar to the game's Comms dock so you can move it" },
   'time-bridge': { word: null, blurb: "hands Time Watch's clock anchor to the Time Wire planner" },
 };

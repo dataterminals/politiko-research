@@ -70,7 +70,7 @@ repositions". `tools/test-placement.js` encodes both exceptions by name.
 
 ## The buttons
 
-`FAB KIT v6` is the same idea applied to the toggle button — the one part of any of this a
+`FAB KIT v7` is the same idea applied to the toggle button — the one part of any of this a
 player sees before they open anything. Install four of these tools and four buttons land on
 your screen, so they are a set rather than each tool's own flourish: **one 38px square, one
 three-or-four-letter word, all of them in one row.** (The row, and which button is which,
@@ -109,25 +109,25 @@ had claimed. They now default to a single line across the band above the game's 
 which on any desktop layout is empty screen between the nav links and the account menu.
 **v4 widened that row from eleven slots to thirteen**, for `poll-watch` — the last tool
 still drawing its own button in a corner of its own choosing — and for `shop-watch`.
-**v5 widened it to fourteen** for `bar-watch`, and **v6 widens it to fifteen** for
-`slot-watch`:
+**v5 widened it to fourteen** for `bar-watch`, **v6 to fifteen** for `slot-watch`, and
+**v7 to sixteen** for `jack-watch`:
 
-| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 👁 | `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` | `SOCK` | `TIME` | `WRLD` | `XP` | `POLL` | `SHOP` | `BARS` | `SLOT` |
+| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 👁 | `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` | `SOCK` | `TIME` | `WRLD` | `XP` | `POLL` | `SHOP` | `BARS` | `SLOT` | `JACK` |
 
 The eye leads because it is the mark of the set; the words are alphabetical after it — and
 then they stop being alphabetical, which is deliberate. `POLL` and `SHOP` arrived after the
 first eleven slots were handed out, and slots are **fixed rather than packed**: a tool that
-turns up later takes the next free number rather than sorting itself in. `BARS` and `SLOT`
-are the next two. That is the point — installing a fifteenth tool does not shuffle the
-fourteen buttons you already know by position, and a tool you do not have simply leaves its
-slot empty.
+turns up later takes the next free number rather than sorting itself in. `BARS`, `SLOT` and
+`JACK` are the next three. That is the point — installing a sixteenth tool does not shuffle
+the fifteen buttons you already know by position, and a tool you do not have simply leaves
+its slot empty.
 
-The row is 682px wide (fifteen 38px buttons, 8px apart) and centred on the window, with a
+The row is 728px wide (sixteen 38px buttons, 8px apart) and centred on the window, with a
 floor at 440px so it stops sliding left rather than climb onto the game's own nav links.
-Above about 1562px it is centred; between roughly 1226 and 1562 it sits at the floor; below
-about 1226 the last few buttons run under the account menu, and below 768 the game swaps in
+Above about 1608px it is centred; between roughly 1180 and 1608 it sits at the floor; below
+about 1180 the last few buttons run under the account menu, and below 768 the game swaps in
 a different header entirely. Drag them out of the row on a window that small — that is what
 dragging is for.
 
@@ -1657,6 +1657,239 @@ one-carrier feature; this table has six narrow numeric columns rather than eleve
 width, and the fixed layout is what a margin actually needs. Worth revisiting if the table
 grows.
 
+
+---
+
+# Jack Watch
+
+`JACK` · slot 15 · `jack-watch.user.js` · storage `pkbj:`
+
+Watches the blackjack table in whatever state it is in, prices every action the table will
+let you take, keeps the money in and out, and counts the shoe — with the evidence for
+whether counting it means anything printed next to the count.
+
+Everything it knows arrived because the game asked for it while you were looking at the
+page. It adds **no requests**, it cannot tell a GET from a POST, and it does not know how
+to play a hand. That last one is the design, not a limitation, and it has a section of its
+own below.
+
+## The mirror image of Slot Watch
+
+The two casino tools sit on the same wiring and are opposites in the one way that matters.
+
+The slot machine hands the client `theoretical_rtp_bps` and `house_edge_bps` and keeps the
+reel strips server-side, so the headline number is **stated and unverifiable** — Slot Watch
+prints it beside what actually happened and does not pretend to have checked it.
+
+Blackjack states **nothing**. There is no RTP field and no edge field anywhere on this
+surface, nor on the casino lobby summary next door. What it does instead is print the
+complete rule set on the page, in six bullets and two lines painted on the felt:
+
+> Six-Deck Table · Blackjack pays 3:2 · Dealer stands on soft 17 · One split; double after
+> split · Split aces receive one card · Dealer peeks on ace or ten · No insurance or
+> surrender
+
+A stated rule set makes blackjack a solved game. So the headline number here is **unstated
+and exactly computable**, and this tool computes it rather than quoting it:
+
+```
+house edge, perfect play, fresh six-deck shoe:  0.4593%
+```
+
+That falls out of summing over every possible deal — your two cards, the dealer's up card,
+the peek, and then the best of whatever you are allowed to do. It takes about half a second
+and it is behind a button in PLAN, computed once and kept, because the rules do not change.
+Full measurements: [`docs/19-casino-blackjack-surface.md`](../docs/19-casino-blackjack-surface.md).
+
+## It does not know how to play
+
+Every other tool here reads something the game shows you badly. This one computes the
+correct action and prints it, which leaves it exactly one line from a bot — the line being
+a POST it does not know how to build.
+
+On the slot machine there was an easy answer: the game already ships auto-spin, in its own
+UI, with 10/25/50/100 presets, so there was no tedium left for a script to relieve and no
+argument for originating a spin. **Blackjack ships nothing of the kind.** Every deal and
+every action is a button, so the temptation is real, and the answer is the plain one from
+[`docs/01-rules-envelope.md`](../docs/01-rules-envelope.md) and hard rule 2: a
+script-initiated deal is a request not manually initiated by the user, on the only account
+there is, to save a click.
+
+So neither endpoint, neither payload key and no idempotency key appears in the file — not
+disabled, absent. `tools/test-jack-passive.js` fails the build if any of them shows up.
+
+## It cannot tell a GET from a POST
+
+Same shape gate as Slot Watch and Shop Watch, and the same reason. The tool subscribes to
+one path prefix, `/api/corporations/`, and decides what a payload **is** by looking at it:
+
+- anything with an `id`, a `dealer_cards` array and a `player_hands` array is a hand;
+- a hand that also carries all four settlement numbers is a receipt;
+- anything with `blackjack_min_bet` and `blackjack_max_bet` is the table config.
+
+`consume()` is handed the path and the parsed body and nothing else — not the verb, not
+the request body, not the response status. What is never bound cannot be read. That is what
+lets it consume the hand you get back for pressing HIT without containing any means to
+press one.
+
+## The tabs
+
+**HAND** is the table, live. The dealer's up card and what is still face down, each of your
+hands with its total (and whether it is soft), whose turn it is, and — the point of the tab
+— the action to take, with what every other one costs:
+
+```
+STAND
++0.284 per $1 staked   vs   HIT −0.312 · DOUBLE −0.624
+```
+
+Underneath: the chance the next card busts you, the chance the dealer busts, and the
+win/push/lose split if you stand. All of those are exact off the stated rules; nothing there
+is sampled and nothing is a forecast. Only actions the table itself offered are priced —
+the list comes from the server's own `allowed_actions`, so the tool can never recommend
+something the table would refuse.
+
+When there is no hand in progress it shows the last receipt and the three things that
+decide whether DEAL will even light up: free dealers, your cash, and the largest bet the
+house will currently cover.
+
+**COUNT** is the shoe, and the honest treatment of it. Running count, true count, cards
+seen — and then the evidence, which is the reason those are allowed on screen at all. See
+below.
+
+**MONEY** is the ledger: net, staked, tax paid, won/pushed/lost, and the three edges kept
+apart — the **computed** one from the rules, the **measured** tax drag, and the
+**realized** one from what actually happened. The bankroll curve draws your money against
+what perfect play plus the measured drag says the run should have cost; the gap is the
+luck.
+
+It also keeps a decision ledger. The wire never says what you pressed, but two consecutive
+states of a hand do, so the tool infers it — a card on the same hand is a hit, a bigger
+stake and a card is a double, a second hand is a split, the turn moving on with no new card
+is a stand — and prices what each one gave up. Ambiguous transitions are recorded as
+nothing rather than as a guess, and everything is priced against basic strategy rather than
+against the counted shoe, so an old answer never moves.
+
+**PLAN** solves the edge, prices a planned run at a chosen bet, and will draw the strategy
+grid for the shoe in front of you. The grid is **derived, never looked up**: on a fresh shoe
+it is basic strategy, and against a counted-down shoe the cells that disagree with basic
+strategy are outlined. There is no index table anywhere in the file.
+
+**LOG** is every hand this table has given up, with the cards on hover, and the "clear"
+that scopes the panel to one sitting.
+
+## The count, and why it comes with a warning label
+
+Six decks and a card-by-card record is the setup for a running count, and the count
+arithmetic is trivial. Whether it **means** anything turns on whether the shoe persists
+between hands, and:
+
+**Nothing on this surface says.** There is no shoe, penetration, discard, cut-card or
+cards-remaining field anywhere in the bundle. The six decks are a text label in the header
+and nothing else.
+
+It is, however, measurable — one-sidedly. Cards carry suits, so there are 52 distinct codes
+and a six-deck shoe holds exactly six of each. **The seventh sighting of any one code
+proves a reshuffle happened.** The tool watches for that, restarts the count when it fires,
+and reports how many breaks it has seen. It can prove a reshuffle; it can never prove the
+absence of one, and the panel says exactly that in the branch that will be showing almost
+all the time.
+
+Three more limits print alongside every count, and none of them goes away:
+
+1. **You only ever see your own table.** Your cards and the dealer's are all that is on the
+   wire. If anyone else draws from this shoe the count is wrong by everything you did not
+   see, and nothing in the client says whether they do.
+2. **The hole card is face down while you act**, so a card in play is not yet counted, and a
+   round that ends before the reveal never contributes it. The tab counts how many have gone
+   unseen.
+3. **A count is only a proxy.** This tool re-solves the hand against the observed
+   composition directly, which is strictly better and needs no index table. The count is
+   printed because it is the familiar handle, not because anything is derived from it — the
+   fence test checks that the true count never reaches anything but a stat box.
+
+Which is why the solver has a switch, in COUNT, and states which side it is on wherever it
+prints a number:
+
+| | what it solves against | right if |
+|---|---|---|
+| **TABLE** (default) | a fresh shoe less the cards now face up | the table reshuffles every hand — and it is plain basic strategy either way |
+| **COUNTED** | everything seen since the last proven reshuffle | the shoe persists *and* nobody else is drawing from it |
+
+Neither of those is established. The default is the one that is safe when the assumption is
+wrong.
+
+## The bet the table will actually take
+
+A number the page never states. `renderBetting` blocks the deal when `wager × 4` exceeds
+the free reserve — four, because a round can stake twice over a split and twice again on a
+double after it. So the house's real ceiling is `free_reserve ÷ 4`, rounded down to a legal
+increment, and it can bite well below the table maximum. The panel prints the binding
+bound and names which of the three it is: the table maximum, your cash, or the reserve.
+
+## The tax is the point, again
+
+Same asymmetry Slot Watch found, arrived at differently. The edge is charged on the round;
+you are paid net. `net_payout = gross_payout − tax_amount`, and the House rules say
+"ordinary-income tax on positive round profit" — it lands on winning rounds and gives
+nothing back on losing ones. So the table's real cost is the computed edge **plus** a drag,
+and the drag is measured rather than modelled: total tax over total staked, two observed
+sums, no distribution assumed.
+
+The difference from slots is the lever. There, tax is assessed on aggregate *session*
+profit, so how a run is cut into sessions changes the bill. Here it is per **round**, and a
+round is one hand — there is nothing to arrange. The only lever left is how much is staked
+per round, which is what PLAN prices.
+
+## Two approximations, named rather than buried
+
+Both are stated on screen where their numbers are, and in
+[`docs/19`](../docs/19-casino-blackjack-surface.md):
+
+1. The dealer's distribution is computed once against the shoe as it stands at your
+   decision and held fixed while your own draws are enumerated. Recomputing it after each
+   of your own cards would be exact. The difference is small; this tool does not measure
+   it, so it is declared rather than quantified.
+2. A split is priced as twice the EV of one split hand against the composition with both
+   pair cards removed. The two hands are really dealt from a shoe each is depleting.
+
+And one assumption the rules do not settle: a ten on a split ace is treated as 21 rather
+than a natural. Nothing in the client says either way; every table that has ever existed
+pays it even money.
+
+## What it reads
+
+| | |
+|---|---|
+| `GET /api/corporations/{id}/casino/blackjack` | table config and the hand in progress, on the client's own 15s refetch |
+| `GET …/blackjack/history` | `{ hands: [...] }` — the whole array. The game renders `hands[0]` and drops the rest |
+| the two POST **responses** | the hand you get back for a button you pressed, recognised by shape |
+
+Nothing else. No request bodies, no headers, no tokens, and no path in the file but the one
+prefix it subscribes to.
+
+## Two things it will not claim
+
+**It does not know when anything happened.** Nothing on this surface carries a timestamp —
+not the hand, not history, nowhere the client reads. Every clock is the local moment this
+tool first saw the hand, is labelled "seen", and ordering is by hand id because that is the
+only ordering the wire gives.
+
+**It will not quote you a risk of ruin.** The ±1 SD band on a planned run is the sample
+deviation of your own results, carries its sample count, and is drawn as a band. It is not
+a probability of anything, and the panel says so.
+
+## The two files that hold it to all that
+
+`tools/test-jack-ev.js` drives the solver against three things that were true before the
+tool existed: the canonical basic-strategy table for this rule set, cell for cell; the
+published house edge for it; and a seeded Monte Carlo dealing a real 312-card shoe. It
+also holds the labelling apart — computed, measured, estimated.
+
+`tools/test-jack-passive.js` is the fence: no endpoints, no payload shapes, no idempotency
+key, no alerts, one timer, one API prefix, no strategy table, and the count never becoming
+a claim about the shoe.
+
 ---
 
 ## Tests
@@ -1688,6 +1921,8 @@ node userscripts/tools/test-shop-passive.js
 node userscripts/tools/test-bar-passive.js
 node userscripts/tools/test-slot-ev.js
 node userscripts/tools/test-slot-passive.js
+node userscripts/tools/test-jack-ev.js
+node userscripts/tools/test-jack-passive.js
 node userscripts/tools/test-http-tap.js
 ```
 
@@ -1768,6 +2003,22 @@ only until someone adds it back:
   sliced out of the shipped file, where the properties are all about not inventing data: a
   refused poll is an error body and must not become a data point, and `lean` must come back
   null for a street poll rather than as a confident-looking zero.
+
+- `test-jack-passive` fences jack-watch, and is the one whose necessity is easiest to see.
+  Every other tool here reads something the game shows you badly; that one **computes the
+  correct action and prints it**, which leaves it one line from a bot — the line being a
+  POST it does not know how to build. Slots had an easy answer to this (the game ships
+  auto-spin, so there was nothing to relieve); blackjack ships no automation at all, so the
+  fence is the answer. Both endpoints, both payload keys, the idempotency key and any way
+  of minting one are barred outright, and so is a strategy table: a run of eight or more
+  action letters in a literal fails the build, because a lookup table would be a different
+  tool in the same panel — right off the top of the shoe and wrong in exactly the cases the
+  COUNT tab exists for. Its two novel checks are about claims rather than requests. The
+  half-second solves must be reachable only from a deliberate click, never a schedule,
+  because a solver that fires itself is a busy loop in a game tab. And the **count may
+  never become a claim about the shoe**: the seventh sighting of a card proves a reshuffle,
+  nothing proves the absence of one, so the fence pins the words in the unproved branch and
+  checks that the true count reaches a stat box and nothing else.
 
 They have nothing else in common; market-watch's was named `test-passive.js` when it
 lived in its own repository and was renamed on the way in.

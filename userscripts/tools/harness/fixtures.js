@@ -1258,4 +1258,184 @@ window.HARNESS_FIXTURES = {
     })(),
   },
 
+  'jack-watch': {
+    label: 'Jack Watch',
+    source: 'docs/19-casino-blackjack-surface.md',
+    note: 'Fire the config first — it carries the limits, your cash and the free reserve, '
+        + 'and the free reserve is what decides the largest bet the table will actually '
+        + 'take. Then history for the money. The four "hand in play" calls are a single '
+        + 'round in sequence: deal, hit, hit, settle — fire them in order and HAND solves '
+        + 'each state as it lands, exactly as it would at the table. The two shoe calls at '
+        + 'the end are what COUNT is for: the first is a normal round, the second deals a '
+        + 'seventh ace of spades and proves a reshuffle.',
+    calls: (() => {
+      // A settled round, built the way the server states them: gross is what came back,
+      // tax is withheld from the profit, net is what was credited. The panel re-derives
+      // nothing, so these have to reconcile or its own warning fires — which is the last
+      // variant below.
+      const round = (id, open, total, gross, tax, cards, dealer, outcome) => ({
+        id, status: 'settled', outcome,
+        current_hand: 0, allowed_actions: [],
+        dealer_cards: dealer,
+        player_hands: [{ cards, wager: total, outcome, status: 'resolved' }],
+        opening_wager: open, total_wager: total,
+        gross_payout: gross, tax_amount: tax, net_payout: gross - tax,
+      });
+
+      // One round, four states, the way the wire delivers it: each POST comes back with
+      // the whole hand. The panel infers HIT, HIT and then the settle from the gaps
+      // between them — the wire never says what was pressed.
+      const live = (over) => ({
+        id: 8814, status: 'player_turn', outcome: null,
+        current_hand: 0, allowed_actions: ['hit', 'stand', 'double'],
+        dealer_cards: ['10S', 'hidden'],
+        player_hands: [{ cards: ['9H', '3C'], wager: 500, outcome: null, status: 'active' }],
+        opening_wager: 500, ...over,
+      });
+
+      return [
+        {
+          label: 'table config — no hand yet',
+          path: '/api/corporations/7/casino/blackjack',
+          body: {
+            blackjack_min_bet: 100, blackjack_max_bet: 25000, wager_increment: 100,
+            player_cash: 184300, free_reserve: 2400000, reserve_balance: 3100000,
+            dealer_capacity: 4, available_dealers: 2,
+            current_city_access: true, operational: true, wagering_suspended: false,
+            active_hand: null,
+          },
+        },
+        {
+          label: 'history — seven rounds',
+          path: '/api/corporations/7/casino/blackjack/history',
+          // Newest first, the way the page reads hands[0] as "last hand". Two are taxed
+          // wins, which is what makes the tax drag a number rather than zero; one is a
+          // push, one is a natural at 3:2, and one staked 1000 off a 500 bet because it
+          // was doubled — which is what the staking multiplier measures.
+          body: {
+            hands: [
+              round(8802, 500, 500, 0, 0, ['10H', '7C'], ['9S', '10D'], 'lose'),
+              round(8795, 500, 500, 1250, 90, ['AS', 'KH'], ['10C', '8D'], 'blackjack'),
+              round(8781, 500, 1000, 2000, 150, ['5H', '6C', '10S'], ['10H', '9C'], 'win'),
+              round(8770, 500, 500, 500, 0, ['10D', '9H'], ['9S', '10C'], 'push'),
+              round(8764, 500, 500, 0, 0, ['10S', '6H', '9D'], ['7C', 'hidden'], 'bust'),
+              round(8751, 200, 200, 400, 0, ['AH', '9S'], ['6D', '10H', '8C'], 'win'),
+              round(8742, 200, 200, 0, 0, ['3S', '4H', '10C', '8D'], ['10S', '7H'], 'bust'),
+            ],
+          },
+        },
+        {
+          label: 'hand in play — dealt 12 against a ten',
+          path: '/api/corporations/7/casino/blackjack/hands',
+          body: { hand: live({}) },
+        },
+        {
+          label: '…you hit, and draw a four',
+          path: '/api/corporations/7/casino/blackjack/hands/8814/actions',
+          variant: true,
+          body: {
+            hand: live({
+              player_hands: [{ cards: ['9H', '3C', '4D'], wager: 500, outcome: null, status: 'active' }],
+              allowed_actions: ['hit', 'stand'],
+            }),
+          },
+        },
+        {
+          label: '…you hit again, and draw a five',
+          path: '/api/corporations/7/casino/blackjack/hands/8814/actions',
+          variant: true,
+          body: {
+            hand: live({
+              player_hands: [{ cards: ['9H', '3C', '4D', '5S'], wager: 500, outcome: null, status: 'active' }],
+              allowed_actions: ['hit', 'stand'],
+            }),
+          },
+        },
+        {
+          label: '…you stand on 21, and the dealer pays',
+          path: '/api/corporations/7/casino/blackjack/hands/8814/actions',
+          variant: true,
+          body: {
+            hand: {
+              ...round(8814, 500, 500, 1000, 75, ['9H', '3C', '4D', '5S'], ['10S', '8H'], 'win'),
+            },
+          },
+        },
+        {
+          label: 'a split — two hands, one dealer',
+          path: '/api/corporations/7/casino/blackjack/hands',
+          variant: true,
+          body: {
+            hand: {
+              id: 8820, status: 'player_turn', outcome: null,
+              current_hand: 1, allowed_actions: ['hit', 'stand', 'double'],
+              dealer_cards: ['6D', 'hidden'],
+              player_hands: [
+                { cards: ['8S', '10H'], wager: 500, outcome: null, status: 'resolved' },
+                { cards: ['8H', '3C'], wager: 500, outcome: null, status: 'active' },
+              ],
+              opening_wager: 500, total_wager: 1000,
+            },
+          },
+        },
+        {
+          label: 'shoe — a normal round, cards for the count',
+          path: '/api/corporations/7/casino/blackjack/history',
+          variant: true,
+          body: {
+            hands: [round(8830, 500, 500, 1000, 0, ['2S', '3H', '6D', '10C'], ['5S', '4H', '9D'], 'win')],
+          },
+        },
+        {
+          label: 'shoe — a seventh ace of spades, which cannot happen',
+          path: '/api/corporations/7/casino/blackjack/history',
+          variant: true,
+          // Seven of one code in six decks is impossible, so this proves a reshuffle
+          // happened. It is the only claim about the shoe the tool is allowed to make,
+          // and the only way to see the proved branch of COUNT without playing an evening.
+          body: {
+            hands: [
+              round(8841, 100, 100, 0, 0, ['AS', 'AS', 'AS', 'AS'], ['AS', 'AS', 'AS'], 'lose'),
+              round(8840, 100, 100, 0, 0, ['AS', '2H'], ['10S', '10H'], 'lose'),
+            ],
+          },
+        },
+        {
+          label: 'no dealers free',
+          path: '/api/corporations/7/casino/blackjack',
+          variant: true,
+          body: {
+            blackjack_min_bet: 100, blackjack_max_bet: 25000, wager_increment: 100,
+            player_cash: 184300, free_reserve: 2400000, reserve_balance: 3100000,
+            dealer_capacity: 4, available_dealers: 0,
+            current_city_access: true, operational: true, wagering_suspended: false,
+            active_hand: null,
+          },
+        },
+        {
+          label: 'a reserve too thin to cover the table maximum',
+          path: '/api/corporations/7/casino/blackjack',
+          variant: true,
+          // free_reserve / 4 is 1500, well under the 25000 the table advertises. The page
+          // only ever expresses this by greying out DEAL; the panel prints it.
+          body: {
+            blackjack_min_bet: 100, blackjack_max_bet: 25000, wager_increment: 100,
+            player_cash: 184300, free_reserve: 6000, reserve_balance: 9000,
+            dealer_capacity: 4, available_dealers: 3,
+            current_city_access: true, operational: true, wagering_suspended: false,
+            active_hand: null,
+          },
+        },
+        {
+          label: 'a receipt that does not add up',
+          path: '/api/corporations/7/casino/blackjack/history',
+          variant: true,
+          // gross - tax does not equal net. The panel must say so rather than print
+          // figures built on an assumption that has stopped holding.
+          body: { hands: [{ ...round(8850, 500, 500, 1500, 100, ['10S', 'AH'], ['9C', '8D'], 'win'), net_payout: 999 }] },
+        },
+      ];
+    })(),
+  },
+
 };
