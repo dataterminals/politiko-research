@@ -114,7 +114,7 @@ Install Tampermonkey first, then click a link and confirm the prompt. Every one 
 | 12 | `SHOP` | Shop Watch | 0.3.0 | shop fields the UI never shows, and brackets every restock | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
 | 13 | `BARS` | Bar Watch | 0.2.0 | time to full for Energy, Juice and HP, with alerts you set | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
 | 14 | `SLOT` | Slot Watch | 0.2.0 | slots bankroll against the house edge, and what a run really costs | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
-| 15 | `JACK` | Jack Watch | 0.2.0 | blackjack solved: the right play, the chances, the count, the money | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
+| 15 | `JACK` | Jack Watch | 0.3.0 | blackjack solved: the right play, the chances, the count, the money | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
 | — | — | Comms Move | 0.1.1 | adds a drag bar to the game's Comms dock so you can move it | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | — | — | Time Bridge | 0.1.0 | hands Time Watch's clock anchor to the Time Wire planner | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 
