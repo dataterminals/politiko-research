@@ -1379,6 +1379,23 @@ window.HARNESS_FIXTURES = {
           },
         },
         {
+          label: 'history — a tax-free government, as actually measured',
+          path: '/api/corporations/7/casino/blackjack/history',
+          variant: true,
+          // Measured 2026-09-04 over 51 real rounds and $1.87m staked: tax_amount was zero
+          // on every one of them, because the government had all but abolished income tax.
+          // This is the shape the panel has to handle without reading a zero drag as a
+          // permanent property of the table — see the note it prints under the edges.
+          body: {
+            hands: [
+              round(9002, 50000, 50000, 100000, 0, ['AS', '9H'], ['10S', '8D'], 'win'),
+              round(9001, 50000, 50000, 0, 0, ['10H', '7C'], ['9S', '10D'], 'lose'),
+              round(9000, 50000, 50000, 50000, 0, ['10D', '9H'], ['9S', '10C'], 'push'),
+              round(8999, 25000, 25000, 62500, 0, ['AS', 'KH'], ['10C', '8D'], 'blackjack'),
+            ],
+          },
+        },
+        {
           label: 'shoe — a normal round, cards for the count',
           path: '/api/corporations/7/casino/blackjack/history',
           variant: true,

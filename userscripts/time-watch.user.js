@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — Time Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.9.0
-// @description  Passive game-clock calibrator: reads the /api/time responses the app already polls, shows the real↔game time mapping, month schedule, and next-September countdown in your local timezone. Zero added requests.
+// @version      0.10.0
+// @description  Passive game-clock calibrator: reads the /api/time responses the app already polls, shows the real↔game time mapping, month schedule, and next-registration countdown in your local timezone. Zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -37,6 +37,9 @@
  *     plus an independent measured value from this script's own sample baseline
  *   - phase: the real-UTC instant of any game date, hence local wall-clock times for
  *     month boundaries (e.g. when September starts for you)
+ *   - the next college-registration window. Registration opens in BOTH January and
+ *     September -- a server-side rule, operator-observed, with no month logic in the
+ *     client bundle to read it off. See docs/06-time-surface.md.
  */
 
 (() => {
@@ -102,6 +105,16 @@
 
   /** game-seconds of 00:00 <month> 1, Y<year> */
   const monthStartGS = (year, monthIdx) => (year - 1) * GS_YEAR + monthIdx * GS_MONTH;
+
+  /** game-seconds one tick past the end of a month. December is 35 days, so it is not
+      monthStartGS(year, 12) -- that lands five game days short of the year boundary. */
+  const monthEndGS = (year, monthIdx) => (monthIdx === 11
+    ? monthStartGS(year + 1, 0)
+    : monthStartGS(year, monthIdx + 1));
+
+  /** Months college registration opens in. Server-side rule, operator-observed: the
+      client bundle carries no month logic for it. See docs/06-time-surface.md. */
+  const REG_MONTHS = [0, 8];
 
   // ---------------------------------------------------------------------------
   // Sample store — one entry per captured /api/time response
@@ -385,18 +398,38 @@
     codeRow.append(codeEl, copyBtn);
     body.append(codeRow);
 
-    // Next September (registration month) countdown
-    let sepGS = monthStartGS(now.year, 8);
-    const inSeptember = now.monthIdx === 8;
-    if (!inSeptember && gs >= sepGS) sepGS = monthStartGS(now.year + 1, 8);
-    const sepStart = realDateOfGS(sepGS);
-    const sepEnd = realDateOfGS(sepGS + 30 * GS_DAY);
+    // Next college-registration window. It opens twice a game year, in January and in
+    // September, so walk the candidates in calendar order rather than assume which is
+    // next -- the two land on different weekdays, and missing one costs months, not a
+    // game year. The one after is worth printing for exactly that reason.
+    const regWindows = [];
+    for (const y of [now.year, now.year + 1]) {
+      for (const mi of REG_MONTHS) {
+        regWindows.push({ y, mi, start: monthStartGS(y, mi), end: monthEndGS(y, mi) });
+      }
+    }
+    regWindows.sort((a, b) => a.start - b.start);
+    const regAt = regWindows.findIndex((w) => gs < w.end);
+    const reg = regWindows[regAt];
+    const regAfter = regWindows[regAt + 1];
+    const regStart = realDateOfGS(reg.start);
+    const regEnd = realDateOfGS(reg.end);
+    const timeOnly = { weekday: undefined, month: undefined, day: undefined };
+
     const sep = document.createElement('div');
     sep.style.marginTop = '8px';
-    sep.innerHTML = inSeptember
-      ? `<span class="pktw-ok">September is NOW.</span> It ends ${fmtLocal(sepEnd)} (${fmtDur(realDateOfGS(monthStartGS(now.year, 9)) - Date.now())} left).`
-      : `<span class="pktw-hl">Next September:</span> ${fmtLocal(sepStart)} → ${fmtLocal(sepEnd, { weekday: undefined, month: undefined, day: undefined })} local (in ${fmtDur(sepStart - Date.now())}).`;
+    sep.innerHTML = gs >= reg.start
+      ? `<span class="pktw-ok">${MONTHS[reg.mi]} registration is NOW.</span> It ends ${fmtLocal(regEnd)} (${fmtDur(regEnd - Date.now())} left).`
+      : `<span class="pktw-hl">Next registration — ${MONTHS[reg.mi]} Y${reg.y}:</span> ${fmtLocal(regStart)} → ${fmtLocal(regEnd, timeOnly)} local (in ${fmtDur(regStart - Date.now())}).`;
     body.append(sep);
+
+    if (regAfter) {
+      const after = document.createElement('div');
+      after.className = 'pktw-dim';
+      after.textContent = `Then ${MONTHS[regAfter.mi]} Y${regAfter.y}: `
+        + `${fmtLocal(realDateOfGS(regAfter.start))} (in ${fmtDur(realDateOfGS(regAfter.start) - Date.now())}).`;
+      body.append(after);
+    }
 
     // Month schedule for the current game year, local wall-clock
     const h = document.createElement('h1');

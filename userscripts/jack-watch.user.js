@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.0
+// @version      0.3.1
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -2320,13 +2320,30 @@
     const g2 = el('div', 'pkbj-stats');
     stat(g2, 'edge, perfect play', v.edge === null ? '—' : pct(v.edge, 3), null,
       v.edge === null ? 'not solved yet — see PLAN' : 'computed from the rules');
-    stat(g2, 'tax drag', pct(v.roll.taxDrag, 3), v.roll.taxDrag ? 'down' : null, 'measured');
+    stat(g2, 'tax drag', pct(v.roll.taxDrag, 3), v.roll.taxDrag ? 'down' : null,
+      v.roll.n && !v.roll.taxed ? 'nothing taxed yet' : 'measured');
     stat(g2, 'effective edge', pct(v.effEdge, 3), null,
       v.edge === null ? 'needs the solve' : 'computed + measured');
     stat(g2, 'realized edge', pct(v.roll.realizedEdge, 2),
       num(v.roll.realizedEdge) === null ? null : (v.roll.realizedEdge > 0 ? 'down' : 'up'),
       'what actually happened');
     body.append(g2);
+
+    // A zero drag is a fact about the government, not about the table, and the difference
+    // matters the moment somebody passes a budget. Measured 2026-09-04: not one round in
+    // 51 was taxed, over $1.87m staked — because income tax had been all but abolished,
+    // not because blackjack is exempt. So the effective edge above is the computed one
+    // TODAY, and this line is what stops that reading as a permanent property.
+    if (v.roll.n && !v.roll.taxed) {
+      body.append(el('div', 'pkbj-scope',
+        `Not one of these ${v.roll.n} round${v.roll.n === 1 ? ' was' : 's was'} taxed, so the `
+        + 'effective edge above is just the computed one. That is a reading of the current tax '
+        + 'code rather than of this table — the rate is set by the government and a budget can '
+        + 'bring it back, at which point the drag stops being zero and this figure moves without '
+        + 'anything about the blackjack changing. It is measured every time you look, so it will '
+        + 'follow — but a long ledger spanning a rate change reports the blend of both, and LOG\'s '
+        + '"clear" is how you ask about the rate you are actually playing under.'));
+    }
 
     body.append(drawChart(curveOf(v.asc, v.stake, v.effEdge)));
 

@@ -277,23 +277,68 @@ this document — reasoning by analogy from [`18-casino-slots-surface.md`](18-ca
 where the drag is real and material — treated the drag as a term that would need measuring
 because it would be *there*. On this evidence it is not.
 
-Three readings, and nothing here picks between them:
+**Answered the same day, by the operator: the government has all but abolished income tax.**
+So the zero is a reading of the current tax code and not a property of the blackjack table
+— the first of the three readings this section originally offered, confirmed, and the other
+two (blackjack is exempt; there is a bracket six figures does not reach) are dead.
 
-- the rate is a **government policy** rather than a constant, and is currently zero — which
-  would be entirely in character for this game, where tax is a live political axis;
-- blackjack rounds are not in fact assessed, whatever the aside says;
-- there is a threshold or bracket that $150,000 of round profit does not reach.
+That is a better answer than "no tax here" and a more demanding one, because it has a
+tense. **The drag is a live political variable.** A budget that restores income tax makes
+the effective edge move without anything about the table changing, and a ledger that spans
+the change reports the blend of both regimes rather than either. `jack-watch` measures the
+drag on every repaint so it follows the policy by construction, prints "nothing taxed yet"
+rather than a bare `0.000%` so a zero cannot be read as a permanent property, and points at
+LOG's "clear" as the way to ask about the rate you are actually playing under.
 
 What matters for tooling is that the shape held up: `jack-watch` measures the drag rather
 than modelling it, so it printed `0.000%` and an effective edge equal to the computed one,
 instead of inventing a plausible-looking deduction. **A modelled rate would have been wrong
-by its entire value here.**
+by its entire value here** — and would then have been wrong in the other direction the day
+the budget passed.
+
+### History does back-fill, and reaches before the tool existed
+
+The session above arrived as 51 rounds with 51 distinct timestamps, which is the signature
+of live observation — a history back-fill lands as a batch sharing one stamp. That looked
+like it might mean the array was returning almost nothing.
+
+**It does not.** Confirmed by the operator: on install the panel came up already holding
+rounds from play that predated the script, and the 51 above start where they do because
+LOG's "clear" was pressed. So `GET …/blackjack/history` **returns hands from before
+anything was watching**, which is the same free back-catalogue slots has and the reason a
+tool on this surface has a ledger the moment it is installed rather than only from then on.
+
+The exact depth is still unmeasured. The client sends no page or limit parameter, so it is
+whatever the server defaults to, and the one instrument that could read it — a fresh
+install's first poll — has already fired here. It is recoverable, though: "clear" sets a
+floor and deletes nothing, so those pre-install rounds are still in `pkbj:data` behind the
+mark, and LOG's "all" brings them back with a count.
 
 ### Hand ids look like they belong to the player
 
 339 through 389 with **no gaps at all** across 51 consecutive rounds. Either the id sequence
-is per-player, or that casino saw no other blackjack for twelve minutes. The first is much
-the likelier.
+is per-player, or that casino saw no other blackjack for twelve minutes.
+
+**And then one gap, which is the interesting part.** The mark set by LOG's "clear" was
+`#335` — the newest hand the ledger held at the time, back-filled from before the tool was
+installed — and the next hand actually played came back as **#339**. So 336, 337 and 338
+were allocated and never appeared in that casino's history, at a table whose next 51 ids
+ran without a single break.
+
+That one gap is worth more than the 51 contiguous ids, because it is the only thing here
+that discriminates:
+
+- **if the counter is the player's**, those three are hands played at a *different*
+  corporation's casino. `jack-watch` keeps a ledger per corporation, so they would be
+  sitting in another one, and the sequence is intact.
+- **if the counter is the casino's**, those three belong to somebody else — and the 51
+  unbroken ids that follow mean nobody else played there for twelve minutes, which is
+  possible but is a coincidence sitting right next to the gap that needs explaining.
+
+Nothing available settles it. The one measurement that would is cheap and has not been
+taken: **play a hand at another corporation's casino.** If the id continues from where this
+table left off, the counter is the player's; if it starts somewhere unrelated, it belongs to
+the table or the corporation.
 
 This corrects a guess made when the panel was built — that ids are shared across everyone at
 the casino, so id differences would measure the house's traffic. That guess came from
@@ -303,6 +348,16 @@ reason: `jack-watch` counts the gap between shoe breaks in **rounds its ledger h
 because the *ledger* is what has holes in it — hands from before you installed it, hands
 history had already dropped, hands the cap pruned. The cadence being measured is a cadence
 of observations.
+
+The operator's own reading is that the number is a **lifetime hand count for the player**,
+and the size supports it: 339 is far too low for a counter shared by every blackjack hand a
+casino has ever dealt, and about right for one person's play. If that is correct the id is
+not only an ordering key — hand #339 is your 339th — which would make it the single quantity
+on this surface carrying any history at all, on a surface with no timestamps anywhere.
+
+Nothing in `jack-watch` depends on the answer. It orders by id and measures shoe cadence in
+rounds, and both hold under either reading — which is the whole reason the id question can
+sit open in a document instead of blocking a build.
 
 ### Pace: the shoe experiment costs about ten minutes
 
