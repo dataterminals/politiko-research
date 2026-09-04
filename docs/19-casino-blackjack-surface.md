@@ -359,6 +359,71 @@ Nothing in `jack-watch` depends on the answer. It orders by id and measures shoe
 rounds, and both hold under either reading — which is the whole reason the id question can
 sit open in a document instead of blocking a build.
 
+### The shoe question is answered: it turns over, and counting is dead
+
+**81 rounds with cards, 447 cards, one player.** `shoeState()` run over them declares three
+breaks, and the two that fall inside a single continuous sitting are what matter:
+
+```
+break at hand #339   — the sitting boundary, dropped as a floor rather than a gap
+break at hand #364   — 25 rounds after the previous
+break at hand #385   — 21 rounds after that
+```
+
+Against the simulated yardstick:
+
+| | median gap | 5th–95th | observed 25 and 21 |
+|---|---|---|---|
+| reshuffles every round | 23 | 14–31 | **both inside** |
+| persistent, cut at 50% | 30 | 23–37 | 25 inside, 21 below |
+| persistent, cut at 75% | 43 | 41–46 | both far below |
+| persistent, cut at 90% | 52 | 50–54 | both far below |
+
+A seventh sighting is not a hint, it is arithmetic: a six-deck shoe holds exactly six of
+each code, so a seventh **proves** a real reshuffle happened inside that window. Two windows
+of 25 and 21 rounds — about 138 and 116 cards — mean the shoe is being replaced at least
+that often. A shoe cut at three quarters deals 234 cards before it is replaced, which for a
+lone player is 42-ish rounds. Nothing here is close to that.
+
+**And sharing cannot explain it away.** If other players drew from the same shoe you would
+see a *fraction* of each shoe's cards, so a real reshuffle would take **more** of your
+rounds to show up, not fewer. Observed breaks are early. Sharing pushes the wrong way.
+
+So the honest conclusion, on this table on this evening: **the shoe turns over far too fast
+to count, and the COUNTED composition is a fiction after about twenty rounds.** `jack-watch`
+already defaulted to TABLE, which is the correct answer, and now says so out loud when the
+measured gaps land in this band.
+
+This does not generalise beyond what was measured — one player, one casino, one evening,
+two informative gaps. What it does do is make the question cheap to re-ask anywhere else,
+which is all the test was ever for.
+
+### The dealer does not draw when you bust
+
+Not stated anywhere in the client, and measured here for the first time: of **15 rounds
+where every player hand busted, 12 show a dealer hand totalling under 17.** A dealer that
+had played the hand out could never stop below 17 under S17. So once the round is already
+decided the dealer turns the hole card over and stops.
+
+Both halves matter for a passive tool. The hole card **is** revealed — settled hands in the
+ledger carry zero `hidden` entries, so the count loses nothing to busted rounds — but the
+draw does not happen, so a busted round puts fewer cards on the table.
+`tools/sim-shoe-cadence.js` models this now; it moves cards-per-round from 5.56 to 5.46
+against 5.52 observed, and shifts none of the conclusions.
+
+### History depth: at least 25
+
+The back-fill is visible in the ledger as a fingerprint — **25 rounds, ids 311–335, all
+sharing the timestamp `00:49:51.080`**, which is the moment the tool first polled. Live play
+after that carries its own stamp per round. So `GET …/blackjack/history` returned at least
+25 hands in one response. Whether that is the server's cap or simply all that existed is
+still unmeasured.
+
+The three missing ids sit exactly between the back-fill and live play — 336, 337 and 338,
+dealt in the 72 seconds between them. They are absent from *this* casino's ledger, and
+`jack-watch` keeps one ledger per corporation, so if they were played at another casino they
+are in another ledger and the per-player counter reading survives intact.
+
 ### Pace: the shoe experiment costs about ten minutes
 
 Median 5.1 seconds between rounds, min 2.1, max 104. At that rate the forty clean rounds
@@ -403,6 +468,11 @@ shoe persists between hands**, and:
 **Nothing on this surface says.** There is no shoe, penetration, discard, cut-card or
 remaining-cards field anywhere in the bundle — the six decks are a text label in the header
 and nothing else. The reshuffle cadence is server-side and unstated.
+
+**Measured 2026-09-04 and answered: it turns over roughly every 21 to 25 rounds, which is
+the reshuffle-every-round band and far short of any real penetration.** See the live-play
+section above. What follows is the reasoning that got there, and it stands whatever a
+different table turns out to do.
 
 It is, however, **measurable**, and one-sidedly so. Cards carry suits, so there are 52
 distinct codes and a six-deck shoe holds exactly six of each. **The seventh sighting of any

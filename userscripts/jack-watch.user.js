@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.1
+// @version      0.4.0
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -1812,8 +1812,8 @@
   // is the discriminating half and it is the half that is easy to miss. The table is in
   // docs/19-casino-blackjack-surface.md.
   const GAP_TYPICAL = 'twenty to fifty';
-  const GAP_KEY = 'Around 23 rounds and ragged (14–30) is what reshuffling every round '
-    + 'looks like; around 43 and like clockwork (40–45) is a six-deck shoe cut at three '
+  const GAP_KEY = 'Around 23 rounds and ragged (14–31) is what reshuffling every round '
+    + 'looks like; around 43 and like clockwork (41–46) is a six-deck shoe cut at three '
     + 'quarters. The spread says more than the average — a coincidence lands raggedly, a '
     + 'shuffle cycle does not. Simulated, not observed; see docs/19.';
 
@@ -2055,6 +2055,13 @@
     return box;
   };
 
+  // Below this many rounds between breaks, the table is turning the shoe over faster than
+  // any real penetration would — simulated, a six-deck shoe cut at three quarters breaks
+  // this test every 41 to 46 rounds, and reshuffling every round breaks it every 14 to 31.
+  // A measured mean under this sits in the second band, and a counted composition built
+  // across a shoe that has already gone back in the box is worse than no composition.
+  const GAP_DEAD = 35;
+
   const shoeNote = (v) => {
     const n = el('div', 'pkbj-scope');
     if (ui.shoe === 'COUNTED') {
@@ -2064,6 +2071,13 @@
         + `seen dealt since the last proven reshuffle. That is only right if the shoe persists `
         + `between hands and nobody else is drawing from it — neither is established. COUNT has `
         + `the evidence.`));
+      if (num(v.shoe.gapMean) !== null && v.shoe.gapMean < GAP_DEAD) {
+        n.append(el('b', null,
+          ` And your own evidence is against it: breaks every ${v.shoe.gapMean.toFixed(0)} rounds `
+          + 'on average, where a shoe cut at three quarters would break every 41 to 46. This '
+          + 'table is putting cards back in the box faster than a count can outlive, so COUNTED '
+          + 'is solving against a shoe that is partly gone. TABLE is the better answer here.'));
+      }
     } else {
       n.append(el('b', null, 'TABLE shoe. '));
       n.append(document.createTextNode(

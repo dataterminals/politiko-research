@@ -118,10 +118,18 @@ const playRound = (T) => {
       if (a === 'double') break;
     }
   }
-  for (;;) {
-    const h = val(dealer);
-    if (h.bust || E.dealerStands(h.t, h.a)) break;
-    dealer.push(take());
+  // MEASURED 2026-09-04, from 81 real rounds: when every player hand has busted the dealer
+  // turns the hole card over and does NOT draw. Twelve of fifteen busted rounds ended with
+  // the dealer's shown hand under seventeen, which a dealer who had played it out could
+  // never do. The client says nothing about this either way, and it matters here because
+  // it changes how many cards a round puts on the table.
+  const allBust = player.every((h) => val(h).bust);
+  if (!allBust) {
+    for (;;) {
+      const h = val(dealer);
+      if (h.bust || E.dealerStands(h.t, h.a)) break;
+      dealer.push(take());
+    }
   }
   return player.flat().concat(dealer);
 };
