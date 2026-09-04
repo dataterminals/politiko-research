@@ -374,6 +374,29 @@ console.log('\n— counting, and the evidence for it —');
     [true, 4, 2]);
   // The whole of the fourth hand goes into the new shoe, never half into each.
   check('...and the count starts again from that hand, whole', s2.cards, 4);
+  // The gap, which is the part that actually discriminates. Every shoe policy trips this
+  // test eventually — a persistent shoe trips it too, because the walk keeps counting
+  // across a real reshuffle it cannot see — so the break is not the measurement and the
+  // distance between breaks is. It has to be counted in ROUNDS: hand ids are shared with
+  // every other player at the casino, so the id gaps here (5, 40, 3) are deliberately
+  // nothing like the round gaps (3, 3).
+  {
+    const ids = [1, 6, 46, 49, 52, 60, 70];
+    const hs = ids.map((id, k) => hand(id, k % 3 === 2
+      ? ['AS', 'AS', 'AS', 'AS'] : ['AS', 'AS', '2H', '3D']));
+    const s3 = E.shoeState(hs);
+    check('breaks record the round they fell on, not the hand id',
+      s3.breaks.every((b) => typeof b.id === 'number' && typeof b.after === 'number'), true);
+    check('...and the gaps are in rounds', s3.gaps, s3.breaks.slice(1).map((b) => b.after));
+    check('...with the first break dropped, because it is a floor and not a gap',
+      s3.gaps.length, Math.max(0, s3.breaks.length - 1));
+    if (s3.gaps.length) {
+      check('...and the spread is reported, because a coincidence is ragged and a cycle is not',
+        [s3.gapMin <= s3.gapMean, s3.gapMean <= s3.gapMax], [true, true]);
+    }
+    check('rounds played is every hand in the ledger, breaks included', s3.played, ids.length);
+  }
+  check('no breaks, no gaps', E.shoeState([hand(1, ['2S', '3H', '4D', '5C'])]).gaps, []);
   check('a face-down card is counted as unseen, never as a card',
     E.shoeState([hand(1, ['AS', 'hidden', '5D', '6C'])]).hidden, 1);
   check('...and does not move the composition',

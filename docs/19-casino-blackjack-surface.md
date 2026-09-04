@@ -289,6 +289,50 @@ solver to the composition that is correct if the server reshuffles per hand: fre
 minus the cards on the table. Switching to the counted composition is one deliberate click,
 and the assumption it takes on is named next to the switch.
 
+### A break is not the measurement — added 2026-09-04
+
+The first version of this section, and of `jack-watch`'s COUNT tab, read a break as
+evidence *against* a persistent shoe. **That reading is wrong**, and it is worth writing
+down why because it is the obvious mistake to make.
+
+The tool keeps counting across a reshuffle it has no way to see. So a perfectly persistent
+six-deck shoe trips the seven-of-a-code test too — the seventh sighting just arrives after
+a real shuffle rather than instead of one. **Every shoe policy breaks this test eventually.**
+What separates them is how far apart the breaks land, and how *regularly*.
+
+Simulated with `tools/sim-shoe-cadence.js`, which deals real cards out of a real 312-card
+shoe and plays them with this tool's own solver — 2,000 sessions of 300 rounds per row, at
+**5.56 cards seen per round**:
+
+| what the table is doing | first break (5/50/95) | gap between breaks (5/50/95) | 40 clean rounds |
+|---|---|---|---|
+| reshuffles every round | 15 / **24** / 32 | 14 / **23** / 30 | 0.0% |
+| persistent shoe, cut at 50% | 29 / 33 / 38 | 22 / 29 / 36 | 1.1% |
+| persistent shoe, cut at 75% | 42 / 44 / 46 | 40 / **43** / 45 | 99.9% |
+| persistent shoe, cut at 90% | 50 / 52 / 54 | 49 / 51 / 53 | 100.0% |
+
+Three things come out of that, and all three changed the tool:
+
+1. **"Tens of rounds" was right but useless as guidance.** The number is about 24. A table
+   that reshuffles every round trips the test on coincidence alone by round 32 in 95% of
+   sessions, so the question is answerable in half an hour of play rather than in weeks.
+2. **The spread is the discriminating half, not the middle.** A coincidence lands raggedly
+   — a 16-round band at per-round reshuffling. A real shuffle cycle lands like clockwork —
+   a 5-round band at three-quarter penetration. The two medians (23 and 43) are a factor
+   of two apart; the two *shapes* are unmistakable.
+3. **The one-sided test has a usable other side after all.** Forty rounds with no break is
+   still not proof of anything — but it is something per-round reshuffling essentially
+   never produces. `jack-watch` now says so in the unproved branch, in exactly those terms.
+
+So the panel measures and prints the **gap in rounds** between breaks, with its range. It
+is counted in rounds and not in hand ids on purpose: ids are shared with every other player
+at that casino, so an id difference measures the house's traffic rather than your play.
+
+Two assumptions ride under the whole table and neither is checkable from the client: that
+the shoe you draw from is yours alone, and that the dealer's hole card turns over even when
+you bust. Sharing a shoe means seeing a fraction of the cards drawn from it, which pushes
+every break later without changing what the spread says.
+
 ## What this means for a tool
 
 Everything `jack-watch` needs arrives on its own, on a page you are looking at, on a

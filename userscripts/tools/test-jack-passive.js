@@ -311,8 +311,28 @@ check('a reshuffle is proved by a seventh sighting of one card',
     && /const PER_CODE = RULES\.decks;/.test(CODE),
   'expected the six-of-each test');
 check('...and a hand goes wholly into one shoe or the other',
-  /if \(overflows\) \{ breaks\.push\(h\.id\); segments\+\+; reset\(\); \}/.test(CODE),
-  'a hand split across a reshuffle would corrupt both counts');
+  /if \(overflows\) \{\s*breaks\.push\(\{ id: h\.id, after: sinceBreak \}\);\s*segments\+\+; sinceBreak = 0; reset\(\);\s*\}/.test(CODE)
+    && CODE.indexOf('if ((byCode[code] || 0) + tally[code] > PER_CODE) overflows = true;')
+       < CODE.indexOf('byCode[code] = (byCode[code] || 0) + 1;'),
+  'a hand split across a reshuffle would corrupt both counts, so the whole hand is tested first');
+
+// A break on its own settles nothing — every shoe policy trips this test eventually,
+// because the walk keeps counting across a real reshuffle it cannot see. What separates
+// them is how far apart the breaks land, so the gap is the thing that has to be measured
+// and shown, and it has to be measured in ROUNDS: hand ids are shared with everyone else
+// at the casino, so an id difference measures the house's traffic and not your play.
+check('the gap between breaks is measured, in rounds rather than in ids',
+  /breaks\.push\(\{ id: h\.id, after: sinceBreak \}\)/.test(CODE)
+    && /const gaps = breaks\.slice\(1\)\.map\(\(b\) => b\.after\);/.test(CODE)
+    && /gapMean:|gapMin:|gapMax:/.test(CODE),
+  'expected a per-round gap between breaks, with its spread');
+check('...and the panel says a break alone settles nothing',
+  /A break on its own settles nothing/.test(CODE) && /The GAP is the measurement/.test(CODE),
+  'the proved branch must not read as evidence against a persistent shoe');
+check('...and the simulated yardstick is labelled as simulated',
+  /Simulated, not observed; see docs\/19\./.test(CODE)
+    && /const GAP_KEY = /.test(CODE) && /const GAP_TYPICAL = /.test(CODE),
+  'the only numbers here that came from a simulation must say so where they print');
 check('...and "not proved" is never printed as "did not happen"',
   /No reshuffle proven yet/.test(CODE) && /PROVES NOTHING/.test(CODE),
   'the unproved branch must say that it proves nothing');

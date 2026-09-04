@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.0
+// @version      0.2.0
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -591,6 +591,7 @@
     let hidden = 0, segments = 1;
     const breaks = [];
     let peak = 0, peakCode = null;
+    let played = 0, sinceBreak = 0;      // rounds, not hand ids — see below
     const reset = () => { byCode = Object.create(null); byRank = new Array(10).fill(0); cards = 0; peak = 0; peakCode = null; };
     for (const h of handsAsc) {
       const list = [];
@@ -606,7 +607,18 @@
         tally[code] = (tally[code] || 0) + 1;
         if ((byCode[code] || 0) + tally[code] > PER_CODE) overflows = true;
       }
-      if (overflows) { breaks.push(h.id); segments++; reset(); }
+      played++;
+      // The GAP is the measurement, not the break. Every shoe policy breaks this test
+      // eventually — a persistent shoe breaks it too, because this walk keeps counting
+      // across a real reshuffle it cannot see — so a break on its own says nothing about
+      // which policy is running. How far apart they land does. Counted in YOUR rounds
+      // rather than in hand ids: the id space is shared with everyone else at the
+      // casino, so id differences measure the casino's traffic and not your play.
+      if (overflows) {
+        breaks.push({ id: h.id, after: sinceBreak });
+        segments++; sinceBreak = 0; reset();
+      }
+      sinceBreak++;
       for (const card of list) {
         const code = codeOf(card);
         if (code === null) { if (card === HIDDEN) hidden++; continue; }
@@ -621,12 +633,23 @@
     // wrong, and the honest floor for "how many nines can still come out" is none.
     const comp = freshShoe();
     for (let r = 0; r < 10; r++) comp[r] = Math.max(0, comp[r] - byRank[r]);
+    // Gaps between breaks, oldest first. The first entry is how many rounds this ledger
+    // held before its first break, which is a floor rather than a gap — the tool was not
+    // watching before you installed it — so it is dropped from the summary.
+    const gaps = breaks.slice(1).map((b) => b.after);
     return {
-      comp, byRank, cards, hidden, segments, breaks,
+      comp, byRank, cards, hidden, segments, breaks, gaps,
+      played, sinceBreak: sinceBreak - 1,
       peak, peakCode,
       proven: breaks.length > 0,
-      lastBreak: breaks.length ? breaks[breaks.length - 1] : null,
+      lastBreak: breaks.length ? breaks[breaks.length - 1].id : null,
       count: countOf(byRank, cards),
+      // What the cadence looks like, when there is enough of it to have a shape. Both
+      // numbers matter and the spread matters more: a break that is a coincidence lands
+      // raggedly, a break that is a real shuffle cycle lands like clockwork.
+      gapMean: gaps.length ? mean(gaps) : null,
+      gapMin: gaps.length ? Math.min(...gaps) : null,
+      gapMax: gaps.length ? Math.max(...gaps) : null,
     };
   };
 
@@ -1736,6 +1759,24 @@
   const WORD = { hit: 'HIT', stand: 'STAND', double: 'DOUBLE', split: 'SPLIT' };
   const LETTER = { hit: 'H', stand: 'S', double: 'D', split: 'P' };
 
+  // How to read a gap. These two are the only numbers in this file that came from a
+  // SIMULATION rather than from the wire or from the stated rules, and they are used for
+  // exactly one thing — telling you what your own gaps look like next to. Nothing is
+  // computed from them and no decision turns on them.
+  //
+  // Measured by dealing this tool's own solver against four shoe policies, a few thousand
+  // sessions each: at 5.5 cards a round, a table that reshuffles every round trips the
+  // seven-of-a-code test on coincidence alone about every 23 rounds and raggedly (14 to
+  // 30), while a persistent shoe trips it on its real shuffle cycle, later and like
+  // clockwork — 43 rounds and a 40-to-45 spread at three-quarter penetration. The SPREAD
+  // is the discriminating half and it is the half that is easy to miss. The table is in
+  // docs/19-casino-blackjack-surface.md.
+  const GAP_TYPICAL = 'twenty to fifty';
+  const GAP_KEY = 'Around 23 rounds and ragged (14–30) is what reshuffling every round '
+    + 'looks like; around 43 and like clockwork (40–45) is a six-deck shoe cut at three '
+    + 'quarters. The spread says more than the average — a coincidence lands raggedly, a '
+    + 'shuffle cycle does not. Simulated, not observed; see docs/19.';
+
   // ---------------------------------------------------------------------------
   // 8. The chart.
   //
@@ -2130,19 +2171,34 @@
     // The evidence, which is the whole reason the numbers above are allowed on screen.
     const ev2 = el('div', sh.proven ? 'pkbj-warn' : 'pkbj-scope');
     if (sh.proven) {
+      ev2.append(el('b', null, 'A reshuffle is proven. '));
       ev2.append(document.createTextNode(
-        `A reshuffle is PROVEN. ${sh.peakCode || 'One card'} came out a seventh time at `
-        + `hand #${sh.lastBreak}, and a six-deck shoe holds six of each. ${sh.segments - 1} `
-        + `break${sh.segments === 2 ? '' : 's'} so far, and the count above restarts at each one. `
-        + `If breaks land every hand or two, this table is not dealing you a persistent shoe and `
-        + `the count is noise — which is worth knowing and is exactly what this test is for.`));
+        `${sh.peakCode || 'One card'} came out a seventh time at hand #${sh.lastBreak}, and a `
+        + `six-deck shoe holds six of each. ${sh.segments - 1} break`
+        + `${sh.segments === 2 ? '' : 's'} so far, and the count above restarts at each one. `
+        + 'A break on its own settles nothing, though: this test keeps counting across a real '
+        + 'reshuffle it cannot see, so a persistent shoe trips it too — just later. '));
+      ev2.append(el('b', null, 'The GAP is the measurement.'));
+      if (sh.gaps.length) {
+        ev2.append(document.createTextNode(
+          ` Yours: ${sh.gaps.join(', ')} round${sh.gaps.length === 1 && sh.gaps[0] === 1 ? '' : 's'} `
+          + `between breaks (mean ${sh.gapMean.toFixed(1)}, ${sh.gapMin}–${sh.gapMax}). ${GAP_KEY}`));
+      } else {
+        ev2.append(document.createTextNode(
+          ' One break is not a gap — a second one is what turns this into a number, and it is '
+          + `${GAP_TYPICAL} rounds off, which is itself the answer: where in that range it `
+          + `lands is most of what there is to learn here. ${GAP_KEY}`));
+      }
     } else {
       ev2.append(el('b', null, 'No reshuffle proven yet. '));
       ev2.append(document.createTextNode(
         `The most any one card has been seen is ${sh.peak}${sh.peakCode ? ' (' + sh.peakCode + ')' : ''}`
-        + ` and seven would be impossible in six decks. That is consistent with a persistent shoe `
-        + `and PROVES NOTHING — the test only ever fires in one direction, and at five to eight `
-        + `cards a round it needs tens of rounds to fire at all.`));
+        + ' and seven would be impossible in six decks. That is consistent with a persistent shoe '
+        + 'and PROVES NOTHING — this test only ever fires in one direction. It is not idle, '
+        + `though: ${sh.played} round${sh.played === 1 ? '' : 's'} in, and a table that reshuffled `
+        + 'every round would have tripped it around round 24 and almost certainly by round 32. '
+        + 'Past about forty clean rounds, per-round reshuffling is the one story your ledger has '
+        + 'already ruled out.'));
     }
     body.append(ev2);
 
