@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.2.0
+// @version      0.3.0
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -611,9 +611,15 @@
       // The GAP is the measurement, not the break. Every shoe policy breaks this test
       // eventually — a persistent shoe breaks it too, because this walk keeps counting
       // across a real reshuffle it cannot see — so a break on its own says nothing about
-      // which policy is running. How far apart they land does. Counted in YOUR rounds
-      // rather than in hand ids: the id space is shared with everyone else at the
-      // casino, so id differences measure the casino's traffic and not your play.
+      // which policy is running. How far apart they land does.
+      //
+      // Counted in ROUNDS THIS LEDGER HOLDS, never in hand ids, and the reason is about
+      // this tool rather than about the wire. Ids look usable — 51 rounds of real play
+      // came back as 339..389 with no gaps at all, so the sequence appears to be the
+      // player's own — but the LEDGER is what has holes in it: hands played before you
+      // installed this, hands the history array had already dropped, hands the cap pruned.
+      // An id difference would count those; a round is a thing this tool actually saw,
+      // and the cadence being measured is a cadence of observations.
       if (overflows) {
         breaks.push({ id: h.id, after: sinceBreak });
         segments++; sinceBreak = 0; reset();
@@ -844,6 +850,40 @@
     let n = 0, matched = 0, cost = 0;
     for (const d of list) { n++; if (d.act === d.want) matched++; cost += num(d.cost) ?? 0; }
     return { n, matched, cost, rate: n ? matched / n : null };
+  };
+
+  // --- was that luck? -------------------------------------------------------
+  //
+  // How far the run sits from where the solved edge says it should — the one question
+  // MONEY could not answer, and the first thing anybody asks after a good night. Fifty-one
+  // real rounds finishing $143,000 up looks like a system until you notice that the same
+  // fifty-one rounds have a cash deviation of nearly $300,000 under them.
+  //
+  // The spread is YOURS: the sample deviation of your own per-round results, applied to the
+  // amounts you actually bet, so this is an ESTIMATE and carries its sample count. It comes
+  // back as a distance in deviations and is never turned into a probability, for the same
+  // reason slot-watch will not quote a risk of ruin — the per-round distribution here is
+  // not remotely normal (a natural pays 1.5, a split that doubles both halves pays 4) and a
+  // normal approximation is worst in exactly the tail somebody would want it for. A
+  // distance is honest; a percentage hung on it would not be.
+  const runDeviation = (list, edge, sd) => {
+    const s = num(sd), e = num(edge);
+    if (s === null || e === null || !(s > 0)) return null;
+    let staked = 0, pnl = 0, sq = 0, n = 0;
+    for (const h of list) {
+      const nt = netOf(h);
+      if (nt === null) continue;
+      // The sample is per dollar of OPENING bet, so the cash spread has to be built out of
+      // opening bets too — mixing in the doubled total would inflate it by the same rounds
+      // twice over.
+      const unit = num(h.open) ?? num(h.total);
+      if (unit === null) continue;
+      staked += h.total; pnl += nt; sq += (unit * s) * (unit * s); n++;
+    }
+    const cashSD = Math.sqrt(sq);
+    if (!n || !(cashSD > 0)) return null;
+    const expected = -staked * e;
+    return { n, pnl, expected, cashSD, over: pnl - expected, z: (pnl - expected) / cashSD };
   };
 
   // --- the planner ----------------------------------------------------------
@@ -1961,6 +2001,7 @@
       edge,
       effEdge: edge === null ? null : edge + (drag2 ?? 0),
       sd: stdev(returns), sdN: returns.length,
+      luck: runDeviation(list, edge, stdev(returns)),
       bounds: betBounds(cfg),
       now: num(cfg.cash) !== null ? cfg.cash : (stake === null ? null : stake + roll.net),
     };
@@ -2300,6 +2341,25 @@
       'ev, at the stakes you played');
     body.append(g3);
 
+    // And the question that follows a good night, which every other figure here dances
+    // around: is this you, or is it variance? It is almost always variance, and the panel
+    // is more use saying so than leaving you to guess.
+    if (v.luck) {
+      const g4 = el('div', 'pkbj-stats');
+      stat(g4, 'vs expectation', signed(v.luck.over),
+        v.luck.over > 0 ? 'up' : (v.luck.over < 0 ? 'down' : null),
+        `edge says ${signed(v.luck.expected)}`);
+      stat(g4, 'in deviations', (v.luck.z >= 0 ? '+' : '−') + Math.abs(v.luck.z).toFixed(2) + ' sd',
+        'est', `1 sd on this run is ${money(v.luck.cashSD)}`);
+      body.append(g4);
+      body.append(el('div', 'pkbj-scope',
+        `Under a deviation and a half either way is the ordinary weather of ${v.luck.n} `
+        + 'round' + (v.luck.n === 1 ? '' : 's') + ' and says nothing about how you played — '
+        + 'the spread is measured from your own results and is an estimate, and it is left as '
+        + 'a distance rather than dressed up as a percentage, because the per-round payouts '
+        + 'here run from −2 to +4 and nothing about that shape is normal.'));
+    }
+
     body.append(el('div', 'pkbj-note',
       'The dashed line is what perfect play plus the measured tax drag says this run should have '
       + 'cost; the gap to your line is the luck. "Decisions" are INFERRED from consecutive states '
@@ -2485,12 +2545,26 @@
     allBtn.addEventListener('click', () => { delete ui.mark[v.id]; saveUI(); render(); });
     bar.append(markBtn, allBtn);
 
+    // What an export has to carry, learned the hard way from one that did not.
+    //
+    //   `bet` is the OPENING wager and `staked` is what the round ended up risking. Without
+    //   both, a $50,000 round is indistinguishable from a doubled $25,000 one, and the
+    //   staking multiplier — the whole reason the planner does not understate exposure —
+    //   cannot be checked against the rows it was computed from.
+    //
+    //   `cards` is the only reason an export can answer anything about the shoe. The
+    //   sighting test is per exact code, so an export without suits is an export the
+    //   shoe question cannot be asked of at all.
     const copy = el('button', 'pkbj-btn', 'copy');
     copy.addEventListener('click', () => {
-      const rows = [['id', 'staked', 'gross', 'tax', 'net', 'result', 'seen'].join('\t')];
+      const rows = [['id', 'bet', 'staked', 'gross', 'tax', 'net', 'result', 'outcome',
+        'dealer', 'player', 'seen'].join('\t')];
       for (const h of v.list) {
-        rows.push([h.id, h.total ?? '', h.gross ?? '', h.tax ?? '', h.net ?? '',
-          netOf(h) ?? '', new Date(h.seen).toISOString()].join('\t'));
+        rows.push([h.id, h.open ?? '', h.total ?? '', h.gross ?? '', h.tax ?? '', h.net ?? '',
+          netOf(h) ?? '', h.outcome ?? h.status ?? '',
+          (h.dealer || []).join(' '),
+          (h.hands || []).map((p) => (p.cards || []).join(' ')).join(' | '),
+          new Date(h.seen).toISOString()].join('\t'));
       }
       navigator.clipboard.writeText(rows.join('\n')).then(() => {
         copy.textContent = 'copied';

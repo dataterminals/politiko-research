@@ -255,6 +255,90 @@ Unlike slots, the structure lever cuts the other way. Tax there is assessed on a
 per **round**, and a round is one hand. There is no netting to arrange. The only lever left
 is how much is staked per round, which is what the planner prices.
 
+## First measurements from live play — 2026-09-04
+
+Everything above this line was read off the bundle. This section is the first thing on this
+surface that was **measured at the table**: 51 rounds, ids 339–389, over 12.4 minutes,
+$1,869,000 staked. Where it disagrees with something inferred from the client, it wins.
+
+### The tax is zero, and that was not the expectation
+
+```
+staked         $1,869,000
+gross          $2,012,000
+tax withheld   $0            <- on every one of 51 rounds, 23 of them winners
+credited       $2,012,000
+tax drag       0.0000%
+```
+
+`tax_amount` came back **0 on every round**, including a +$150,000 and two +$100,000
+returns. The House rules aside says "ordinary-income tax on positive round profit", and
+this document — reasoning by analogy from [`18-casino-slots-surface.md`](18-casino-slots-surface.md),
+where the drag is real and material — treated the drag as a term that would need measuring
+because it would be *there*. On this evidence it is not.
+
+Three readings, and nothing here picks between them:
+
+- the rate is a **government policy** rather than a constant, and is currently zero — which
+  would be entirely in character for this game, where tax is a live political axis;
+- blackjack rounds are not in fact assessed, whatever the aside says;
+- there is a threshold or bracket that $150,000 of round profit does not reach.
+
+What matters for tooling is that the shape held up: `jack-watch` measures the drag rather
+than modelling it, so it printed `0.000%` and an effective edge equal to the computed one,
+instead of inventing a plausible-looking deduction. **A modelled rate would have been wrong
+by its entire value here.**
+
+### Hand ids look like they belong to the player
+
+339 through 389 with **no gaps at all** across 51 consecutive rounds. Either the id sequence
+is per-player, or that casino saw no other blackjack for twelve minutes. The first is much
+the likelier.
+
+This corrects a guess made when the panel was built — that ids are shared across everyone at
+the casino, so id differences would measure the house's traffic. That guess came from
+invented harness fixtures rather than from data, and the data points the other way. The
+design decision it was used to justify is unchanged and still right, but for a different
+reason: `jack-watch` counts the gap between shoe breaks in **rounds its ledger holds**,
+because the *ledger* is what has holes in it — hands from before you installed it, hands
+history had already dropped, hands the cap pruned. The cadence being measured is a cadence
+of observations.
+
+### Pace: the shoe experiment costs about ten minutes
+
+Median 5.1 seconds between rounds, min 2.1, max 104. At that rate the forty clean rounds
+that rule out per-round reshuffling is **roughly ten minutes of play**, not the half hour
+this document first suggested.
+
+### What the export could not answer, and now can
+
+Two things were missing from `jack-watch` 0.2.0's LOG export and both showed up the first
+time real rows were analysed:
+
+- **no `opening_wager`**, so a $50,000 round is indistinguishable from a doubled $25,000
+  one. The bet column in that session ran 1,000 / 2,000 / 11,000 / 22,000 / 25,000 / 50,000
+  / 75,000 / 100,000, where every value bar 75,000 is exactly twice another — which is the
+  signature of a double *and* the signature of a raise, and nothing in the export separates
+  them. It is also the number the staking multiplier is computed from, so the multiplier
+  could not be checked against the rows that produced it.
+- **no cards**, which means the shoe question cannot be asked of an export at all. The
+  sighting test is per exact code; without suits there is nothing to test.
+
+0.3.0 exports `bet`, `staked`, the outcome, the dealer's cards and each player hand's cards.
+
+### And the run was ordinary
+
++$143,000 over the session, which is a realized edge of −7.65% in the player's favour and
+looks like a system. It is **0.5 standard deviations** above what the computed edge expects:
+per-round sample deviation 0.95 units over 51 rounds, a cash deviation of $295,372 on the
+amounts actually bet. Twenty-three wins, eight pushes, twenty losses; two naturals against
+an expected 2.4.
+
+Nothing in it suggests the table is mispriced. It is one good night inside the ordinary
+weather of fifty-one rounds, and `jack-watch` 0.3.0 says so on the MONEY tab, because the
+panel that shows you a five-figure win and no sense of scale is inviting the wrong
+conclusion.
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count

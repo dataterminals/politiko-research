@@ -57,7 +57,7 @@ const E = new Function(`${SRC.slice(i, j)}
            doubleEV, splitEV, solve, roundEV, gridOf, countOf, shoeState, isHand,
            isSettled, netOf, slimHand, mergeHand, above, rollup, mean, stdev,
            roundReturns, inferAct, upOf, priceDecision, decisionRoll, plan, betBounds,
-           curveOf, extent, SHOE_SIZE, HIDDEN, CARD };`)();
+           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation };`)();
 
 let fail = 0;
 const check = (label, got, want) => {
@@ -531,6 +531,38 @@ console.log('\n— estimated, and labelled —');
   check('a plan with no bet is no plan', E.plan({ bet: 0, rounds: 10 }), null);
   check('...and the multiplier defaults to one rather than to a guess',
     E.plan({ bet: 100, rounds: 10 }).mult, 1);
+}
+
+console.log('\n— was that luck —');
+{
+  // Driven against a real fifty-one-round session rather than an invented one: $1,869,000
+  // staked, $143,000 up, and a measured per-round deviation of 0.95 units. The whole point
+  // of the figure is that a night that looks like a system is half a deviation of noise.
+  const mk = (id, bet, total, gross) =>
+    ({ id, open: bet, total, gross, tax: 0, net: gross });
+  const EDGE = 0.0045932;
+  const l = [];
+  // twenty-three winners, eight pushes, twenty losses at a $50,000 bet
+  for (let i = 0; i < 23; i++) l.push(mk(i, 50000, 50000, 100000));
+  for (let i = 0; i < 8; i++) l.push(mk(100 + i, 50000, 50000, 50000));
+  for (let i = 0; i < 20; i++) l.push(mk(200 + i, 50000, 50000, 0));
+  const sd = E.stdev(E.roundReturns(l));
+  const r = E.runDeviation(l, EDGE, sd);
+  check('it counts every settled round', r.n, 51);
+  near('P and L is the credited sum less the staked one', r.pnl, 150000, 1e-9);
+  near('...and expectation is the solved edge on what was staked',
+    r.expected, -51 * 50000 * EDGE, 1e-6);
+  check('a cash deviation is built from the OPENING bets, not the doubled totals',
+    Math.abs(r.cashSD - Math.sqrt(51) * 50000 * sd) < 1e-6, true);
+  check('...so a good night lands where it belongs, in deviations', Math.abs(r.z) < 1.5, true);
+  check('no sample, no distance', E.runDeviation(l, EDGE, null), null);
+  check('no edge, no distance', E.runDeviation(l, null, sd), null);
+  check('a zero spread is refused rather than divided by', E.runDeviation(l, EDGE, 0), null);
+  check('an unsettled ledger has no distance either',
+    E.runDeviation([{ id: 1, open: 100 }], EDGE, 1), null);
+  // The one claim it must never make.
+  check('it is a distance and nothing else',
+    Object.keys(r).sort(), ['cashSD', 'expected', 'n', 'over', 'pnl', 'z']);
 }
 
 console.log('\n— the bet the table will actually take —');

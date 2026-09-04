@@ -1770,13 +1770,30 @@ is a stand — and prices what each one gave up. Ambiguous transitions are recor
 nothing rather than as a guess, and everything is priced against basic strategy rather than
 against the counted shoe, so an old answer never moves.
 
+And then the question that follows a good night, which the tab could not answer until real
+rows were looked at: **is this you, or is it variance?** A 51-round session that finished
+$143,000 up looked like a system and was **half a standard deviation** of ordinary weather —
+per-round spread measured at 0.95 units, a cash deviation of $295,372 on the amounts
+actually bet. So MONEY now prints how far the run sits from what the solved edge expects,
+in deviations. It is a distance and stays one: the per-round payouts here run from −2 to +4,
+so nothing about the shape is normal and a percentage hung on that distance would be worse
+than no number at all.
+
 **PLAN** solves the edge, prices a planned run at a chosen bet, and will draw the strategy
 grid for the shoe in front of you. The grid is **derived, never looked up**: on a fresh shoe
 it is basic strategy, and against a counted-down shoe the cells that disagree with basic
 strategy are outlined. There is no index table anywhere in the file.
 
-**LOG** is every hand this table has given up, with the cards on hover, and the "clear"
-that scopes the panel to one sitting.
+**LOG** is every hand this table has given up, with the cards on hover, the "clear" that
+scopes the panel to one sitting, and a **copy** that puts the ledger on your clipboard as
+TSV — id, opening bet, what the round ended up staking, gross, tax, net, result, outcome,
+the dealer's cards and each of your hands, and when the tool first saw it.
+
+Both card columns and the opening bet are there because the first export that lacked them
+could not answer two obvious questions. Without the opening bet a $50,000 round and a
+doubled $25,000 one are the same row, and the staking multiplier cannot be checked against
+the rows it came from. Without the cards the shoe question cannot be asked at all — the
+sighting test is per exact code, so an export with no suits has nothing in it to test.
 
 ## The count, and why it comes with a warning label
 
@@ -1827,16 +1844,28 @@ double after it. So the house's real ceiling is `free_reserve ÷ 4`, rounded dow
 increment, and it can bite well below the table maximum. The panel prints the binding
 bound and names which of the three it is: the table maximum, your cash, or the reserve.
 
-## The tax is the point, again
+## The tax was the point, and then it measured zero
 
 Same asymmetry Slot Watch found, arrived at differently. The edge is charged on the round;
 you are paid net. `net_payout = gross_payout − tax_amount`, and the House rules say
-"ordinary-income tax on positive round profit" — it lands on winning rounds and gives
-nothing back on losing ones. So the table's real cost is the computed edge **plus** a drag,
-and the drag is measured rather than modelled: total tax over total staked, two observed
-sums, no distribution assumed.
+"ordinary-income tax on positive round profit" — it should land on winning rounds and give
+nothing back on losing ones. So the table's real cost ought to be the computed edge **plus**
+a drag, and the drag is measured rather than modelled: total tax over total staked, two
+observed sums, no distribution assumed.
 
-The difference from slots is the lever. There, tax is assessed on aggregate *session*
+**Measured, over 51 rounds and $1,869,000 staked: `tax_amount` was zero on every single
+one**, including 23 winners and a +$150,000 return. Either the rate is a government policy
+that currently sits at zero — entirely in character for this game — or blackjack rounds are
+not assessed whatever the aside says, or there is a bracket that six figures of round profit
+does not reach. Nothing here picks between those.
+
+The shape is what held up, and it is worth stating as a general result rather than a lucky
+escape: **because the drag is measured and not modelled, the panel printed `0.000%` and an
+effective edge equal to the computed one.** A modelled rate — the obvious shortcut, and the
+one this tool was two lines from taking by analogy with slots — would have been wrong by its
+entire value.
+
+The other difference from slots is the lever. There, tax is assessed on aggregate *session*
 profit, so how a run is cut into sessions changes the bill. Here it is per **round**, and a
 round is one hand — there is nothing to arrange. The only lever left is how much is staked
 per round, which is what PLAN prices.
