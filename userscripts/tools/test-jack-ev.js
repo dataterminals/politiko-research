@@ -56,7 +56,7 @@ const E = new Function(`${SRC.slice(i, j)}
            isSoft, handOf, dealerStands, dealerDist, standEV, standOdds, hitEV, bustNext,
            doubleEV, splitEV, solve, roundEV, gridOf, countOf, shoeState, isHand,
            isSettled, netOf, slimHand, mergeHand, above, rollup, mean, stdev,
-           roundReturns, inferAct, upOf, priceDecision, decisionRoll, plan, betBounds,
+           roundReturns, replayHand, upOf, decisionRoll, plan, betBounds,
            curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation };`)();
 
 let fail = 0;
@@ -470,41 +470,64 @@ console.log('\n— measured, and the identity it has to satisfy —');
     E.rollup([mk(1, 100, 200, 20, 170)]).reconciles, false);
 }
 
-console.log('\n— what you actually did, inferred —');
+console.log('\n— what you actually did, replayed from the cards —');
 {
-  const state = (over) => E.slimHand({
-    id: 5, status: 'player_turn', current_hand: 0, allowed_actions: ['hit', 'stand'],
-    dealer_cards: ['10S', 'hidden'],
-    player_hands: [{ cards: ['10H', '6C'], wager: 100 }],
-    opening_wager: 100, ...over,
+  // A settled round says what was pressed without anything being inferred, because the
+  // card list is in DRAW order — measured over 81 real rounds and 447 cards, no proper
+  // prefix of any hand busts, which could not happen under any other ordering.
+  const round = (over) => ({
+    id: 5, status: 'settled', outcome: 'lose', cur: 0, allowed: [],
+    dealer: ['10S', '8D'],
+    hands: [{ cards: ['10H', '6C'], stake: 100, outcome: null, status: 'resolved' }],
+    open: 100, total: 100, gross: 0, tax: 0, net: 0, ...over,
   });
-  const a = state({});
-  check('a card on the same hand is a hit', E.inferAct(a, state({
-    player_hands: [{ cards: ['10H', '6C', '4D'], wager: 100 }],
-  })), 'hit');
-  check('a bigger stake and a card is a double', E.inferAct(a, state({
-    player_hands: [{ cards: ['10H', '6C', '4D'], wager: 200 }],
-  })), 'double');
-  check('a second hand is a split', E.inferAct(a, state({
-    player_hands: [{ cards: ['10H'], wager: 100 }, { cards: ['6C'], wager: 100 }],
-  })), 'split');
-  check('the turn moving on with no new card is a stand', E.inferAct(a, state({
-    status: 'settled', player_hands: [{ cards: ['10H', '6C'], wager: 100 }],
-  })), 'stand');
-  check('the same state twice is not a decision', E.inferAct(a, state({})), null);
-  check('nothing is inferred from a hand that was not yours to play',
-    E.inferAct(state({ status: 'settled' }), state({})), null);
-  check('nor from a first sighting', E.inferAct(null, a), null);
 
-  // Priced against basic strategy — the TABLE composition — so that an old answer never
-  // moves when the shoe does.
-  const d = E.priceDecision(a, 'stand');
-  check('a decision knows what it should have been', d.want, 'hit');
-  check('...and standing on sixteen costs you something', d.cost > 0, true);
-  check('...scaled by what was on the hand', Math.abs(d.cost - (d.bestEV - d.ev) * 100) < 1e-9, true);
-  const good = E.priceDecision(a, 'hit');
-  near('...and playing it right costs nothing', good.cost, 0, 1e-12);
-  const roll = E.decisionRoll([d, good]);
+  // hard 16 against a ten: standing is the departure, and the solver knows what it cost
+  const stood = E.replayHand(round({}));
+  check('a two-card round that stood is one decision', stood.length, 1);
+  check('...and it is read as a stand', stood[0].act, 'stand');
+  check('...priced against the opening bet', stood[0].stake, 100);
+  check('...and it cost something', stood[0].cost > 0, true);
+
+  const hit = E.replayHand(round({
+    hands: [{ cards: ['10H', '6C', '5D'], stake: 100, status: 'resolved' }],
+  }));
+  check('a three-card round is a hit and then a stand', hit.map((d) => d.act), ['hit', 'stand']);
+
+  const bust = E.replayHand(round({
+    hands: [{ cards: ['10H', '6C', 'QD'], stake: 100, status: 'resolved' }],
+  }));
+  check('a bust records the hit and no stand after it', bust.map((d) => d.act), ['hit']);
+
+  // A double takes exactly one card, so twice the bet on three cards is unambiguous —
+  // splits having already been excluded.
+  const dbl = E.replayHand(round({
+    dealer: ['6D', '9C'],
+    hands: [{ cards: ['5H', '6C', '10D'], stake: 200, status: 'resolved' }],
+    total: 200,
+  }));
+  check('twice the bet on three cards is a double', dbl.map((d) => d.act), ['double']);
+  check('...and eleven against a six is what the solver wanted', dbl[0].want, 'double');
+  near('...so it cost nothing', dbl[0].cost, 0, 1e-9);
+
+  // The three shapes that carry no decision. The first is the one that matters: five of
+  // the 81 real rounds were dealer naturals, and every one of them replayed as a nonsense
+  // "you stood on 8 against an ace" until it was excluded.
+  check('a dealer natural is not a decision — you never acted',
+    E.replayHand(round({ dealer: ['AS', 'KH'] })), []);
+  check('your own natural is not a decision either',
+    E.replayHand(round({ hands: [{ cards: ['AS', 'KH'], stake: 100 }] })), []);
+  check('a split round is dropped rather than guessed at',
+    E.replayHand(round({
+      hands: [{ cards: ['8S', '3D'], stake: 100 }, { cards: ['8H', '9C'], stake: 100 }],
+      total: 200,
+    })), []);
+  check('an unsettled round is not replayed at all',
+    E.replayHand(round({ status: 'player_turn' })), []);
+  check('nor is one with no cards', E.replayHand(round({ hands: [{ cards: [], stake: 100 }] })), []);
+  check('nor one whose dealer never showed', E.replayHand(round({ dealer: [] })), []);
+
+  const roll = E.decisionRoll(stood.concat(dbl));
   check('the ledger counts both', [roll.n, roll.matched], [2, 1]);
 }
 

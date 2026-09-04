@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.4.0
+// @version      0.5.0
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -787,63 +787,85 @@
 
   // --- what you actually did ------------------------------------------------
   //
-  // Two consecutive states of the same hand say what happened in between, and the wire
-  // never says it outright. This is INFERENCE and is labelled as such everywhere it is
-  // shown: if a transition is ambiguous, or a state was missed because the tool was not
-  // running, nothing is recorded rather than something guessed.
-  //
-  // The order matters. A double adds a card AND doubles the stake, and a hit that busts
-  // both adds a card and advances the hand, so the more specific test has to come first.
-  const inferAct = (prev, next) => {
-    if (!prev || !next || prev.status !== 'player_turn') return null;
-    const i = num(prev.cur);
-    if (i === null) return null;
-    const a = (prev.hands || [])[i];
-    const b = (next.hands || [])[i];
-    if (!a || !b) return null;
-    if ((next.hands || []).length > (prev.hands || []).length) return 'split';
-    if (num(b.stake) !== null && num(a.stake) !== null && b.stake > a.stake) return 'double';
-    if ((b.cards || []).length > (a.cards || []).length) return 'hit';
-    if ((b.cards || []).length === (a.cards || []).length
-      && (num(next.cur) > i || next.status === 'settled')) return 'stand';
-    return null;
-  };
-
   // The dealer's up card is the first one that is not face down.
   const upOf = (h) => {
     for (const c of h.dealer || []) { const r = rankOf(c); if (r !== null) return r; }
     return null;
   };
 
-  // Price one inferred decision, against the TABLE composition — a fresh shoe with the
-  // cards then face up taken out — and deliberately never against the counted one:
-  // "did you play it right" is a question about that moment, and pricing it against a
-  // shoe state that keeps moving would make yesterday's answer move with it.
+  // Replay a settled round's decisions out of the cards themselves.
   //
-  // Worth knowing that this is a shade sharper than the printed strategy table, and will
+  // 0.4.0 and earlier inferred each decision from two consecutive states of a live hand,
+  // which works but only ever sees hands played while the tool is watching AND only when
+  // it catches every transition. Measured against 81 real rounds, that caught 3 decisions
+  // where the stored cards held 115 — the whole back-catalogue that history hands over
+  // free on the first poll was sitting there unread.
+  //
+  // A settled hand does not need inferring. The card list is in DRAW order, which is not
+  // an assumption: across 81 rounds and 447 cards, no proper prefix of any hand — player
+  // or dealer — busts, and under any other ordering that would happen constantly. So the
+  // hand is simply walked, and each step is priced against the shoe as it stood then.
+  //
+  // Three shapes carry no decision at all and have to be dropped, or they replay as
+  // nonsense:
+  //
+  //   the DEALER had a natural — the round was over before you could act. Five of the 81,
+  //     and every one of them came out as "you stood on 8 against an ace" until they were
+  //     excluded. That is the failure mode this whole function is one bug away from, and
+  //     it is why the exclusions are checked before anything is recorded.
+  //   YOU had a natural — paid immediately, nothing to decide.
+  //   the round was SPLIT — which half took which card is not recoverable from the wire,
+  //     so a split round contributes nothing rather than a guess.
+  //
+  // Priced against the TABLE composition — a fresh shoe less the cards face up at that
+  // moment — and deliberately never against the counted one: "did you play it right" is a
+  // question about that moment, and pricing it against a shoe state that keeps moving
+  // would make yesterday's answer move with it.
+  //
+  // Worth knowing that this is a shade sharper than the printed strategy table and will
   // sometimes disagree with it. A sixteen made of three small cards is sitting in a shoe
   // those three cards have just made ten-rich, and standing it can price higher than
-  // hitting it — which is a real result and not a bug, and is why the panel says you
-  // played the MAX rather than that you played it by the book.
-  const priceDecision = (prev, act) => {
-    const i = num(prev.cur);
-    const hand = (prev.hands || [])[i];
-    const up = upOf(prev);
-    if (!hand || up === null) return null;
-    const seen = [...(prev.dealer || []), ...(prev.hands || []).flatMap((p) => p.cards || [])];
-    const { comp } = without(freshShoe(), seen);
-    const s = solve(hand.cards, up, comp, prev.allowed);
-    if (!s || !s.pick) return null;
-    const got = num(s.ev[act]);
-    if (got === null) return null;
-    return {
-      id: prev.id, i, act, want: s.pick,
-      ev: got, bestEV: s.ev[s.pick],
-      // Cost is per dollar of THIS hand's stake, so a mistake on a doubled hand counts
-      // for what it actually cost rather than for one unit.
-      cost: (s.ev[s.pick] - got) * (num(hand.stake) ?? 0),
-      stake: num(hand.stake),
-    };
+  // hitting it — a real result, not a bug, and why the panel says you played the MAX
+  // rather than that you played it by the book.
+  const replayHand = (h) => {
+    if (!h || h.status !== 'settled') return [];
+    const hands = h.hands || [];
+    if (hands.length !== 1) return [];                 // a split cannot be replayed
+    const cards = (hands[0].cards || []).filter((c) => rankOf(c) !== null);
+    if (cards.length < 2) return [];
+    const up = upOf(h);
+    if (up === null) return [];
+    if (handOf(h.dealer || []).natural) return [];     // you never got to act
+    if (handOf(cards.slice(0, 2)).natural) return [];  // nothing to decide
+    const bet = num(h.open) ?? num(h.total);
+    if (bet === null || bet <= 0) return [];
+    // A double takes exactly one card, so it is the only way to stake twice the bet on a
+    // three-card hand. Splits are already gone above, which is what makes that unambiguous.
+    const doubled = num(h.total) === 2 * bet && cards.length === 3;
+    const out = [];
+    for (let k = 2; k <= cards.length; k++) {
+      const held = cards.slice(0, k);
+      const hand = handOf(held);
+      if (hand.bust) break;                            // the bust ends it; the hit is recorded
+      const first = k === 2;
+      const act = k < cards.length ? (doubled && first ? 'double' : 'hit') : 'stand';
+      const allowed = ['hit', 'stand'];
+      if (first) allowed.push('double');
+      if (first && rankOf(held[0]) === rankOf(held[1])) allowed.push('split');
+      const { comp } = without(freshShoe(), [...held, h.dealer[0]]);
+      const s = solve(held, up, comp, allowed);
+      if (!s || !s.pick) break;
+      const got = num(s.ev[act]);
+      if (got === null) break;
+      out.push({
+        id: h.id, act, want: s.pick, ev: got, bestEV: s.ev[s.pick],
+        // Cost is per dollar of the OPENING bet, so a mistake on a doubled hand is priced
+        // once rather than twice — the double is itself one of the decisions being judged.
+        cost: (s.ev[s.pick] - got) * bet, stake: bet,
+      });
+      if (act !== 'hit') break;                        // stand and double both end the hand
+    }
+    return out;
   };
 
   const decisionRoll = (list) => {
@@ -1609,7 +1631,10 @@
   //    describe neither.
   // ---------------------------------------------------------------------------
   const MAX_HANDS = 400;         // rounds kept per table
-  const MAX_DECISIONS = 400;     // inferred decisions kept per table
+  // How far back the decision replay walks. Every settled round in the ledger could be
+  // replayed, but each one costs a handful of solves and the question it answers — how am
+  // I playing — is about recent play. Memoised by hand id, so this is paid once.
+  const MAX_REPLAY = 150;
 
   const data = readJSON(K.data, null) || { corps: {} };
   if (!data.corps || typeof data.corps !== 'object') data.corps = {};
@@ -1633,10 +1658,13 @@
   let active = null;             // corp id of the table currently in view, as a string
 
   const corp = (id) => {
-    if (!data.corps[id]) data.corps[id] = { cfg: null, hands: {}, decisions: [] };
+    if (!data.corps[id]) data.corps[id] = { cfg: null, hands: {} };
     const c = data.corps[id];
     if (!c.hands || typeof c.hands !== 'object') c.hands = {};
-    if (!Array.isArray(c.decisions)) c.decisions = [];
+    // Written by 0.4.0 and earlier, which stored what it inferred as it watched. The
+    // decisions are replayed from the cards now, so a stored copy is a second answer that
+    // can only ever disagree with the first.
+    if (c.decisions) delete c.decisions;
     return c;
   };
 
@@ -1654,9 +1682,6 @@
     const all = Object.values(c.hands).sort((a, b) => b.id - a.id);
     if (all.length > MAX_HANDS) {
       for (const h of all.slice(MAX_HANDS)) delete c.hands[h.id];
-    }
-    if (c.decisions.length > MAX_DECISIONS) {
-      c.decisions.splice(0, c.decisions.length - MAX_DECISIONS);
     }
   };
 
@@ -1692,16 +1717,6 @@
     const slim = slimHand(raw);
     const prev = c.hands[slim.id];
     slim.seen = prev ? prev.seen : at;
-
-    // What you did, worked out from the state before and the state after, because the
-    // wire never says. Priced once, here, against the basic-strategy baseline — see
-    // priceDecision — so the ledger cannot move under an old answer.
-    const act = inferAct(prev, slim);
-    if (act) {
-      const d = priceDecision(prev, act);
-      if (d) { d.at = at; c.decisions.push(d); }
-    }
-
     c.hands[slim.id] = mergeHand(prev, slim);
     return !prev;
   };
@@ -1988,12 +2003,11 @@
     const stake = manual ? ui.stake[id] : seed;
 
     const returns = roundReturns(list);
-    const dec = decisionRoll((c.decisions || []).filter((d) => floor === null || d.id > floor));
     const edge = solvedEdge();
     const drag2 = roll.taxDrag;
 
     return {
-      id, cfg, list, asc, roll, live, last, shoe, comp, tableComp, dec,
+      id, cfg, list, asc, roll, live, last, shoe, comp, tableComp,
       stake, seed, manual,
       floor, held: held.length, hidden: held.length - list.length,
       newest: held.length ? held[0].id : null,
@@ -2005,6 +2019,24 @@
       bounds: betBounds(cfg),
       now: num(cfg.cash) !== null ? cfg.cash : (stake === null ? null : stake + roll.net),
     };
+  };
+
+  // Decisions are replayed from the cards rather than stored, so this memo is what keeps
+  // that affordable: a hand is walked once and never again. In memory only, and keyed by
+  // hand id — a settled hand's cards never change, which is exactly what makes the answer
+  // safe to keep and pointless to recompute.
+  const replayMemo = new Map();
+  const decisionsOf = (list) => {
+    const out = [];
+    let walked = 0;
+    for (const h of list) {                            // newest first
+      if (h.status !== 'settled') continue;
+      if (walked++ >= MAX_REPLAY) break;
+      let d = replayMemo.get(h.id);
+      if (!d) { d = replayHand(h); replayMemo.set(h.id, d); }
+      for (const x of d) out.push(x);
+    }
+    return out;
   };
 
   // The solved grid, held in memory only: it is derived from the shoe, it costs about
@@ -2363,9 +2395,9 @@
 
     // What your own play cost, which is the one number on this surface that is about
     // you rather than about the table.
-    const d = v.dec;
+    const d = decisionRoll(decisionsOf(v.list));
     const g3 = el('div', 'pkbj-stats');
-    stat(g3, 'decisions seen', String(d.n), null, 'inferred');
+    stat(g3, 'decisions seen', String(d.n), null, 'replayed from the cards');
     stat(g3, 'played the max', d.rate === null ? '—' : pct(d.rate, 0), null,
       `${d.matched} of ${d.n}`);
     stat(g3, 'given up', d.n ? (d.cost > 0 ? signed(-d.cost) : money(0)) : '—', d.cost > 0 ? 'down' : null,
@@ -2393,9 +2425,13 @@
 
     body.append(el('div', 'pkbj-note',
       'The dashed line is what perfect play plus the measured tax drag says this run should have '
-      + 'cost; the gap to your line is the luck. "Decisions" are INFERRED from consecutive states '
-      + 'of a hand — the wire never says what you pressed — and an ambiguous transition is '
-      + 'recorded as nothing rather than as a guess. Each is priced against the TABLE shoe: a '
+      + 'cost; the gap to your line is the luck. The wire never says what you pressed, but a '
+      + 'settled round does not need to be asked: its cards are in the order they were dealt, so '
+      + 'the hand is simply walked. That reads the whole back-catalogue history hands over on the '
+      + 'first poll, not only the rounds this tool watched live. Rounds that carry no decision are '
+      + 'dropped rather than guessed at — a dealer natural (you never acted), your own natural, '
+      + 'and any round you split, where which half took which card is not on the wire. Each step '
+      + 'is priced against the TABLE shoe: a '
       + 'fresh six-deck shoe less the cards that were face up at the time, never the counted one, '
       + 'so an old answer never moves when the shoe does. That is a shade sharper than the '
       + 'printed strategy table and can disagree with it — a sixteen built out of three small '

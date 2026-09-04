@@ -1763,12 +1763,17 @@ apart — the **computed** one from the rules, the **measured** tax drag, and th
 what perfect play plus the measured drag says the run should have cost; the gap is the
 luck.
 
-It also keeps a decision ledger. The wire never says what you pressed, but two consecutive
-states of a hand do, so the tool infers it — a card on the same hand is a hit, a bigger
-stake and a card is a double, a second hand is a split, the turn moving on with no new card
-is a stand — and prices what each one gave up. Ambiguous transitions are recorded as
-nothing rather than as a guess, and everything is priced against basic strategy rather than
-against the counted shoe, so an old answer never moves.
+It also keeps a decision ledger, **replayed from the cards rather than watched**. The wire
+never says what you pressed, but a settled round does not need asking: its cards are in the
+order they were dealt, so the hand is walked and each step priced. That reads the whole
+back-catalogue history hands over on the first poll — measured against 81 real rounds, the
+old watch-it-live approach had caught 3 decisions where the same stored cards held 109.
+
+Three shapes carry no decision and are dropped rather than guessed at: a dealer natural (you
+never acted — five of those 81, every one of which replayed as a nonsense "you stood on 8"
+until excluded), your own natural, and any round you split, where which half took which card
+is not on the wire. Everything is priced against the table shoe rather than the counted one,
+so an old answer never moves.
 
 And then the question that follows a good night, which the tab could not answer until real
 rows were looked at: **is this you, or is it variance?** A 51-round session that finished

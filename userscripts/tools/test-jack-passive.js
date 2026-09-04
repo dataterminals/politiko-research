@@ -417,10 +417,24 @@ check('...and they are namespaced to this tool',
 
 // The ledger is bounded. Four hundred rounds of cards in localStorage is a quota error
 // that eats the panel state on the way out.
-check('the ledger and the decision list are both capped',
-  /const MAX_HANDS = \d+;/.test(CODE) && /const MAX_DECISIONS = \d+;/.test(CODE)
-    && /c\.decisions\.splice\(0, c\.decisions\.length - MAX_DECISIONS\);/.test(CODE),
-  'expected both caps');
+check('the ledger is capped, and so is how far the replay walks',
+  /const MAX_HANDS = \d+;/.test(CODE) && /const MAX_REPLAY = \d+;/.test(CODE)
+    && /if \(walked\+\+ >= MAX_REPLAY\) break;/.test(CODE),
+  'expected both bounds');
+
+// Decisions are DERIVED from the cards, never stored. A stored copy would be a second
+// answer that could disagree with the first, and the version that wrote one is exactly
+// the version that only ever saw the hands it happened to be watching.
+check('the decision ledger is replayed, not kept',
+  /const replayHand = \(h\) => \{/.test(CODE)
+    && /const replayMemo = new Map\(\);/.test(CODE)
+    && !/c\.decisions\.push/.test(CODE) && !/decisions: \[\]/.test(CODE),
+  'a stored decision list is a second answer to a question the cards already settle');
+check('...and the three shapes that carry no decision are dropped before anything is priced',
+  /if \(hands\.length !== 1\) return \[\];/.test(CODE)
+    && /if \(handOf\(h\.dealer \|\| \[\]\)\.natural\) return \[\];/.test(CODE)
+    && /if \(handOf\(cards\.slice\(0, 2\)\)\.natural\) return \[\];/.test(CODE),
+  'a dealer natural, your natural and a split each replay as nonsense if not excluded');
 // The solved grid is derived and would be stale the moment the shoe moved, so it lives
 // in memory and dies with the tab. The edge is a constant and is kept.
 check('the grid is never persisted, and the edge always is',

@@ -434,6 +434,61 @@ dealt in the 72 seconds between them, which is the window the script was being i
 They cannot be hands at another casino, because there is only one; see the id section above
 for what is left of that question.
 
+### The deal is fair, on every test the cards support
+
+447 cards is enough to ask, and nothing here is out of place:
+
+| test | result | |
+|---|---|---|
+| rank frequencies, 13 ranks | chi-square **13.53** on 12 df | 5% critical 21.03 |
+| exact card codes, 52 of them | chi-square **65.21** on 51 df | 5% critical 68.67 |
+| tens (10 J Q K) | 28.41% vs 30.77% expected | z = −1.08 |
+| hi-lo running total over all 447 | **+21** | sd 18.5, z = 1.13 |
+
+Every one passes, and all 52 codes appeared at least once. The code test is the least
+comfortable at p ≈ 0.09, which at one test in four is what you would expect to see anyway.
+**Nothing suggests the deal is anything but a fair six-deck shoe** — worth having measured
+rather than assumed, and worth re-running on a bigger ledger before anyone says it louder.
+
+The dealer also obeys its own stated rules. Across the **58 rounds it actually played out**
+there is not one S17 violation — never standing under 17, never drawing after reaching a
+standing total — and the 13 rounds it stopped short of are all rounds you had already busted.
+
+### The decisions were sitting in the cards all along
+
+`jack-watch` 0.4.0 built its decision ledger by inferring each action from two consecutive
+states of a live hand. Run against these 81 rounds, that approach had captured **3
+decisions. The cards in the same ledger hold 109.** Everything played before the tool was
+installed, and everything it happened not to catch a transition for, was simply invisible.
+
+A settled round does not need inferring. **The card list is in draw order** — not assumed:
+across 81 rounds and 447 cards, no proper prefix of any hand, player or dealer, busts, which
+could not happen under any other ordering. So the hand is walked and each step priced.
+
+Three shapes carry no decision and have to be dropped before anything is priced, and the
+first is the one that bites:
+
+- **the dealer had a natural** — five of the 81, and the round was over before you could
+  act. Every one of them replayed as a nonsense *"you stood on 8 against an ace"* until they
+  were excluded;
+- **you had a natural** — paid immediately;
+- **the round was split** — which half took which card is not on the wire.
+
+A double is unambiguous once splits are gone: it takes exactly one card, so twice the bet on
+a three-card hand is a double and nothing else.
+
+Over the 81 rounds that yields **109 decisions, 87.2% matching the solver, about $32,500 of
+EV given up** — and a split that is worth stating carefully because it is one player and a
+small sample:
+
+```
+before jack-watch (25 rounds)   12 departures
+with jack-watch   (56 rounds)    3 departures
+```
+
+Whether that is the tool or a player warming up is not something 81 rounds can separate, and
+it is recorded here as a number rather than a claim.
+
 ### Pace: the shoe experiment costs about ten minutes
 
 Median 5.1 seconds between rounds, min 2.1, max 104. At that rate the forty clean rounds
