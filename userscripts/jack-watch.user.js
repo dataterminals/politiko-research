@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.10.1
+// @version      0.10.2
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -194,7 +194,7 @@
   // which build produced it. Deliberately outside the engine markers below: the engine is
   // lifted whole by tools/test-jack-ev.js and must reference nothing it was not handed,
   // so exportBundle takes this as an argument rather than reaching for it.
-  const SCRIPT_VERSION = '0.10.1';
+  const SCRIPT_VERSION = '0.10.2';
 
   const K = { data: 'pkbj:data', ui: 'pkbj:ui' };
 
@@ -2690,6 +2690,21 @@
             : (guideScanned
               ? `no action words on ${guideScanned} visible controls`
               : 'no controls found on this page'))));
+        // When it cannot find them, it can at least say what it DID see. This repo does
+        // not point Claude at the live table, so a finder built against a stand-in is
+        // going to be wrong in ways no amount of local testing reveals — and the loop of
+        // "still nothing" / "try this" is expensive in a way one paste is not. The report
+        // goes to the clipboard because the operator should not have to open a console to
+        // tell a tool what it is looking at.
+        if (!guideSeen && v.live) {
+          const rep = el('button', 'pkbj-btn', 'copy what it sees');
+          rep.title = 'a short description of the controls on this page, to paste back';
+          rep.addEventListener('click', () => {
+            navigator.clipboard.writeText(guideReport()).then(() => flash(rep, 'copied', 'copy what it sees'),
+              () => { rep.textContent = 'blocked'; });
+          });
+          bar.append(rep);
+        }
       }
       body.append(bar);
     }
@@ -3585,6 +3600,55 @@
       const bad = btns.get(want.worst);
       if (bad) bad.classList.add(MARK_WORST);
     }
+  };
+
+  // What the scanner can see, in a form that fits in a message. Written for the case the
+  // guide keeps failing on a table nobody here can open: rather than another round of
+  // guessing, it answers the four questions that actually separate the causes.
+  //
+  //   Is the word in the page's text at all? If not, the label is drawn — canvas, an
+  //   image, or a font trick — and no DOM reader will ever find it.
+  //   Is it behind an iframe or a shadow root? Both are invisible to querySelectorAll from
+  //   out here, and both need a different approach rather than a wider selector.
+  //   If elements DO hold the word, are they failing the visibility test, or is their text
+  //   longer than it looks?
+  //
+  // Truncated hard, and it names no player and no figure — it is a description of controls.
+  const guideReport = () => {
+    const L = [];
+    const controls = [...document.querySelectorAll(CONTROLS)].filter((n) => !ours(n) && onScreen(n));
+    const text = (document.body.innerText || '').toUpperCase();
+    L.push(`jack-watch ${SCRIPT_VERSION} — guide diagnosis`);
+    L.push(`route: ${location.pathname}`);
+    L.push(`visible controls matching the selector: ${controls.length}`);
+    L.push(`iframes: ${document.querySelectorAll('iframe').length}`);
+    let shadows = 0;
+    for (const n of document.querySelectorAll('body *')) if (n.shadowRoot) shadows++;
+    L.push(`open shadow roots: ${shadows}`);
+    L.push('');
+    for (const w of ['HIT', 'STAND', 'DOUBLE', 'SPLIT']) {
+      const holders = [...document.querySelectorAll('body *')].filter((n) => !ours(n)
+        && (n.textContent || '').toUpperCase().replace(/[^A-Z]/g, '') === w);
+      const deepest = holders.filter((n) => ![...n.children].some((k) =>
+        (k.textContent || '').toUpperCase().replace(/[^A-Z]/g, '') === w));
+      L.push(`"${w}": in page text ${text.includes(w) ? 'YES' : 'no'}`
+        + ` · elements whose whole text is exactly this: ${holders.length}`);
+      for (const n of deepest.slice(0, 2)) {
+        const cls = (typeof n.className === 'string' ? n.className : '').slice(0, 44);
+        const r = n.getBoundingClientRect();
+        L.push(`    <${n.tagName.toLowerCase()}> visible=${onScreen(n)}`
+          + ` ${Math.round(r.width)}x${Math.round(r.height)} role=${n.getAttribute('role') || '-'}`
+          + ` class="${cls}"`);
+      }
+    }
+    L.push('');
+    L.push('sample of the visible controls it did find:');
+    for (const n of controls.slice(0, 10)) {
+      const cls = (typeof n.className === 'string' ? n.className : '').slice(0, 32);
+      L.push(`  <${n.tagName.toLowerCase()}> role=${n.getAttribute('role') || '-'}`
+        + ` class="${cls}" text="${(n.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 28)}"`);
+    }
+    return L.join('\n');
   };
 
   // Idle until the page changes. `paintGuide` is cheap and re-entrant: it clears its own
