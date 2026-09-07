@@ -57,7 +57,7 @@ const E = new Function(`${SRC.slice(i, j)}
            doubleEV, splitEV, solve, roundEV, gridOf, countOf, shoeState, isHand,
            isSettled, netOf, slimHand, mergeHand, above, rollup, mean, stdev,
            roundReturns, replayHand, upOf, decisionRoll, plan, betBounds,
-           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation, pressCost, replayNote, exportBundle };`)();
+           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation, pressCost, replayNote, exportBundle, trailSig, pushTrail };`)();
 
 let fail = 0;
 const check = (label, got, want) => {
@@ -752,6 +752,123 @@ console.log('\n— the export carries what a flat row cannot —');
   check('...and still says what it is', empty.format, 'jack-watch/round-ledger');
   check('the whole thing survives a JSON round trip',
     JSON.parse(JSON.stringify(b)).rounds[0].hands[1].cards.join(' '), '8H 2C 9D');
+}
+
+console.log('\n— the trail records state and never a conclusion —');
+{
+  const deal = { status: 'player_turn', cur: 0, dealer: ['10S', 'hidden'],
+    hands: [{ cards: ['9H', '3C'], stake: 500 }], allowed: ['hit', 'stand', 'double'] };
+  const hit = { status: 'player_turn', cur: 0, dealer: ['10S', 'hidden'],
+    hands: [{ cards: ['9H', '3C', '4D'], stake: 500 }], allowed: ['hit', 'stand'] };
+
+  // The poll re-sends every settled round forever and the table refetches every fifteen
+  // seconds, so an entry per sighting would be a log of the polling rather than of play.
+  let t = E.pushTrail(null, deal, 1000, 16);
+  check('the first sighting starts it', t.length, 1);
+  t = E.pushTrail(t, deal, 5000, 16);
+  check('...and an unchanged state adds nothing at all', t.length, 1);
+  t = E.pushTrail(t, hit, 9000, 16);
+  check('...but a real change appends', t.length, 2);
+  check('...keeping the clock that came with it', [t[0].at, t[1].at], [1000, 9000]);
+
+  check('it keeps the cards as they stood', t[1].c, [['9H', '3C', '4D']]);
+  check('...and the menu that was on offer AT THAT MOMENT', t[0].a, ['hit', 'stand', 'double']);
+  check('...which is not the menu a moment later', t[1].a, ['hit', 'stand']);
+
+  // The property the whole design rests on: 0.5.0 deleted a stored decision list because
+  // it could only ever disagree with the replay. A trail entry that named an action or
+  // carried an EV would be that same mistake wearing a clock.
+  const words = ['act', 'want', 'ev', 'cost', 'pick', 'best', 'maximum', 'mistake'];
+  check('no entry names an action, scores one, or judges anything',
+    t.every((e) => Object.keys(e).every((k) => !words.includes(k))), true,
+    JSON.stringify(Object.keys(t[0])));
+
+  // A split is the case this exists for: the halves are separable while it happens and
+  // never again once the round settles into one flat list of cards.
+  const split = { status: 'player_turn', cur: 1, dealer: ['9S', 'hidden'],
+    hands: [{ cards: ['8D', '3C'], stake: 1000 }, { cards: ['8C'], stake: 500 }],
+    allowed: ['hit', 'stand'] };
+  const st = E.pushTrail(null, split, 100, 16);
+  check('a split is recorded as two hands, not one joined string',
+    st[0].c, [['8D', '3C'], ['8C']]);
+  check('...with each half\'s own stake at that instant', st[0].s, [1000, 500]);
+  check('...and which half was live', st[0].cur, 1);
+
+  // Same cards, different stake, is a DOUBLE and has to register as a change — it is the
+  // one action that moves money without moving a card count on its own.
+  const doubled = { status: 'player_turn', cur: 0, dealer: ['10S', 'hidden'],
+    hands: [{ cards: ['9H', '3C'], stake: 1000 }], allowed: [] };
+  check('a stake change is a change even when the cards did not move',
+    E.trailSig(deal) !== E.trailSig(doubled), true);
+
+  // Unbounded growth in a store shared with fifteen other tools is a quota failure
+  // somewhere else, which is the worst kind of bug to cause.
+  let cap = null;
+  for (let i = 0; i < 40; i++) {
+    cap = E.pushTrail(cap, { status: 'player_turn', cur: 0, dealer: ['10S'],
+      hands: [{ cards: new Array(i + 2).fill('2C'), stake: 500 }], allowed: [] }, i, 16);
+  }
+  check('it is capped', cap.length, 16);
+  check('...and it is the OLDEST that goes, so the settle survives', cap[15].at, 39);
+}
+
+console.log('\n— a round nobody watched gets no invented clock —');
+{
+  const watched = {
+    id: 2, status: 'settled', seen: 10, open: 100, total: 100, gross: 0, tax: 0, net: 0,
+    dealer: ['9S', '10H'], hands: [{ cards: ['8D', '3C', '9H'], stake: 100 }],
+    trail: [{ at: 1000, sig: 'x', st: 'player_turn', cur: 0, c: [['8D', '3C']], s: [100], d: ['9S'], a: ['hit'] },
+            { at: 4500, sig: 'y', st: 'settled', cur: 0, c: [['8D', '3C', '9H']], s: [100], d: ['9S', '10H'], a: [] }],
+  };
+  const fromHistory = {
+    id: 1, status: 'settled', seen: 10, open: 100, total: 100, gross: 0, tax: 0, net: 0,
+    dealer: ['9S', '10H'], hands: [{ cards: ['10C', '7D'], stake: 100 }],
+  };
+  const b = E.exportBundle({ list: [watched, fromHistory], at: 0 });
+
+  check('a watched round exports its sightings', b.rounds[0].observed.length, 2);
+  check('...with the gap between them, which is the whole point',
+    b.rounds[0].observed[1].since_previous_ms, 3500);
+  check('...and no gap on the first, because there is no previous',
+    b.rounds[0].observed[0].since_previous_ms, null);
+  check('...keeping the split-capable per-hand shape',
+    b.rounds[0].observed[0].hands, [{ cards: ['8D', '3C'], stake: 100 }]);
+
+  // Absent, not empty. An empty array reads as "watched, nothing happened"; null reads as
+  // "not watched", and only one of those is true of the back catalogue.
+  check('a round read off the history poll has no trail at all',
+    b.rounds[1].observed, null);
+  check('...and the file says why in its own limits',
+    b.limits.some((l) => /invented/i.test(l)), true);
+  check('...and says the trail is the only place a split survives',
+    b.limits.some((l) => /split can be reconstructed/i.test(l)), true);
+}
+
+console.log('\n— the trail logs the sighting, never the merge —');
+{
+  // Found by running it rather than by reading it. mergeHand keeps the LONGEST card list
+  // it has ever seen, which is correct for the ledger — a later sighting must not delete
+  // what an earlier one knew. Feed that merge to the trail, though, and a poll that
+  // re-sends an older view of a live round yields an entry pairing the NEWEST cards with
+  // the OLDER status: a state that never existed on the wire at any instant. The trail's
+  // only claim is "the table looked like this, then", so it has to log what arrived.
+  const early = { status: 'player_turn', cur: 0, dealer: ['10S'],
+    hands: [{ cards: ['9H', '3C'], stake: 500 }], allowed: ['hit', 'stand'] };
+  const later = { status: 'settled', cur: 0, dealer: ['10S', '8H'],
+    hands: [{ cards: ['9H', '3C', '4D'], stake: 500 }], allowed: [] };
+
+  const merged = E.mergeHand(later, early);
+  check('the LEDGER keeps the longer card list, which is what it is for',
+    merged.hands[0].cards, ['9H', '3C', '4D']);
+
+  const fromSighting = E.pushTrail(null, early, 1, 16);
+  check('...but the trail records the two cards that actually arrived',
+    fromSighting[0].c, [['9H', '3C']]);
+  const fromMerge = E.pushTrail(null, merged, 1, 16);
+  check('...where the merge would have invented a three-card player_turn',
+    fromMerge[0].c[0].length === 3 && fromMerge[0].st === 'player_turn', true);
+  check('...so the two are genuinely different, and only one is honest',
+    JSON.stringify(fromSighting[0].c) !== JSON.stringify(fromMerge[0].c), true);
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

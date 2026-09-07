@@ -1851,6 +1851,44 @@ state the cards alone cannot rebuild. It is the jack-watch section of
 [`tools/collect-stores.js`](../tools/collect-stores.js) behind a button — which means the
 export worth having most often no longer needs the DevTools console at all.
 
+### The trail, and the one thing it is not
+
+0.8.0 adds the half the cards can never supply. Two questions survive any amount of staring
+at a settled round: **how long did that take**, because the wire carries no timestamp and
+every date in the ledger is when this tool first *read* a round; and **what happened in a
+split**, because which half took which card is unrecoverable once the round settles — but
+is perfectly visible while it happens, one sighting at a time, since every response carries
+the whole hand as it then stood.
+
+So for rounds it watches unfold, the tool keeps a **trail**: the state of the table each
+time that state changed, with the local clock. Cards per hand, stakes per hand, whose turn
+it was, the menu on offer at that instant, and when.
+
+Three things about it are load-bearing rather than incidental, and all three are fenced:
+
+- **It stores no conclusion.** No action is named, no EV is attached, nothing is scored.
+  This is the 0.5.0 lesson honoured rather than quietly reversed: that version deleted a
+  stored decision list because it could only ever disagree with the replay — measured at 3
+  caught decisions against the replay's 109 over the same 81 rounds. A fact about the table
+  at 12:04:03 cannot contradict an answer, only date it. A trail entry naming an action
+  would be that deletion undone wearing a timestamp, so `test-jack-passive` fails the build
+  on a judgement word inside one.
+- **A round nobody watched gets no trail at all** — absent, not empty. Anything read off
+  the history poll was played before the page was open, and stamping it with the moment the
+  tab happened to load would manufacture a latency out of nothing. A fabricated timing is
+  indistinguishable from a real one once it is in a file.
+- **It logs the sighting, not the merge.** `mergeHand` keeps the longest card list it has
+  ever seen, which is right for the ledger and wrong here: fed the merge, a poll re-sending
+  an older view of a live round produces an entry pairing the newest cards with the older
+  status — a state that was never on the wire at any instant. This one was found by running
+  it, not by reading it.
+
+It is capped at 16 sightings per round and dropped entirely for rounds older than the most
+recent 120, because this store is shared with fifteen other tools and a runaway list here
+surfaces as a quota failure in one of them. It never leaves the browser unless you press
+**copy+**, where it arrives as `observed[]` with the gap between sightings already
+differenced out.
+
 ## The count, and why it comes with a warning label
 
 Six decks and a card-by-card record is the setup for a running count, and the count

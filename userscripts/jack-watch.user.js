@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.7.0
+// @version      0.8.0
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -65,6 +65,17 @@
  *             stake, the planner inputs, the solved house edge (cached because it takes
  *             a second or two to compute and never changes), the mark that scopes the
  *             panel to one sitting, and panel state.
+ *
+ *             Since 0.8.0 it also keeps a TRAIL for rounds it watched unfold: the state of
+ *             the table each time that state changed, with the local clock time. That is a
+ *             record of your own pace of play, so it is named here rather than buried —
+ *             what was on the table, whose turn it was, the stakes, the menu on offer, and
+ *             when. It stores no conclusion about any of it: no action is named, nothing
+ *             is scored, and the decisions on screen are still replayed from the cards.
+ *             Capped at 16 sightings per round and dropped entirely for rounds older than
+ *             the most recent 120. Rounds read off the history poll get NO trail, because
+ *             they were played before this tool was looking and any timestamp on them
+ *             would be invented. It never leaves your browser unless you press "copy+".
  *
  *   Alerts:   none. No notifications, no sound, no title or favicon writes, nothing raised
  *             from an unfocused tab. The panel is in-page and that is all — including the
@@ -151,7 +162,7 @@
   // which build produced it. Deliberately outside the engine markers below: the engine is
   // lifted whole by tools/test-jack-ev.js and must reference nothing it was not handed,
   // so exportBundle takes this as an argument rather than reaching for it.
-  const SCRIPT_VERSION = '0.7.0';
+  const SCRIPT_VERSION = '0.8.0';
 
   const K = { data: 'pkbj:data', ui: 'pkbj:ui' };
 
@@ -774,6 +785,10 @@
     }
     if (!next.outcome && old.outcome) out.outcome = old.outcome;
     out.seen = old.seen;                           // first seen is first seen; it never moves
+    // `next` is a fresh slimHand and never carries one, so a plain spread would drop it.
+    // Explicit rather than incidental: the trail is the only thing here that cannot be
+    // rebuilt from a later sighting, because it is a record of earlier ones.
+    if (old.trail) out.trail = old.trail;
     return out;
   };
 
@@ -1064,6 +1079,64 @@
     return { lo, hi };
   };
 
+  // --- the trail: what was on the table, and when ---------------------------
+  //
+  // 0.4.0 watched you play and stored what it concluded. 0.5.0 deleted that, and the
+  // reason is the most useful thing this file has learned: measured against 81 real
+  // rounds, watching caught 3 decisions where replaying the stored cards caught 109. A
+  // watcher only ever sees the hands it happened to be running for; the cards are already
+  // in the history the moment you look. So the decisions are replayed, and nothing here
+  // is allowed to become a second answer to that question.
+  //
+  // This is a different question. Two things are true of the cards and will stay true
+  // however long the replay is stared at:
+  //
+  //   The wire never says WHEN. Every timestamp in the ledger is when this tool first read
+  //   a round, not when it was played, so how long a decision took is not in there at all.
+  //
+  //   A split cannot be walked backwards. Which half took which card is unrecoverable from
+  //   the settled round — but it is perfectly visible while it happens, one sighting at a
+  //   time, because each response carries the whole hand as it then stood.
+  //
+  // So this records STATE, with a clock, and draws no conclusion whatsoever. No action is
+  // named, no EV is attached, nothing is scored. It is the raw material an analysis can
+  // difference offline, and keeping it dumb is what stops it from ever disagreeing with
+  // the replay: a fact about the table at 12:04:03 cannot contradict an answer, only
+  // date it. tools/test-jack-passive.js fences exactly that — a judgement word appearing
+  // in a trail entry fails the build.
+  const trailSig = (h) => JSON.stringify([
+    h.status ?? null, num(h.cur),
+    (h.hands || []).map((p) => (p.cards || []).length),
+    (h.hands || []).map((p) => num(p.stake)),
+    (h.dealer || []).length,
+  ]);
+
+  // Append only on CHANGE. The client refetches this table every fifteen seconds and the
+  // history poll re-sends every settled round forever, so an entry per sighting would be
+  // a log of the poll rather than of the play.
+  const pushTrail = (trail, h, at, cap) => {
+    const list = Array.isArray(trail) ? trail : [];
+    const sig = trailSig(h);
+    if (list.length && list[list.length - 1].sig === sig) return list;
+    const next = list.concat([{
+      at: num(at),
+      sig,
+      st: h.status ?? null,
+      cur: num(h.cur),
+      // The cards themselves, per hand, as they stood at this instant. This is the half a
+      // settled split can never give back.
+      c: (h.hands || []).map((p) => (p.cards || []).slice()),
+      s: (h.hands || []).map((p) => num(p.stake)),
+      d: (h.dealer || []).slice(),
+      // The menu that was actually on offer AT THIS MOMENT, which is the only place it is
+      // ever true — the stored round keeps the last one and the replay only assumes one.
+      a: Array.isArray(h.allowed) ? h.allowed.slice() : null,
+    }]);
+    // Oldest first out. A round that somehow keeps changing must not grow without bound
+    // inside a store shared with fifteen other tools.
+    return next.length > cap ? next.slice(next.length - cap) : next;
+  };
+
   // --- the export, in full --------------------------------------------------
   //
   // `copy` puts a flat TSV on the clipboard and is the right shape for eyeballing a run
@@ -1149,6 +1222,11 @@
         'Every replay is priced against the TABLE shoe (a fresh shoe less the cards '
         + 'visible in that round), not the counted one, so an old answer never moves.',
         'Timestamps are when this tool FIRST SAW a round, not when it was played.',
+        'observed[] is present only for rounds watched as they happened, and is state '
+        + 'plus a clock — never a conclusion. A round read off the history poll has none, '
+        + 'because any timing put on it would be invented.',
+        'observed[] is the only place a split can be reconstructed: which half took which '
+        + 'card is visible one sighting at a time, and not at all once the round settles.',
       ],
       rounds: list.map((h) => ({
         id: h.id,
@@ -1171,6 +1249,25 @@
         })),
         decisions: byRound.get(h.id) || null,
         no_decisions: replayNote(h),
+        // Present only for rounds this tool watched unfold. Absent — not empty — for
+        // anything read off the history poll, because there is no honest timestamp to put
+        // on a round that was played before the page was open. State and a clock, never a
+        // conclusion: what the table looked like, and when it looked like that.
+        observed: Array.isArray(h.trail) ? h.trail.map((t) => ({
+          at: num(t.at) === null ? null : new Date(t.at).toISOString(),
+          since_previous_ms: null,     // filled below; the first entry has no previous
+          status: t.st ?? null,
+          active_hand: num(t.cur),
+          hands: (t.c || []).map((cards, i) => ({
+            cards: (cards || []).slice(),
+            stake: ((t.s || [])[i] ?? null),
+          })),
+          dealer: (t.d || []).slice(),
+          allowed: t.a || null,
+        })).map((e, i, all) => (i === 0 ? e : Object.assign(e, {
+          since_previous_ms: num(h.trail[i].at) === null || num(h.trail[i - 1].at) === null
+            ? null : h.trail[i].at - h.trail[i - 1].at,
+        }))) : null,
       })),
     };
   };
@@ -1827,6 +1924,16 @@
   // replayed, but each one costs a handful of solves and the question it answers — how am
   // I playing — is about recent play. Memoised by hand id, so this is paid once.
   const MAX_REPLAY = 150;
+  // Sightings kept per watched round. A deal, three hits and a settle is five; a split
+  // that doubles both halves is about nine. Sixteen is room for the worst honest round
+  // and a hard stop on anything stranger, because this store is shared with fifteen other
+  // tools and a runaway list here is a quota failure in one of them.
+  const MAX_TRAIL = 16;
+  // How many recent rounds keep a trail at all. The trail answers "how did that unfold",
+  // which is a question about play you can still remember; the cards answer everything
+  // else and are kept for all MAX_HANDS. Trimming the tail is what keeps a busy table
+  // from turning a few hundred rounds into a few hundred kilobytes.
+  const MAX_TRAILED = 120;
 
   const data = readJSON(K.data, null) || { corps: {} };
   if (!data.corps || typeof data.corps !== 'object') data.corps = {};
@@ -1875,6 +1982,12 @@
     if (all.length > MAX_HANDS) {
       for (const h of all.slice(MAX_HANDS)) delete c.hands[h.id];
     }
+    // The trail is dropped long before the round is. Two different retentions on purpose:
+    // the cards are the ledger and answer the money and the decisions, so they are kept
+    // for everything; the trail only answers how a round unfolded, and an unfolding from
+    // four hundred rounds ago is not a question anyone has. Dropping it is not a loss of
+    // an answer — the round keeps every card it ever had.
+    for (const h of all.slice(MAX_TRAILED)) if (h.trail) delete h.trail;
   };
 
   // The solved edge is a pure function of the rules, so it is worked out once, ever,
@@ -1909,7 +2022,27 @@
     const slim = slimHand(raw);
     const prev = c.hands[slim.id];
     slim.seen = prev ? prev.seen : at;
-    c.hands[slim.id] = mergeHand(prev, slim);
+    const merged = mergeHand(prev, slim);
+
+    // The trail is only ever kept for a round this tool actually WATCHED. A round whose
+    // first sighting is already settled came off the history poll — it was played before
+    // anyone was looking, possibly days ago, and stamping it now would manufacture a
+    // timing observation out of the moment the page happened to load. That would be worse
+    // than having none: a fabricated latency is indistinguishable from a real one once it
+    // is in the file. So back-catalogue rounds carry no trail at all, and their absence is
+    // the honest answer to "how long did that take".
+    // Recorded from `slim` — the sighting exactly as it arrived — and never from `merged`.
+    // mergeHand deliberately keeps the LONGEST card list it has ever seen, because a later
+    // sighting must not be allowed to delete what an earlier one knew. That is right for
+    // the ledger and wrong for a record of observations: feed it the merge and a poll that
+    // re-sends an older view of a live round produces a trail entry pairing the newest
+    // cards with the older status — a state that was never on the wire at any instant. The
+    // whole claim this makes is "the table looked like this, then", so it logs what came in.
+    const watched = prev ? Array.isArray(prev.trail) : slim.status !== 'settled';
+    if (watched) merged.trail = pushTrail(prev && prev.trail, slim, at, MAX_TRAIL);
+    else if (prev && prev.trail) merged.trail = prev.trail;
+
+    c.hands[slim.id] = merged;
     return !prev;
   };
 

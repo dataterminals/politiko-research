@@ -627,6 +627,49 @@ has had the real `allowed` array all along; nothing was reading it. Exporting bo
 makes the check possible, and it is the sort of thing that only turns up when you ask what
 is being thrown away.
 
+### Watching, the second time — added 2026-09-06
+
+0.4.0 watched play and stored what it concluded. 0.5.0 deleted that, and the measurement
+that killed it is the most useful thing in this file: over the same 81 rounds, watching had
+caught **3** decisions where replaying the stored cards caught **109**. A watcher only ever
+sees the hands it happened to be running for; the cards are already sitting in the history
+the moment you look.
+
+That verdict stands, and 0.8.0 does not reopen it. The decisions on screen are still
+replayed from the cards, and nothing stored may become a second answer to that question.
+
+But the retreat was total where it only needed to be specific, and two questions went with
+it that the cards genuinely cannot answer:
+
+**When.** Nothing on this surface carries a timestamp. Every date in the ledger is when the
+tool first *read* a round, which is why the LOG column is labelled "seen" and not "played".
+How long a decision took is not recoverable from a settled round at any effort.
+
+**What happened inside a split.** Which half took which card is not on the wire once the
+round settles — this is the same fact that makes `replayHand` refuse splits. It is, however,
+plainly visible *while it happens*: every response carries the whole hand as it then stood,
+so the halves are separable one sighting at a time and never again afterwards.
+
+So the trail records **state with a clock, and no conclusion whatsoever**. That distinction
+is the entire design and it is what makes this compatible with the 0.5.0 deletion rather
+than a reversal of it: a stored *answer* can disagree with the replay, and a stored *fact
+about the table at 12:04:03* cannot — it can only date one. No action is named, no EV is
+attached, nothing is scored. `tools/test-jack-passive.js` fails the build if a judgement
+word appears inside a trail entry.
+
+Three properties came out of building it, and the third was found by running it rather
+than by reading it:
+
+| property | why |
+|---|---|
+| a round nobody watched gets **no** trail — absent, not empty | anything off the history poll was played before the page was open; a timestamp would be manufactured from the moment the tab loaded, and a fabricated latency is indistinguishable from a real one once it is in a file |
+| it logs the **sighting**, never the merged round | `mergeHand` keeps the longest card list it has ever seen, which is correct for the ledger; fed the merge, a poll re-sending an older view of a live round yields an entry pairing the newest cards with the older status — a state that never existed at any instant |
+| capped at 16 per round, dropped past the most recent 120 rounds | the store is shared with fifteen other tools, and an unbounded list here surfaces as a quota failure in one of them |
+
+The middle one is worth keeping because the wrong version is the one that reads better:
+`merged` is in scope, it is what the ledger uses two lines later, and it looks like the
+obvious argument. It is pinned by a fence for exactly that reason.
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count

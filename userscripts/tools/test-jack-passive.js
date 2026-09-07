@@ -450,5 +450,57 @@ check('the grid is never persisted, and the edge always is',
     && /const EDGE_KEY = /.test(CODE),
   'a stored grid would outlive the shoe it describes');
 
+// The trail (0.8.0) records the table's state with a clock, for rounds the tool actually
+// watched. It is the one thing in this file that observes the OPERATOR rather than the
+// game, so it gets its own fence rather than riding on the storage checks above.
+//
+// The property is not "it is small". It is that the trail can never become a second
+// answer to a question the cards already settle. 0.4.0 stored what it concluded while
+// watching and 0.5.0 deleted it, having measured 3 caught decisions against the replay's
+// 109 over the same 81 rounds. A trail entry that named an action or carried an EV would
+// be that deletion undone, wearing a timestamp.
+check('the trail stores state and a clock, and nothing that judges it',
+  /const pushTrail = /.test(CODE)
+    && !/pushTrail[\s\S]{0,700}\b(act|want|pick|bestEV|cost|ev)\s*:/.test(CODE),
+  'a named action or an EV inside a trail entry is the 0.5.0 mistake with a timestamp on it');
+
+// Absent, not empty, for anything off the history poll. An empty array reads as "watched,
+// nothing happened"; only null says "this was played before anyone was looking", and a
+// fabricated latency is indistinguishable from a real one once it is in an export.
+check('a round first seen already settled is never given a trail',
+  /const watched = prev \? Array\.isArray\(prev\.trail\) : slim\.status !== 'settled';/.test(CODE),
+  'a timestamp on a back-catalogue round would be invented, and inventing one is worse '
+  + 'than having none');
+
+// It logs the sighting, not the merge. mergeHand keeps the longest card list it has ever
+// seen — right for the ledger, wrong for a record of observations, because a poll that
+// re-sends an older view of a live round would then produce an entry pairing the newest
+// cards with the older status: a state that was never on the wire. `merged` is right there
+// in scope and reads like the obvious argument, which is exactly why this is pinned.
+check('the trail is built from the sighting as it arrived, never the merged round',
+  /pushTrail\(prev && prev\.trail, slim, at, MAX_TRAIL\)/.test(CODE),
+  'passing `merged` here invents states that never existed at any instant');
+
+// Both bounds, because this store is shared with fifteen other tools and a runaway list
+// here surfaces as a quota failure in one of them.
+check('the trail is capped per round and dropped for old rounds',
+  /const MAX_TRAIL = \d+;/.test(CODE) && /const MAX_TRAILED = \d+;/.test(CODE)
+    && /if \(h\.trail\) delete h\.trail;/.test(CODE),
+  'expected both a per-round cap and a retention limit');
+
+// It is written from what the tap already handed over. Nothing about recording your own
+// pace of play may reach for a clock the game did not give us, or for the network.
+check('recording it originates nothing',
+  !/pushTrail[\s\S]{0,700}(fetch|XMLHttpRequest|WebSocket|sendBeacon)/.test(CODE),
+  'the trail is built from payloads that already arrived');
+
+// Clause 6: undisclosed functionality is bannable, and this is the one feature here that
+// records the person rather than the table. It has to be named in the header by what it
+// keeps AND by what it refuses to keep.
+check('the header discloses the trail by name, with its bounds and its refusals',
+  /TRAIL/.test(HEADER) && /16 sightings/.test(HEADER) && /120/.test(HEADER)
+    && /no action is named/i.test(HEADER) && /would be invented/i.test(HEADER),
+  'a record of your own pace of play has to be disclosed as precisely as a network read');
+
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);
