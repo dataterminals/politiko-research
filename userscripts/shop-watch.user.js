@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Shop Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.0
+// @version      0.4.0
 // @description  First light on the city shops. Records the store payloads the app already fetched when you walked into a shop, and reports every field the server sent that the client never renders — the cheap way to find out whether a restock time is on the wire. Also brackets a restock whenever a stock number goes up between two of your own visits. Passive; zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -52,8 +52,13 @@
  *             mutation shapes are deliberately absent from this file, and
  *             tools/test-shop-passive.js fails the build if they appear.
  *
- *   Storage:  localStorage keys prefixed `pksw:` — the field census, the store readings,
- *             the restock brackets built from them, and panel state
+ *   Storage:  localStorage keys prefixed `pksh:` — the field census, the store readings,
+ *             the restock brackets built from them, and panel state. Through 0.3.0
+ *             those keys were prefixed `pksw:`, which sleeper-watch also writes, so on
+ *             first run after 0.4.0 this tool reads the two old keys once, carries
+ *             across the fields that were only ever its own, and deletes `pksw:data`.
+ *             It does NOT delete `pksw:ui` — that key is still sleeper-watch's live
+ *             panel state. The reasoning is at the K declaration
  *
  *   Alerts:   none. No notifications, no sound, nothing raised from an unfocused tab.
  *             This is not an oversight and it is not a gap to be filled later — see the
@@ -97,7 +102,28 @@
   const TAG = '[pk-shop-watch]';
   const log = (...a) => console.debug(TAG, ...a);
 
-  const K = { data: 'pksw:data', ui: 'pksw:ui' };
+  // The keys — and the one-time move off a prefix this tool never actually had to
+  // itself.
+  //
+  // `pksw:` was shop-watch's and sleeper-watch's at the same time. Both wrote `pksw:ui`,
+  // and nothing threw, because every panel here merges its stored blob over its own
+  // defaults. What the two blobs share is four names — `open`, `fab`, `size` and
+  // `tab` — each belonging to whichever panel saved last. `tab` is the sharpest of
+  // them: this tool's tabs are fields/stores/events and that one's are
+  // leads/sleepers/ledger, so the stored value was routinely a tab name the reader had
+  // never heard of.
+  //
+  // Of the two, shop-watch is the younger, so shop-watch is the one that moves.
+  const K = { data: 'pksh:data', ui: 'pksh:ui' };
+  const OLD = { data: 'pksw:data', ui: 'pksw:ui' };
+
+  // Three of the seven fields in the old panel blob were only ever written here. The
+  // other four are the shared names above and deliberately do not come across: their
+  // stored value may be sleeper-watch's, and nothing in the blob says who put it there.
+  // They fall back to this tool's own defaults — and for `fab` that default is null,
+  // which returns the button to its assigned slot, exactly where a double-click has
+  // always put it.
+  const MINE = ['everywhere', 'x', 'y'];
 
   const readJSON = (k, fallback) => {
     try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : fallback; }
@@ -107,6 +133,34 @@
     try { localStorage.setItem(k, JSON.stringify(v)); }
     catch (e) { log('write fail (quota?)', k, e); }
   };
+
+  // Runs once; `pksh:*` existing at all is the flag that says it already has.
+  //
+  // The two old keys are treated differently on purpose. `pksw:data` was this tool's
+  // alone — sleeper-watch has only ever written `leads`, `sleepers`, `ledger`, `meta`
+  // and `ui` — so it is copied and then deleted. `pksw:ui` is sleeper-watch's LIVE
+  // panel state, so it is read and then left exactly where it is. Deleting it would
+  // take that tool's geometry with it, which is this same bug over again pointing the
+  // other way.
+  const migrate = () => {
+    if (localStorage.getItem(K.data) === null) {
+      const old = readJSON(OLD.data, null);
+      if (old) {
+        writeJSON(K.data, old);
+        try { localStorage.removeItem(OLD.data); } catch (e) { log('old data key left behind', e); }
+        log('readings moved to', K.data);
+      }
+    }
+    if (localStorage.getItem(K.ui) === null) {
+      const old = readJSON(OLD.ui, null);
+      if (old && typeof old === 'object' && !Array.isArray(old)) {
+        const kept = {};
+        for (const f of MINE) if (old[f] !== undefined) kept[f] = old[f];
+        if (Object.keys(kept).length) { writeJSON(K.ui, kept); log('panel state carried to', K.ui); }
+      }
+    }
+  };
+  migrate();
 
   // ===========================================================================
   // 1. What the client reads, lifted from the bundle (2026-08-03 pull).

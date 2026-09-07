@@ -30,8 +30,8 @@ bump; the table below is hand-kept and can drift.
 | Quick Jump | 0.6.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 | World Watch | 0.4.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
 | Gov Watch | 0.3.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
-| Poll Watch | 0.3.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
-| Shop Watch | 0.2.0 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
+| Poll Watch | 0.5.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
+| Shop Watch | 0.4.0 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
 | Bar Watch | 0.1.0 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
@@ -1218,8 +1218,10 @@ reading stays visibly stale rather than quietly pretending to be current.
 Full disclosure is in the header comment at the top of
 [`poll-watch.user.js`](poll-watch.user.js). In short: the memo from a poll you ran, the
 issue list the poll screen loads, and the `/api/time` responses the sidebar already makes.
-Everything is kept under `pkpw:` keys in your browser, nothing is sent anywhere, and it
-originates **zero** requests.
+Everything is kept under `pkpl:` keys in your browser, nothing is sent anywhere, and it
+originates **zero** requests. Through 0.4.0 those keys were `pkpw:` — which people-watch
+also writes — and 0.5.0 carries the old ones across once on first run. See **The prefix
+collision** near the end of this file.
 
 Every field it knows about was read off `OpinionPollPage` in the 2026-08-03 bundle pull,
 not off the wire.
@@ -1320,8 +1322,10 @@ The buy and sell mutation shapes are **absent from the file**, with
 `tools/test-shop-passive.js` failing the build if they appear — the same fence Market Watch
 got when its order seam was deleted.
 
-Everything is kept under `pksw:` keys in your browser, nothing is sent anywhere, and it
-originates **zero** requests.
+Everything is kept under `pksh:` keys in your browser, nothing is sent anywhere, and it
+originates **zero** requests. Through 0.3.0 those keys were `pksw:` — which sleeper-watch
+also writes — and 0.4.0 carries the old ones across once on first run. See **The prefix
+collision** near the end of this file.
 
 Still on its own `fetch` wrapper rather than the shared `HTTP TAP v1` block — that migration
 is deliberately one tool at a time and this one has not had its turn.
@@ -2395,3 +2399,76 @@ saw it because they slice the sampler and the rule evaluator out of the file and
 the paint layer at all. `tools/test-placement.js` now fails the build on a bare
 `paint*`/`render*`/`sync*`/`update*` call that resolves to no definition in its own file,
 which is that whole class of bug across every tool rather than this one instance.
+
+---
+
+## The prefix collision
+
+Found 2026-09-06, while checking `tools/collect-stores.js`'s prefix labels against what the
+tools actually write. Three of its sixteen labels were wrong, and the reason none of them
+could have been right is that **two prefixes had two tools writing under them**.
+
+| key | written by | and by |
+|---|---|---|
+| `pkpw:ui` | people-watch | poll-watch |
+| `pksw:ui` | sleeper-watch | shop-watch |
+
+Both pairs are in the fifteen numbered tools, so anyone who installed both halves of either
+pair had them sharing one blob.
+
+**Nothing ever threw**, which is why it survived this long. Every panel here reads its state
+with `Object.assign(defaults, readJSON(K.ui, {}))`, so a field it does not recognise is
+merged in and ignored. What broke instead was the fields the two blobs have *in common* —
+`open`, `fab` and `size` for the first pair, those three plus `tab` for the second. Each
+belonged to whichever panel saved last.
+
+The visible symptom was the one this repo has a whole kit to prevent: **`fab` is the stored
+toggle-button position, so dragging one tool's button moved the other tool's on the next
+load.** FAB KIT's fixed slots exist so that installing a new tool never shuffles the buttons
+already on screen, and this walked around them through storage. `tab` was the funnier one —
+shop-watch's tabs and sleeper-watch's have no name in common, so each was routinely handed a
+tab name it had never heard of.
+
+### What moved
+
+The younger tool of each pair, since the older one has more installs behind it: **poll-watch
+0.5.0 → `pkpl:`** and **shop-watch 0.4.0 → `pksh:`**. people-watch and sleeper-watch keep
+the prefixes they were already on and are untouched.
+
+Each mover carries its data across once, on first run, and the migration is deliberately
+**asymmetric** — which is the part worth reading twice, because getting it backwards damages
+the *other* tool:
+
+- `:data` was the mover's alone, so it is copied and then deleted.
+- `:ui` is the sibling's **live panel state**. It is read and then left exactly where it is.
+  Deleting it would take that tool's geometry with it, which is this same bug pointing the
+  other way.
+
+And only the unambiguous fields cross over. `open`, `fab`, `size` and `tab` may hold the
+sibling's values, and nothing in the blob says who wrote them, so they are dropped and the
+tool falls back to its own defaults. For `fab` that default is `null`, which puts the button
+back in its assigned slot — exactly where a double-click has always put it.
+
+The migration is idempotent: the new key existing at all is the flag that says it has already
+run, so a reinstall never overwrites a live session, and a fresh install writes nothing.
+
+### The fence
+
+`test-placement.js` reads the key literals out of every shipped tool and **fails the build if
+two of them write the same one**. Two things about it are load-bearing:
+
+- The one deliberate share is named, the way the placement exceptions are: time-bridge reads
+  `pktw:samples`, which is the entire reason that tool exists. It never writes it. Reads do
+  not collide; only writes do.
+- A migrating tool still names the keys it is moving *off*, so its `const OLD = {…}` holder
+  is **cut out by position before the scan, not filtered by value**. The first attempt
+  filtered by value, and it silently hid the original bug — a tool naming one key in both
+  places vanished from the ownership count entirely. Both failure modes were checked by
+  reintroducing them.
+
+There is a second check beside it: a migration may not `removeItem` a key another tool still
+writes. That is the asymmetry above, asserted rather than commented.
+
+`test-poll-watch` and `test-shop-passive` each drive their tool's real migration against a
+store shaped the way a two-tool install actually looked, and assert the sibling's blob comes
+out byte-identical.

@@ -160,8 +160,80 @@ console.log('\n— it stays inside its own storage —');
 // otherwise swallow the match and make this check fail on correct code.
 const keys = [...CODE.matchAll(/localStorage\.(?:get|set|remove)Item\(\s*([^,)]+)/g)].map((m) => m[1].trim());
 check('every localStorage key is one of its own',
-  keys.every((k) => /^k$|^K\.(data|ui)$/.test(k)),
+  keys.every((k) => /^k$|^(K|OLD)\.(data|ui)$/.test(k)),
   `keys touched: ${keys.join(' | ')}`);
 
+
+// ---------------------------------------------------------------------------
+// The move off `pksw:`, a prefix this tool shared with sleeper-watch without either
+// of them knowing. Both wrote `pksw:ui`, and the four names their blobs share ended up
+// belonging to whichever panel saved last. `tab` is the sharpest of them: this tool's
+// tabs and that one's have no name in common, so the stored value was routinely a tab
+// the reader had never heard of.
+//
+// The asymmetry is the part worth pinning. `pksw:data` was this tool's alone and is
+// deleted; `pksw:ui` is still sleeper-watch's LIVE panel state and has to survive.
+// ---------------------------------------------------------------------------
+console.log('\n— the one-time move off a shared prefix —');
+
+check('the old keys are held apart from the live ones',
+  /const OLD = \{ data: 'pksw:data', ui: 'pksw:ui' \};/.test(CODE),
+  'the migration has to spell out both old names in one place');
+check('the ambiguous fields are excluded by name',
+  /const MINE = \['everywhere', 'x', 'y'\];/.test(CODE),
+  'open/tab/fab/size may hold sleeper-watch\'s values and must not cross');
+absent('the old ui key is never written', /(?:writeJSON|setItem)\(\s*OLD\.ui/g);
+absent('...and never removed', /removeItem\(\s*OLD\.ui/g);
+check('the old data key is the only thing removed anywhere',
+  (CODE.match(/removeItem\(\s*[A-Za-z.]+/g) || []).join(' | ') === 'removeItem(OLD.data',
+  `removals: ${(CODE.match(/removeItem\(\s*[A-Za-z.]+/g) || []).join(' | ')}`);
+
+console.log('\n— ...driven against a store both tools had written to —');
+{
+  const from = SRC.indexOf('  // The keys — and the one-time move');
+  const to = SRC.indexOf('  const data = Object.assign(blank()');
+  if (from < 0 || to <= from) throw new Error('migration slice markers not found');
+  const mig = SRC.slice(from, to);
+  const drive = (init) => {
+    const S = new Map(Object.entries(init));
+    const localStorage = {
+      getItem: (k) => (S.has(k) ? S.get(k) : null),
+      setItem: (k, v) => S.set(k, String(v)),
+      removeItem: (k) => S.delete(k),
+    };
+    // The slice starts at K and runs past the tool's own readJSON/writeJSON, so only
+    // the logger sitting above them has to be supplied.
+    // eslint-disable-next-line no-new-func
+    new Function('localStorage', `const log = () => {};\n${mig}`)(localStorage);
+    return { keys: [...S.keys()].sort(), get: (k) => (S.has(k) ? JSON.parse(S.get(k)) : null) };
+  };
+
+  const shared = {
+    open: true, tab: 'leads', fab: { x: 800, y: 40 }, size: { w: 520, h: 300 },
+    everywhere: false, x: 30, y: 60,
+    strip: true, muted: { a: 1 }, facTier: false, panel: { x: 1, y: 2 },
+  };
+  const a = drive({
+    'pksw:data': JSON.stringify({ stores: { 4: {} }, events: [1] }),
+    'pksw:ui': JSON.stringify(shared),
+    'pksw:ledger': JSON.stringify([9]),
+  });
+  const eq = (label, got, want) => check(label, JSON.stringify(got) === JSON.stringify(want),
+    `got ${JSON.stringify(got)}  want ${JSON.stringify(want)}`);
+  eq('the readings land under the new key', a.get('pksh:data'), { stores: { 4: {} }, events: [1] });
+  eq('...and the old data key is gone', a.get('pksw:data'), null);
+  eq('the panel state keeps only what was ours', a.get('pksh:ui'), { everywhere: false, x: 30, y: 60 });
+  eq('...so the foreign tab name does not follow it', 'tab' in a.get('pksh:ui'), false);
+  eq('...and sleeper-watch\'s live blob is untouched', a.get('pksw:ui'), shared);
+  eq('...as is its ledger', a.get('pksw:ledger'), [9]);
+
+  const b = drive({
+    'pksh:data': JSON.stringify({ events: ['new'] }),
+    'pksw:data': JSON.stringify({ events: ['stale'] }),
+  });
+  eq('an existing new key is never overwritten', b.get('pksh:data'), { events: ['new'] });
+  eq('...and a second run removes nothing', b.get('pksw:data'), { events: ['stale'] });
+  eq('a fresh install writes nothing at all', drive({}).keys, []);
+}
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);

@@ -45,16 +45,24 @@
 (() => {
   'use strict';
 
-  // The sixteen prefixes on disk as of 2026-09-06. The regex is the filter; this list is
-  // only used to label and group, so a tool added later is collected without a code change
-  // and simply lands under its own prefix with a null label.
+  // The seventeen prefixes on disk as of 2026-09-06. The regex is the filter; this list
+  // is only used to label and group, so a tool added later is collected without a code
+  // change and simply lands under its own prefix with a null label.
+  //
+  // Three of these were wrong until the labels were checked against what the tools
+  // actually write, and the reason they were wrong is worth keeping: `pkpw:` and `pksw:`
+  // each had TWO tools writing under them, so no single label could have been right.
+  // poll-watch moved to `pkpl:` and shop-watch to `pksh:`; userscripts/tools/
+  // test-placement.js now fails the build if two tools ever write one key again. The
+  // third, `pkxx:`, is _template.user.js — never installed, and never xp-watch, which
+  // has only ever written `pkxp:`.
   const KNOWN = {
     'pkaw:': 'align-watch',   'pkbj:': 'jack-watch',    'pkbw:': 'bar-watch',
     'pkcm:': 'comms-move',    'pkgw:': 'gov-watch',     'pkmw:': 'market-watch',
-    'pkpw:': 'poll-watch',    'pkqj:': 'quick-jump',    'pkrw:': 'raid-watch',
-    'pksl:': 'slot-watch',    'pksw:': 'shop-watch',    'pktw:': 'time-watch',
-    'pkws:': 'ws-watch',      'pkww:': 'world-watch',   'pkxp:': 'xp-watch',
-    'pkxx:': 'xp-watch (aux)',
+    'pkpl:': 'poll-watch',    'pkpw:': 'people-watch',  'pkqj:': 'quick-jump',
+    'pkrw:': 'raid-watch',    'pksh:': 'shop-watch',    'pksl:': 'slot-watch',
+    'pksw:': 'sleeper-watch', 'pktw:': 'time-watch',    'pkws:': 'ws-watch',
+    'pkww:': 'world-watch',   'pkxp:': 'xp-watch',      'pkxx:': '_template (not installed)',
   };
 
   // Anchored. A key has to START with pk<2-4 letters>: to be read at all.

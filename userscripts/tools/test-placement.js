@@ -915,5 +915,83 @@ console.log('\n— every helper a render path calls exists —');
   check(`no render-path call goes nowhere (${seen} checked)`, dangling, []);
 }
 
+
+// ---------------------------------------------------------------------------
+// Two tools writing one localStorage key is the quietest bug this repo can ship, and
+// it shipped twice. Nothing throws — a panel merges its stored blob over its own
+// defaults and ignores what it does not recognise — so the symptom never appears where
+// the cause is. `pkpw:ui` was people-watch's and poll-watch's at once, `pksw:ui` was
+// sleeper-watch's and shop-watch's, and the shared field in both cases was `fab`:
+// dragging one tool's button moved another tool's on the next load. That is the exact
+// collision FAB KIT's fixed slots exist to prevent, arriving through the back door.
+//
+// So the key names are read out of every shipped tool and two owners is a build
+// failure. Reads are not the problem and are not checked — time-bridge reads
+// `pktw:samples` on purpose, which is the entire reason that tool exists — so the one
+// deliberate share is named below the way the placement exceptions are.
+// ---------------------------------------------------------------------------
+console.log('\n— no two tools write the same storage key —');
+{
+  const dir = path.join(__dirname, '..');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.user.js')).sort();
+
+  // key -> the tools allowed to name it together, and why.
+  const SHARED = {
+    'pktw:samples': ['time-bridge.user.js', 'time-watch.user.js'],  // the bridge only reads it
+  };
+
+  const owners = new Map();
+  const migrating = [];
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').map((l) => l.replace(/(^|[^:])\/\/.*$/, '$1')).join('\n');
+    // A tool moving off a prefix still names the old keys, in one `const OLD = {...}`
+    // holder. Those are keys it reads once and abandons, not keys it writes, so the
+    // holder is cut out and scanned separately.
+    //
+    // Cut out, not filtered by value: excluding every literal that MATCHES something in
+    // the holder would let a tool name one key in both places and vanish from the
+    // ownership count altogether — which is to say it would hide the exact bug this
+    // section exists to catch. Position is what tells the two apart, not spelling.
+    const RE = /['"`](pk[a-z]{2,4}:[a-zA-Z0-9_.-]+)['"`]/g;
+    const holder = /const OLD = \{[^}]*\}/g;
+    for (const m of (code.match(holder) || []).join(' ').matchAll(RE)) migrating.push([f, m[1]]);
+    for (const m of code.replace(holder, '').matchAll(RE)) {
+      if (!owners.has(m[1])) owners.set(m[1], new Set());
+      owners.get(m[1]).add(f);
+    }
+  }
+
+  const clashes = [...owners.entries()]
+    .filter(([k, set]) => set.size > 1)
+    .filter(([k, set]) => {
+      const allowed = SHARED[k];
+      return !allowed || [...set].sort().join() !== allowed.slice().sort().join();
+    })
+    .map(([k, set]) => `${k} <- ${[...set].sort().join(' + ')}`);
+  check('no key has two owners', clashes, []);
+
+  // A regex that quietly stopped matching would pass the row above by finding nothing.
+  check('the scan is actually finding keys', owners.size >= 30, true);
+
+  // The other half of a migration: the key a tool is moving off may still belong to a
+  // live sibling, and the sibling is exactly who this fence is protecting. So a tool is
+  // allowed to name an old key only while some OTHER tool is not the one that owns it,
+  // or — where it is — only to read it. Deleting a key another tool writes is the same
+  // bug pointing the other way, and it would be silent in precisely the same manner.
+  const unsafe = [];
+  for (const [f, key] of migrating) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const holder = (src.match(/const OLD = \{([^}]*)\}/) || [, ''])[1];
+    // The holder is one flat object literal, so the field name is what sits before
+    // the first colon of the entry naming this key.
+    const field = (holder.split(',').find((p) => p.includes(key)) || '').split(':')[0].trim();
+    const removed = field && new RegExp(`removeItem\\(\\s*OLD\\.${field}\\b`).test(src);
+    const alsoOwned = owners.has(key) && owners.get(key).size > 0;
+    if (removed && alsoOwned) unsafe.push(`${f} deletes ${key}, still written by ${[...owners.get(key)].join(' + ')}`);
+  }
+  check('no migration deletes a key another tool still writes', unsafe, []);
+}
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);

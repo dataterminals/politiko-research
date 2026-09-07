@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Poll Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.4.0
+// @version      0.5.0
 // @description  Keeps every opinion-poll memo you run — timestamped in real and game time, with the bloc spread, the per-issue trend since your last poll, and TSV/JSON export. Passive: it reads the memo the game already handed you and originates no requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -39,8 +39,13 @@
  *             server cooldown — spending that on your behalf is exactly the thing
  *             this repo does not do. The panel is a filing cabinet, not a pollster.
  *
- *   Storage:  localStorage keys prefixed `pkpw:` — the captured memos, the issue
- *             list, and panel position/state
+ *   Storage:  localStorage keys prefixed `pkpl:` — the captured memos, the issue
+ *             list, and panel position/state. Through 0.4.0 those keys were prefixed
+ *             `pkpw:`, which people-watch also writes, so on first run after 0.5.0
+ *             this tool reads the two old keys once, carries across the fields that
+ *             were only ever its own, and deletes `pkpw:data`. It does NOT delete
+ *             `pkpw:ui` — that key is still people-watch's live panel state. The
+ *             reasoning is at the K declaration
  *
  *   Alerts:   none. No notifications, no sound, nothing raised from an unfocused
  *             tab; the panel only redraws while the tab is visible
@@ -88,7 +93,28 @@
   const TAG = '[pk-poll-watch]';
   const log = (...a) => console.debug(TAG, ...a);
 
-  const K = { data: 'pkpw:data', ui: 'pkpw:ui' };
+  // The keys — and the one-time move off a prefix this tool never actually had to
+  // itself.
+  //
+  // `pkpw:` was poll-watch's and people-watch's at the same time. Both wrote `pkpw:ui`,
+  // and neither knew, because nothing ever threw: every panel here merges its stored
+  // blob over its own defaults, so a field it does not recognise is simply ignored.
+  // What did happen is that the three names the two blobs share — `open`, `fab` and
+  // `size` — belonged to whichever panel saved last. Drag one tool's toggle button
+  // and the other one moved on the next load, which is the exact collision FAB KIT's
+  // fixed slots exist to prevent.
+  //
+  // Of the two, poll-watch is the younger, so poll-watch is the one that moves.
+  const K = { data: 'pkpl:data', ui: 'pkpl:ui' };
+  const OLD = { data: 'pkpw:data', ui: 'pkpw:ui' };
+
+  // Five of the eight fields in the old panel blob were only ever written here, and
+  // those five are the ones that come across. `open`, `fab` and `size` deliberately do
+  // not: their stored value may be people-watch's, and nothing in the blob says who put
+  // it there. They fall back to this tool's own defaults instead — and for `fab` that
+  // default is null, which returns the button to its assigned slot, exactly where a
+  // double-click has always put it.
+  const MINE = ['view', 'everywhere', 'x', 'y', 'issue'];
 
   const readJSON = (k, fallback) => {
     try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : fallback; }
@@ -98,6 +124,33 @@
     try { localStorage.setItem(k, JSON.stringify(v)); }
     catch (e) { log('write fail (quota?)', k, e); }
   };
+
+  // Runs once; `pkpl:*` existing at all is the flag that says it already has.
+  //
+  // The two old keys are treated differently on purpose. `pkpw:data` was this tool's
+  // alone — people-watch has only ever written `people`, `roster` and `ui` — so it is
+  // copied and then deleted. `pkpw:ui` is people-watch's LIVE panel state, so it is
+  // read and then left exactly where it is. Deleting it would take that tool's geometry
+  // with it, which is this same bug over again pointing the other way.
+  const migrate = () => {
+    if (localStorage.getItem(K.data) === null) {
+      const old = readJSON(OLD.data, null);
+      if (old) {
+        writeJSON(K.data, old);
+        try { localStorage.removeItem(OLD.data); } catch (e) { log('old data key left behind', e); }
+        log('memos moved to', K.data);
+      }
+    }
+    if (localStorage.getItem(K.ui) === null) {
+      const old = readJSON(OLD.ui, null);
+      if (old && typeof old === 'object' && !Array.isArray(old)) {
+        const kept = {};
+        for (const f of MINE) if (old[f] !== undefined) kept[f] = old[f];
+        if (Object.keys(kept).length) { writeJSON(K.ui, kept); log('panel state carried to', K.ui); }
+      }
+    }
+  };
+  migrate();
 
   // ---------------------------------------------------------------------------
   // Game constants, lifted from the client bundle (2026-08-03 pull).

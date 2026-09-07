@@ -94,14 +94,16 @@ check('there is exactly one repeating timer', [...CODE.matchAll(/setInterval\s*\
 console.log('\n— it reads only its own storage —');
 
 const lsSites = [...CODE.matchAll(/localStorage\.(getItem|setItem|removeItem|clear)\b/g)].map((m) => m[1]);
-eq('localStorage is touched in exactly two places', lsSites.sort(), ['getItem', 'setItem']);
+eq('localStorage is touched by three verbs and never cleared',
+  [...new Set(lsSites)].sort(), ['getItem', 'removeItem', 'setItem']);
 const helperArgs = [...CODE.matchAll(/\b(?:readJSON|writeJSON)\(\s*([A-Za-z.]+)/g)].map((m) => m[1]);
-check('every key handed to them is a K.* constant',
-  helperArgs.length >= 4 && helperArgs.every((a) => a.startsWith('K.')),
+check('every key handed to them is a K.* or OLD.* constant',
+  helperArgs.length >= 4 && helperArgs.every((a) => /^(K|OLD)\./.test(a)),
   `args: ${helperArgs.join(' | ')}`);
 absent('it never reads the game\'s auth blob', /getItem\(\s*['"`]auth/g);
-check('both key names are namespaced', (CODE.match(/'pkpw:[a-z]+'/g) || []).length === 2,
-  `found ${(CODE.match(/'pkpw:[a-z]+'/g) || []).length}`);
+check('both live key names sit under this tool\'s own prefix',
+  (CODE.match(/'pkpl:[a-z]+'/g) || []).length === 2,
+  `found ${(CODE.match(/'pkpl:[a-z]+'/g) || []).length}`);
 
 console.log('\n— it stays auditable —');
 
@@ -135,7 +137,7 @@ const exportLayer = cut('const COLS = [', '  const copyBtn = ');
 
 const store = new Map();
 const stub = `
-  const K = { data: 'pkpw:data', ui: 'pkpw:ui' };
+  const K = { data: 'pkpl:data', ui: 'pkpl:ui' };
   const log = () => {};
   const readJSON = (k, fallback) => (STORE.has(k) ? JSON.parse(STORE.get(k)) : fallback);
   const writeJSON = (k, v) => STORE.set(k, JSON.stringify(v));
@@ -247,5 +249,84 @@ check('a tab inside a server string cannot break a column',
   !layer.tsv().split('\n').some((l) => l.split('\t').length !== layer.COLS.length),
   'a row has the wrong column count');
 
+
+// ---------------------------------------------------------------------------
+// The move off `pkpw:`, a prefix this tool shared with people-watch without either
+// of them knowing. Both wrote `pkpw:ui`; nothing threw, because a panel merges its
+// stored blob over its own defaults and ignores what it does not recognise. The
+// symptom surfaced somewhere else entirely — `open`, `fab` and `size` belonged to
+// whichever panel saved last, so dragging one tool's button moved the other's.
+//
+// What makes the migration safe is an asymmetry that is easy to get backwards, so it
+// is pinned here rather than left to the comment explaining it: `pkpw:data` was this
+// tool's alone and is deleted, while `pkpw:ui` is still people-watch's LIVE panel
+// state and has to survive untouched.
+// ---------------------------------------------------------------------------
+console.log('\n— the one-time move off a shared prefix —');
+
+check('the old keys are held apart from the live ones',
+  /const OLD = \{ data: 'pkpw:data', ui: 'pkpw:ui' \};/.test(CODE),
+  'the migration has to spell out both old names in one place');
+check('the ambiguous fields are excluded by name',
+  /const MINE = \['view', 'everywhere', 'x', 'y', 'issue'\];/.test(CODE),
+  'open/fab/size may hold people-watch\'s values and must not cross');
+absent('the old ui key is never written', /(?:writeJSON|setItem)\(\s*OLD\.ui/g);
+absent('...and never removed', /removeItem\(\s*OLD\.ui/g);
+check('the old data key is the only thing removed anywhere',
+  (CODE.match(/removeItem\(\s*[A-Za-z.]+/g) || []).join(' | ') === 'removeItem(OLD.data',
+  `removals: ${(CODE.match(/removeItem\(\s*[A-Za-z.]+/g) || []).join(' | ')}`);
+
+console.log('\n— ...driven against a store both tools had written to —');
+{
+  const mig = cut('  // The keys — and the one-time move', '  const data = Object.assign({ polls:');
+  const drive = (init) => {
+    const S = new Map(Object.entries(init));
+    const localStorage = {
+      getItem: (k) => (S.has(k) ? S.get(k) : null),
+      setItem: (k, v) => S.set(k, String(v)),
+      removeItem: (k) => S.delete(k),
+    };
+    // The slice starts at K and runs past the tool's own readJSON/writeJSON, so only
+    // the logger sitting above them has to be supplied.
+    // eslint-disable-next-line no-new-func
+    new Function('localStorage', `const log = () => {};\n${mig}`)(localStorage);
+    return { keys: [...S.keys()].sort(), get: (k) => (S.has(k) ? JSON.parse(S.get(k)) : null) };
+  };
+
+  // A store as it actually looked with both tools installed: the shared ui blob holds
+  // this tool's fields, people-watch's fields, and three names that belong to whichever
+  // one saved last.
+  const shared = {
+    open: true, fab: { x: 900, y: 40 }, size: { w: 560, h: 400 },
+    view: 'trend', everywhere: false, x: 120, y: 200, issue: 'econ',
+    sort: 'idle', dir: 1, hideNpc: true, cols: { name: 90 }, panel: { x: 5, y: 5 },
+  };
+  const a = drive({
+    'pkpw:data': JSON.stringify({ polls: [{ id: 1 }], issues: ['econ'], clock: 7 }),
+    'pkpw:ui': JSON.stringify(shared),
+    'pkpw:people': JSON.stringify({ someone: 1 }),
+  });
+  eq('the memos land under the new key', a.get('pkpl:data'),
+    { polls: [{ id: 1 }], issues: ['econ'], clock: 7 });
+  eq('...and the old data key is gone', a.get('pkpw:data'), null);
+  eq('the panel state keeps only what was ours', a.get('pkpl:ui'),
+    { view: 'trend', everywhere: false, x: 120, y: 200, issue: 'econ' });
+  eq('...so no ambiguous field crosses over',
+    ['open', 'fab', 'size'].filter((f) => f in a.get('pkpl:ui')), []);
+  eq('...and people-watch\'s live blob is untouched', a.get('pkpw:ui'), shared);
+  eq('...as is every other key of theirs', a.get('pkpw:people'), { someone: 1 });
+
+  // Idempotence, which is what stops a second install from eating a live session.
+  const b = drive({
+    'pkpl:data': JSON.stringify({ polls: ['new'] }),
+    'pkpl:ui': JSON.stringify({ view: 'latest' }),
+    'pkpw:data': JSON.stringify({ polls: ['stale'] }),
+  });
+  eq('an existing new key is never overwritten', b.get('pkpl:data'), { polls: ['new'] });
+  eq('...nor is the panel state', b.get('pkpl:ui'), { view: 'latest' });
+  eq('...and a second run removes nothing', b.get('pkpw:data'), { polls: ['stale'] });
+
+  eq('a fresh install writes nothing at all', drive({}).keys, []);
+}
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);
