@@ -902,6 +902,44 @@ which is not something to discover by surprise. And a guide that silently matche
 worse than no guide, because the absence of a highlight would read as meaning something — so
 the panel prints how many action buttons it can actually see.
 
+### The guide found nothing on its first real table — added 2026-09-07
+
+0.10.0 shipped a button finder built blind, against a stand-in felt, because this repo does
+not point Claude at the live game. The first hand played with it on reported **"no action
+buttons found on this page"** while three controls reading `HIT`, `STAND` and `DOUBLE` sat
+in plain view. Two separate mistakes, and the matcher was not either of them — the labels
+were exactly the words it knew.
+
+**Visibility was tested with `offsetParent`.** That is null for anything `position: fixed`,
+which is precisely where a table pins its action row, so the most visible controls on the
+screen read as not laid out. It is now a rectangle with area plus a computed-style check,
+which cannot be argued with by a positioning scheme.
+
+**The selector only knew `<button>`.** A React table is as likely to build its controls out
+of `<div>` with a click handler, and a selector that only accepts real buttons finds nothing
+at all. There is now a second pass over every visible element, which runs only when the
+first finds nothing.
+
+And a third mistake, found in the harness while fixing those two, which is the one worth
+remembering. The fallback originally resolved a matched label to its control by climbing
+until it found `cursor: pointer` — and **`cursor` is inherited**, so a `<span>` inside a
+clickable `<div>` reports `pointer` exactly as loudly as the div does. The climb stopped at
+the span and the outline landed around the *word* rather than around the button. It now
+climbs to the outermost element whose entire text is still just that word: text containment
+is not inherited, so it cannot make that mistake.
+
+The diagnosis line was also split, because one sentence was covering two different failures:
+
+| what the panel says | what it means |
+|---|---|
+| `no controls found on this page` | the selector matched nothing — a structure problem |
+| `no action words on N visible controls` | controls were found and none was named — a label problem, one line to fix once the word is known |
+| `N action buttons found` | working |
+
+That distinction is the difference between an evening of guessing and a one-line change.
+Building a DOM reader against a page you cannot see is going to be wrong the first time;
+what it has to be is wrong *legibly*.
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count

@@ -518,6 +518,24 @@ check('the marks cannot move the game\'s own buttons',
     || /outline: 2px solid/.test(SRC),
   'anything that changed the metrics would shift the table\'s controls under the cursor');
 
+// Two findings from the first run against a real table, both of which produced a guide
+// that was confidently useless rather than obviously broken.
+//
+//   Visibility is a rectangle, not offsetParent. offsetParent is null for anything
+//   position: fixed, and a row of controls pinned to the felt is the most visible thing on
+//   the screen while reading as invisible.
+check('a control is visible when it has area, not when it has an offsetParent',
+  /const r = n\.getBoundingClientRect\(\);/.test(CODE) && !/!n\.offsetParent/.test(CODE),
+  'offsetParent is null for position:fixed, which is where a felt puts its buttons');
+
+//   The fallback climbs by TEXT, never by cursor. cursor is inherited, so a <span> inside a
+//   clickable <div> reports pointer exactly as loudly as the div — the first version marked
+//   the label and drew the outline around the word instead of the button.
+check('the fallback finds the control by text containment, not by cursor',
+  /actionOf\(p\.textContent\) !== a\) break;/.test(CODE)
+    && !/getComputedStyle\([^)]*\)\.cursor === 'pointer'/.test(CODE),
+  'cursor is inherited; text containment is not, and only one of them can find the control');
+
 // It is off until asked for, because it restyles controls this tool does not own.
 check('the guide is off by default',
   /if \(typeof ui\.guide !== 'boolean'\) ui\.guide = false;/.test(CODE),

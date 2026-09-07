@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.10.0
+// @version      0.10.1
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -194,7 +194,7 @@
   // which build produced it. Deliberately outside the engine markers below: the engine is
   // lifted whole by tools/test-jack-ev.js and must reference nothing it was not handed,
   // so exportBundle takes this as an argument rather than reaching for it.
-  const SCRIPT_VERSION = '0.10.0';
+  const SCRIPT_VERSION = '0.10.1';
 
   const K = { data: 'pkbj:data', ui: 'pkbj:ui' };
 
@@ -2680,9 +2680,16 @@
       });
       bar.append(b);
       if (ui.guide) {
+        // Two different failures wearing the same sentence is how an evening gets wasted,
+        // so they are separated. Nothing scanned means the selector missed the controls
+        // entirely; controls scanned but none matched means the table words its buttons
+        // differently, which is a one-line fix once the label is known.
         bar.append(el('span', 'pkbj-n', guideSeen
           ? `${guideSeen} action button${guideSeen === 1 ? '' : 's'} found`
-          : (v.live ? 'no action buttons found on this page' : 'waiting for a hand')));
+          : (!v.live ? 'waiting for a hand'
+            : (guideScanned
+              ? `no action words on ${guideScanned} visible controls`
+              : 'no controls found on this page'))));
       }
       body.append(bar);
     }
@@ -3487,13 +3494,59 @@
   // Every visible control on the page whose label names an action, keyed by action.
   // Our own panel is skipped outright: it has buttons too, and a tool that highlighted
   // its own UI would be marking the wrong thing in the most confusing possible way.
+  // Visible enough to outline. NOT `offsetParent`, which was the first version and was
+  // wrong on a live table: offsetParent is null for anything `position: fixed`, so a row of
+  // buttons pinned to the felt reads as invisible while being the most visible thing on the
+  // screen. A rectangle with area cannot be argued with.
+  const onScreen = (n) => {
+    const r = n.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return false;
+    const c = getComputedStyle(n);
+    return c.visibility !== 'hidden' && c.display !== 'none';
+  };
+
+  const ours = (n) => !!(n.closest('.pkbj-panel') || n.classList.contains('pkbj-fab'));
+
+  // Two passes, because a table's action controls are usually <button> and occasionally
+  // not. The first pass is the narrow, obviously-right one. The second only runs if the
+  // first found nothing at all, and looks for the deepest element whose whole text IS the
+  // word — then hands back the clickable-looking thing wrapping it, so the outline lands on
+  // the control rather than on the label inside it.
+  const CONTROLS = 'button, [role="button"], a, [tabindex], input[type="button"], input[type="submit"]';
+
+  let guideScanned = 0;           // visible controls examined, for the panel's diagnosis
   const actionButtons = () => {
     const found = new Map();
-    for (const n of document.querySelectorAll('button, [role="button"]')) {
-      if (n.closest('.pkbj-panel') || n.classList.contains('pkbj-fab')) continue;
-      if (!n.offsetParent) continue;                   // hidden, or not laid out
+    guideScanned = 0;
+    for (const n of document.querySelectorAll(CONTROLS)) {
+      if (ours(n) || !onScreen(n)) continue;
+      guideScanned++;
       const a = actionOf(n.textContent);
       if (a && !found.has(a)) found.set(a, n);
+    }
+    if (found.size) return found;
+
+    for (const n of document.querySelectorAll('body *')) {
+      if (ours(n) || !onScreen(n)) continue;
+      const a = actionOf(n.textContent);
+      if (!a || found.has(a)) continue;
+      // Climb to the OUTERMOST element whose entire text is still just this word. That is
+      // the control; anything above it has picked up a sibling's text and anything below is
+      // a label inside it.
+      //
+      // The first version sniffed `cursor: pointer` instead and marked the wrong element on
+      // its first real test, because cursor is INHERITED — a <span> inside a clickable <div>
+      // reports pointer just as loudly as the div does, so the outline landed around the
+      // text rather than around the button. Text containment is not inherited and cannot
+      // make that mistake.
+      let box = n;
+      for (let up = 0; up < 4; up++) {
+        const p = box.parentElement;
+        if (!p || ours(p) || p === document.body) break;
+        if (actionOf(p.textContent) !== a) break;
+        box = p;
+      }
+      found.set(a, box);
     }
     return found;
   };
