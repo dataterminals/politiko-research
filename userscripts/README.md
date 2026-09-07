@@ -2062,6 +2062,24 @@ only until someone adds it back:
   refused poll is an error body and must not become a data point, and `lean` must come back
   null for a street poll rather than as a confident-looking zero.
 
+- `test-slot-passive` fences slot-watch, which sits on the one screen where originating a
+  request is not merely against the rules but immediately profitable-looking: the spin is a
+  POST, and the panel is entirely about the money coming out the other end. The spins path,
+  the idempotency key and the request body shape are absent rather than disabled, on the
+  market-watch precedent — a tool carrying the endpoint and the payload is a bot with the
+  last line commented out. What makes that cheap to hold is that the game already ships
+  auto-spin with 10/25/50/100 presets, so there is no tedium left for a script to relieve
+  and the tool is allowed to be purely a reader. Two properties beyond the usual absences.
+  It **cannot tell a GET from a POST**: the tap record is destructured to the path and the
+  parsed body and nothing else, and a settlement receipt is recognised by its six fields
+  rather than by the verb that produced it — which is what lets it consume the response to
+  a spin you pressed without containing the means to press one. And it **may not launder an
+  estimate into a fact**, the temptation being that the panel prints exact and estimated
+  figures side by side: expected loss must be the stated edge times the stake, the band must
+  always carry its sample count and yield nothing at all from a single sample, and no clock
+  may claim to know when a session was played, because nothing on this surface carries a
+  timestamp.
+
 - `test-jack-passive` fences jack-watch, and is the one whose necessity is easiest to see.
   Every other tool here reads something the game shows you badly; that one **computes the
   correct action and prints it**, which leaves it one line from a bot — the line being a
@@ -2077,6 +2095,28 @@ only until someone adds it back:
   never become a claim about the shoe**: the seventh sighting of a card proves a reshuffle,
   nothing proves the absence of one, so the fence pins the words in the unproved branch and
   checks that the true count reaches a stat box and nothing else.
+
+- `test-collect` is the only one here not guarding a userscript. It fences
+  [`tools/collect-stores.js`](../tools/collect-stores.js), the export half — the one file
+  in this repo whose entire purpose is moving data *out* of the browser, which makes it the
+  one file where "it only reads our own stores" has to be a property of the code rather
+  than a sentence in a header. Three things it holds. The **key filter stays anchored**:
+  `/^(pk[a-z]{2,4}:)/` cannot match `auth` or `device_signals`, an unanchored version
+  matching mid-key can, and the difference is one character — so the fence pulls the actual
+  declaration out of the file and *runs* it against both never-touch keys and against this
+  repo's own, rather than trusting the shape. Both keys are on an explicit denylist as
+  well, because since the 2026-09-03 build `auth` carries the account's fedded state, and a
+  bundle that swept it up would be exporting a token **and** a moderation record. It
+  **originates nothing**, which matters here more than anywhere: a collector is the natural
+  place for someone to add "refresh everything first, then dump", and that is the exact line
+  [`docs/01-rules-envelope.md`](../docs/01-rules-envelope.md) draws — it would convert a
+  passive exporter into a scraper of pages nobody is viewing. And it **writes nothing
+  back**, reading the store only by index and by key, because a bug that writes one corrupts
+  the readings of a tool that has no idea this file exists. The last block checks the
+  disclosure against the build: the header has to state the zero request budget, name the
+  filter precisely rather than as "our keys", name both never-touch keys, say the output is
+  never transmitted, and refuse the refresh feature in writing — where it will be read by
+  whoever next asks for it.
 
 They have nothing else in common; market-watch's was named `test-passive.js` when it
 lived in its own repository and was renamed on the way in.
