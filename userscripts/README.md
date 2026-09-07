@@ -1793,6 +1793,15 @@ Three figures, and the middle one is the point:
   real play is about 1.1, which is exactly why nobody has the ceiling in mind.
 - **how many more bets that size your cash covers.**
 
+The first of those asks a different question depending on whether the bet is on the table,
+and 0.9.1 exists because 0.9.0 assumed it always was. Live, the bankroll it came from is
+cash + bet and the reading is retrospective. Between rounds the stake has settled and your
+cash already reflects it, so adding it back counts it twice - which looked right after a
+loss and was wrong after a win. Between rounds it now asks the forward-looking question
+instead, the only one still actionable: **bet that again and what fraction of what you have
+is it?** A session ending at $55 with a last bet of $100 reads **181.8% of your cash**, and
+means it. `covers` never depended on the distinction and was right throughout.
+
 Two things it refuses, both fenced because the eroded version looks like an improvement.
 **No risk of ruin and no probability of anything** - slot-watch refuses one already and the
 reason applies harder here, since the per-round payouts run -2 to +4 and a percentage hung

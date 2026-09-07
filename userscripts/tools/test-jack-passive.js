@@ -490,6 +490,14 @@ check('the bankroll readout quotes no probability and no risk of ruin',
 check('...and recommends no bet size',
   !/exposure[\s\S]{0,900}\b(recommended|optimal|kelly|shouldBet|suggestBet)\s*[:=]/i.test(CODE),
   'Kelly is zero at a negative edge, so any recommended stake would be invented');
+// Whether the bet is on the table changes the question, not the wording: live, the
+// bankroll it came from is cash + bet; settled, your cash already reflects it and adding
+// it back counts it twice. 0.9.0 omitted the flag and was right only after a loss. The
+// call site has to pass it, because an omitted optional argument is a silent falsy.
+check('the readout tells exposure() whether the bet is still on the table',
+  /exposure\(\{ bet: ref, cash: cfg\.cash, live: !!v\.live \}\)/.test(CODE),
+  'without `live` the between-rounds reading double-counts the stake after a win');
+
 check('...and the ceiling is derived from the rules, not hardcoded',
   /const MAX_STAKE_MULT = \(RULES\.splits \+ 1\) \* \(RULES\.doubleAfterSplit \? 2 : 1\);/.test(CODE),
   'a literal 4 stops being true the moment the table permits a second split');

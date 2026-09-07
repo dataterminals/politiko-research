@@ -802,6 +802,57 @@ times what you put up. On round 988 that is a $200,000 opener against a $800,000
 **210% of the bankroll**. The multiplier measured across real play is about 1.1, which is
 precisely why nobody has the ceiling in mind while sizing a bet.
 
+### A fixed bet is not a fixed risk — added 2026-09-07
+
+The session that emptied the account is the clearest thing in this document, because
+nothing in it was played badly. **42 decisions, zero deviations, $0 of EV given up** across
+38 rounds. The luck was poor — a 31.6% win rate against roughly 43% expected, 12 wins to 24
+losses, **−1.63 SD** — but the mechanism that turned a bad run into a bust was neither.
+
+The bet stayed at **$5,000** while the bankroll fell from $31,755 to $6,755:
+
+| round | bet | bankroll | bet as % | cash covers |
+|-------|-----|----------|----------|-------------|
+| 1044 | 5,000 | 31,755 | 15.7% | 5 |
+| 1048 | 5,000 | 26,755 | 18.7% | 4 |
+| 1049 | 5,000 | 21,755 | 23.0% | 3 |
+| 1050 | 5,000 | 16,755 | 29.8% | 2 |
+| 1051 | 5,000 | 11,755 | 42.5% | 1 |
+| 1052 | 5,000 | 6,755 | **74.0%** | **0** |
+
+**No decision to take more risk was ever made.** Exposure went from a sixth of the roll to
+three quarters of it by standing still. That is the whole finding: holding a bet constant
+while the bankroll shrinks *is* escalation, and it is the kind that never presents itself as
+a choice — there is no moment where anyone decides to do it.
+
+The bet was scaled down twice, 5,000 to 1,000 and then 1,000 to 100. Both times **after**
+`covers` had already reached zero. The instinct was right and arrived one round late, twice.
+
+Expected loss over those 38 rounds was **$390**. The realized loss was **$31,700** — 81x
+expected, and still only 1.63 SD, because the variance dwarfs the edge at every stake.
+
+### The between-rounds reading was wrong half the time
+
+Found by the same export, in code that was one hour old. `exposure()` computed the bankroll
+as `cash + bet` unconditionally, on the reasoning that a stake is money already out of your
+cash. That is true **only while the hand is live**.
+
+Between rounds the round has settled and cash already reflects it, so adding the bet back
+counts it twice. It happened to look right after a **loss** — cash plus the lost stake
+really is what you had a moment ago — and was wrong after a **win**, where the winnings are
+already in cash and the stake goes on top. A reading correct on half the rounds is worse
+than one that is plainly one thing or the other, because nothing about it looks wrong.
+
+0.9.1 takes a `live` flag and asks the question that belongs to each state. Live, it stays
+retrospective: what fraction of the bankroll it came from is riding. Between rounds it
+becomes the forward-looking one, which is the only version still actionable — **bet that
+again and what fraction of what you have is it?** A session ending at $55 with a last bet
+of $100 now reads **181.8% of your cash**, and means it: you cannot place that bet. The old
+reading called it 64.5% of a bankroll that no longer existed.
+
+`covers` never depended on the flag and was right throughout. It is the number that counted
+5, 4, 3, 2, 1, 0 through the bust while the percentage beside it was arguing with itself.
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count

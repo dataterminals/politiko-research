@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.9.0
+// @version      0.9.1
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -178,7 +178,7 @@
   // which build produced it. Deliberately outside the engine markers below: the engine is
   // lifted whole by tools/test-jack-ev.js and must reference nothing it was not handed,
   // so exportBundle takes this as an argument rather than reaching for it.
-  const SCRIPT_VERSION = '0.9.0';
+  const SCRIPT_VERSION = '0.9.1';
 
   const K = { data: 'pkbj:data', ui: 'pkbj:ui' };
 
@@ -1132,19 +1132,36 @@
   // times what you put up, and a $200,000 opener is a $800,000 hand in the worst case the
   // rules permit. The measured multiplier on real play is about 1.1, which is exactly why
   // nobody thinks about the ceiling.
-  const exposure = ({ bet, cash }) => {
+  // `live` says whether that bet is currently ON THE TABLE, and it changes the question
+  // rather than decorating it. 0.9.0 got this wrong by assuming it always was.
+  //
+  //   Live: the stake is already out of your cash, so the bankroll it was placed from is
+  //   cash + bet, and the question is retrospective — what fraction of it is riding.
+  //
+  //   Between rounds: the round has settled and your cash already reflects it. Adding the
+  //   bet back counts it twice. It happened to look right after a LOSS, where cash + the
+  //   lost stake really is what you had a moment ago, and was wrong after a win, where the
+  //   winnings are in cash and the stake gets added on top. A reading that is correct on
+  //   half the rounds is worse than one that is plainly one thing or the other.
+  //
+  // So between rounds the question becomes the forward-looking one, which is the useful one
+  // anyway: bet that again and what fraction of what you have is it? A session that ended
+  // at $55 with a last bet of $100 should say 182% and mean it — you cannot place that bet
+  // — rather than quietly report 64% of a bankroll that no longer exists.
+  const exposure = ({ bet, cash, live }) => {
     const b = num(bet), c = num(cash);
     if (b === null || c === null || b <= 0 || c < 0) return null;
-    const total = c + b;                  // the bet is already out of your cash
+    const bankroll = live ? c + b : c;
     const worst = b * MAX_STAKE_MULT;
     return {
-      bet: b, cash: c, bankroll: total,
-      frac: total > 0 ? b / total : null,
+      bet: b, cash: c, live: !!live, bankroll,
+      frac: bankroll > 0 ? b / bankroll : null,
       worst,
-      worstFrac: total > 0 ? worst / total : null,
+      worstFrac: bankroll > 0 ? worst / bankroll : null,
       // Pure division, no distribution: how many more bets of this size the cash covers.
-      // A player who wants to know the odds of that happening is asking for the number
-      // this deliberately does not compute.
+      // This one never depended on `live` and was right all along — it is the number that
+      // counted 5, 4, 3, 2, 1, 0 through a real bust while the percentage beside it was
+      // arguing with itself.
       covers: Math.floor(c / b),
     };
   };
@@ -2568,11 +2585,18 @@
     // never mistaken for a live one.
     const ref = v.live ? num((v.live.hands || [])[0] && v.live.hands[0].stake) ?? num(v.live.open)
       : (v.last ? num(v.last.open) : null);
-    const exp = exposure({ bet: ref, cash: cfg.cash });
+    const exp = exposure({ bet: ref, cash: cfg.cash, live: !!v.live });
     if (exp) {
       const g = el('div', 'pkbj-stats');
-      stat(g, v.live ? 'this bet' : 'last bet', money(exp.bet), null,
-        exp.frac === null ? null : pct(exp.frac, 1) + ' of your bankroll');
+      // Two different questions, so two different sentences. Live: what fraction of the
+      // bankroll is riding right now. Between rounds: what fraction would ride if you bet
+      // that again — which is the only version of the question you can still act on, and
+      // the one a session that ends at $55 needs to be able to say 182% to.
+      stat(g, exp.live ? 'this bet' : 'bet it again', money(exp.bet),
+        !exp.live && exp.frac > 1 ? 'down' : null,
+        exp.frac === null ? null : (exp.live
+          ? pct(exp.frac, 1) + ' of your bankroll'
+          : pct(exp.frac, 1) + ' of your cash'));
       // The ceiling nobody has in mind. A round can stake four times the opener under
       // these rules, and the measured multiplier of about 1.1 is why that is a surprise.
       stat(g, 'worst case', money(exp.worst), exp.worstFrac > 0.5 ? 'down' : null,

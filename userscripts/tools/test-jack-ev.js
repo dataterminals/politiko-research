@@ -952,15 +952,32 @@ console.log('\n— what a bet actually puts at risk —');
   // The hand that made the case. Round 988 of a real 109-round session: $200,000 in, and
   // $181,755 left in cash, so the bet was 52.4% of everything on hand. The panel priced
   // the decision to three decimals and said nothing about this.
-  const e = E.exposure({ bet: 200000, cash: 181755 });
-  check('the bankroll counts the money already on the table', e.bankroll, 381755);
+  const e = E.exposure({ bet: 200000, cash: 181755, live: true });
+  check('a LIVE bet counts the money already on the table', e.bankroll, 381755);
   near('...so the bet is over half of it', e.frac, 200000 / 381755, 1e-12);
   check('the worst case is four times the opener, not the opener', e.worst, 800000);
   check('...which is more than the bankroll', e.worstFrac > 1, true);
   check('cash covers no more bets that size', e.covers, 0);
 
+  // Between rounds the stake is NOT on the table any more, and adding it back counts it
+  // twice. 0.9.0 did, which happened to look right after a loss — cash plus the lost stake
+  // really is what you had a moment ago — and was wrong after a win, where the winnings
+  // are already in cash and the stake goes on top. Found by a real session that ended at
+  // $55, where the old reading called a $100 bet 64% of a bankroll that no longer existed.
+  const after = E.exposure({ bet: 100, cash: 55 });
+  check('between rounds the bankroll is simply your cash', after.bankroll, 55);
+  check('...so a bet you cannot afford reads as over 100%', after.frac > 1, true);
+  near('...specifically 182%', after.frac, 100 / 55, 1e-12);
+  check('...and covers says the same thing the other way', after.covers, 0);
+  check('the two readings genuinely differ, which is why `live` had to exist',
+    E.exposure({ bet: 100, cash: 55, live: true }).frac !== after.frac, true);
+  near('...the live one being the retrospective question',
+    E.exposure({ bet: 100, cash: 55, live: true }).frac, 100 / 155, 1e-12);
+  check('the flag is reported so a reader knows which question was answered',
+    [after.live, E.exposure({ bet: 100, cash: 55, live: true }).live], [false, true]);
+
   // A sane bet, for contrast, and to show `covers` is doing real division.
-  const s = E.exposure({ bet: 20000, cash: 380000 });
+  const s = E.exposure({ bet: 20000, cash: 380000, live: true });
   near('a 5% bet reads as one', s.frac, 20000 / 400000, 1e-12);
   check('...and the cash behind it covers nineteen more', s.covers, 19);
 
@@ -968,7 +985,7 @@ console.log('\n— what a bet actually puts at risk —');
   check('...nor a zero one', E.exposure({ bet: 0, cash: 100 }), null);
   check('...nor an unknown cash', E.exposure({ bet: 100, cash: null }), null);
   check('broke, with a bet still live, is a real state and not an error',
-    E.exposure({ bet: 100, cash: 0 }).covers, 0);
+    E.exposure({ bet: 100, cash: 0, live: true }).covers, 0);
 
   // The two things this must never grow. Both are refusals with arguments behind them:
   // Kelly is zero at a negative edge so any recommendation is fiction, and the per-round
