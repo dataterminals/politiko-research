@@ -524,6 +524,55 @@ weather of fifty-one rounds, and `jack-watch` 0.3.0 says so on the MONEY tab, be
 panel that shows you a five-figure win and no sense of scale is inviting the wrong
 conclusion.
 
+### The one press that cost real money — added 2026-09-06
+
+A second ledger, 41 rounds on corporation 30, read straight out of `pkbj:data`. Net
+**−$449,208** on $2,802,208 staked, which is a realized edge of −16.0% and looks like a
+disaster. It is **0.84 standard deviations** below what the computed edge expects
+(−$11,378 at 0.4593% on $2,477,208 of opening bets; one sd on this run is about
+$519,000). Fourteen wins, four pushes, twenty-three losses, one natural. Ordinary weather
+again, in the other direction.
+
+The decisions are the interesting half. Replayed from the cards — dropping the split, two
+dealer naturals and one player natural, as `replayHand` does — **51 of 52 matched the
+maximum**. The single deviation:
+
+| hand | cards | dealer | played | maximum | bet |
+|------|-------|--------|--------|---------|-----|
+| 617 | `5C 6D` (11) | `10S` | stand | double | $100,000 |
+
+Priced against a fresh six-deck shoe: double +0.180, hit +0.119, **stand −0.540**. The gap
+from the best button to the pressed one is **0.720 units, about $72,000** — six times the
+entire expected house take of the session, given up on one press. Everything else in the
+ledger is variance; this is not.
+
+### Why the cost of a press is printed and not tiered
+
+`jack-watch` 0.6.0 puts that number in HAND, next to the recommendation, and marks the
+worst button in the action table. It was going to escalate a colour above a threshold, and
+that was measured before it shipped, over **every opening deal weighted by how often it is
+dealt**:
+
+| statistic | loud ≥ 0.6 | middle | quiet < 0.15 |
+|-----------|-----------|--------|--------------|
+| best-to-worst | **45.7%** | 53.9% | 0.5% |
+| second-best-to-worst | 24.2% | 62.4% | 13.5% |
+
+Weighted quantiles of best-to-worst: p50 0.561, p75 0.843, **p90 2.021**, p95 2.360.
+
+Two things kill the idea. Best-to-worst fires on nearly half of all hands, and the jump
+between p75 and p90 is **pat hands** — the top decile is not close calls, it is "you could
+hit this twenty", which nobody does. Raising the line to make loud rare therefore makes it
+fire *only* on the hands that are never misplayed. And the obvious fix fails from the other
+end: second-best-to-worst puts hand 617, the most expensive press in the ledger, at roughly
+the 80th percentile — unremarkable.
+
+Neither statistic isolates the hands people actually get wrong, and on reflection neither
+can: **whether a button is tempting is a property of the player, not of the cards**, and
+nothing on this surface sees the player. So the loudness is structural instead of
+conditional — the worst press is named every time, in dollars, and the digits carry the
+alarm. $720 does not need red to read as small.
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count

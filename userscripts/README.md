@@ -1740,14 +1740,37 @@ hands with its total (and whether it is soft), whose turn it is, and — the poi
 
 ```
 STAND
+DOUBLE gives up $45,400 — the worst press here
 +0.284 per $1 staked   vs   HIT −0.312 · DOUBLE −0.624
 ```
+
+The middle line is the one 0.6.0 added, and it exists because a real ledger produced an
+eleven against a ten that got **stood** on a $100,000 bet — 0.720 units, about $72,000,
+six times the entire expected house take of that session, given up on one press. The right
+action was on screen the whole time. What was missing beside it was the size of the
+mistake, so the worst button on the menu is now named and priced, and it is the row the
+action table marks in red.
+
+It is printed on **every** solved hand rather than above a threshold, and that is a
+measured decision rather than a shrug. Tiering the loudness on the gap was tried first:
+over every opening deal, weighted by how often it is dealt, best-to-worst clears 0.6 on
+45.7% of hands, and its top decile is not close calls but **pat hands** — where the
+"mistake" being priced is hitting a twenty. Raising the line to make loud rare makes it
+fire only where nobody misplays. The alternative reading fails from the other end:
+second-best-to-worst puts the eleven that started this at about the 80th percentile,
+unremarkable. Neither isolates the hands people actually get wrong, and neither can —
+whether a button is tempting is a property of the player, and nothing on this surface sees
+one. So the loudness is structural: name the worst press every time, and let the digits
+carry the alarm. The table is in [`docs/19`](../docs/19-casino-blackjack-surface.md).
 
 Underneath: the chance the next card busts you, the chance the dealer busts, and the
 win/push/lose split if you stand. All of those are exact off the stated rules; nothing there
 is sampled and nothing is a forecast. Only actions the table itself offered are priced —
 the list comes from the server's own `allowed_actions`, so the tool can never recommend
-something the table would refuse.
+something the table would refuse. That is also what "gives up" is measured against: each
+row against the best button **actually in front of you**, so the pick gives up nothing by
+definition. A large figure there means money rides on the press, not that the decision is
+close — how close it is, is two rows sitting a thousandth apart.
 
 When there is no hand in progress it shows the last receipt and the three things that
 decide whether DEAL will even light up: free dealers, your cash, and the largest bet the

@@ -57,7 +57,7 @@ const E = new Function(`${SRC.slice(i, j)}
            doubleEV, splitEV, solve, roundEV, gridOf, countOf, shoeState, isHand,
            isSettled, netOf, slimHand, mergeHand, above, rollup, mean, stdev,
            roundReturns, replayHand, upOf, decisionRoll, plan, betBounds,
-           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation };`)();
+           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation, pressCost };`)();
 
 let fail = 0;
 const check = (label, got, want) => {
@@ -621,6 +621,35 @@ console.log('\n— a mark hides money and never deletes it —');
   const l = [{ id: 3 }, { id: 2 }, { id: 1 }];
   check('a floor keeps what is above it', E.above(l, 1).map((h) => h.id), [3, 2]);
   check('...and no floor keeps everything', E.above(l, null).map((h) => h.id), [3, 2, 1]);
+}
+
+console.log('\n— naming the worst press —');
+{
+  check('one button is not a decision', E.pressCost({ hit: -0.2 }, 100), null);
+  check('...and no buttons even less so', E.pressCost({}, 100), null);
+
+  // The hand this exists for: an eleven against a ten, stood, in a real ledger. Doubling
+  // is best and hitting is a rounding error behind it, so the expensive press is neither
+  // of those — it is the third button on the menu, and naming it is the whole job. Any
+  // reading built on best-to-second-best calls this hand unremarkable, which is why the
+  // panel does not use one.
+  const s = E.solve(['5C', '6D'], 9, E.freshShoe(), ['hit', 'stand', 'double']);
+  const c = E.pressCost(s.ev, 100000);
+  check('the best press is to double', c.best, 'double');
+  check('...and the worst is not the runner-up', c.worst, 'stand');
+  near('...the gap is the whole menu, best to worst', c.gap, 0.7201231899404061, 1e-9);
+  near('...priced at the size actually on the hand', c.cash, 72012.31899404062, 1e-6);
+  const rank = Object.values(s.ev).sort((x, y) => y - x);
+  near('...while best to second-best is a rounding error beside it',
+    rank[0] - rank[1], 0.0609, 1e-3);
+
+  // And the other end: on a pat hand the worst button is the obvious one, which is why
+  // marking it costs nothing and thresholding it would have shouted on half the deals.
+  const pat = E.solve(['KS', 'QH'], 5, E.freshShoe(), ['hit', 'stand']);
+  check('on a twenty the trap is hitting it', E.pressCost(pat.ev, 1000).worst, 'hit');
+
+  check('no stake, no cash figure', E.pressCost(s.ev, null).cash, null);
+  check('...but the gap survives it', E.pressCost(s.ev, null).gap > 0, true);
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

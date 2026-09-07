@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.5.0
+// @version      0.6.0
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -67,7 +67,11 @@
  *             panel to one sitting, and panel state.
  *
  *   Alerts:   none. No notifications, no sound, no title or favicon writes, nothing raised
- *             from an unfocused tab. The panel is in-page and that is all.
+ *             from an unfocused tab. The panel is in-page and that is all — including the
+ *             loudest thing in it, which is HAND naming the worst button on the menu and
+ *             what pressing it gives up. That is drawn on every solved hand rather than
+ *             above some threshold, so it never fires and never stops firing; it is a
+ *             repaint of a panel you are already looking at, nothing more.
  *
  *   Clipboard: written ONLY when you click "copy".
  *
@@ -473,6 +477,43 @@
       odds: standOdds(h.best, dd),
       dealerBust: dd.p[5],
     };
+  };
+
+  // --- what a press is worth getting right ----------------------------------
+  //
+  // The best action on the menu, the WORST one, and the distance between them per $1
+  // already on the hand. The hand that produced this function was an eleven against a ten
+  // that got STOOD: 0.720 units on a $100k bet, about $72,000, the most expensive press in
+  // a 41-hand ledger. The right action was on screen the whole time. What was missing
+  // beside it was the size of the mistake, so this returns that, and HAND prints it.
+  //
+  // There is deliberately no threshold here, and the reason is worth keeping because the
+  // obvious design does not survive being measured. Tiering the panel's loudness on this
+  // gap — shout above some number, stay quiet below it — was tried first and dropped:
+  // over every opening deal, weighted by how often it is actually dealt, best-to-worst
+  // clears 0.6 on 45.7% of hands, and its top decile is not close calls at all but pat
+  // hands, where the "mistake" being priced is hitting a twenty. Shouting on half the
+  // hands, most loudly at the ones nobody misplays, is a colour you stop seeing. The
+  // alternative statistic fails from the other end: second-best-to-worst puts the eleven
+  // that started this at about the 80th percentile, unremarkable. Neither isolates the
+  // hands people get wrong, because whether a button is tempting is not a property of the
+  // cards — it is a property of the person, and this tool cannot see one. The table is in
+  // docs/19-casino-blackjack-surface.md.
+  //
+  // So the loudness is structural rather than conditional: name the worst button, every
+  // time, and let a figure in dollars be as alarming as the figure actually is. $720 does
+  // not need red to read as small, and $72,012 does not need red to read as large.
+  const pressCost = (ev, stake) => {
+    const keys = Object.keys(ev || {}).filter((a) => num(ev[a]) !== null);
+    if (keys.length < 2) return null;          // one button, or none, is not a decision
+    let best = keys[0], worst = keys[0];
+    for (const a of keys) {
+      if (ev[a] > ev[best]) best = a;
+      if (ev[a] < ev[worst]) worst = a;
+    }
+    const gap = ev[best] - ev[worst];
+    const s = num(stake);
+    return { best, worst, gap, cash: s === null ? null : gap * s };
   };
 
   // --- the whole table ------------------------------------------------------
@@ -1536,6 +1577,13 @@
                  margin-bottom: 8px; }
     .pkbj-pick b { font-size: 15px; color: #fde68a; letter-spacing: .08em; }
     .pkbj-pick .why { display: block; margin-top: 2px; font-size: 10px; color: #a1a1aa; }
+    /* The price of getting it wrong. The right action was always on this screen; what was
+       missing beside it was the magnitude, so a hand with $720 riding on the press and one
+       with $72,012 riding on it read exactly alike until you did the subtraction yourself.
+       One weight, not three: the digits carry the alarm, and the engine note above records
+       what happened when the loudness was tiered on the gap instead. */
+    .pkbj-pick .cost { display: block; margin-top: 3px; font-size: 12px;
+                       color: #fca5a5; font-variant-numeric: tabular-nums; }
 
     .pkbj-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
                 margin-bottom: 9px; }
@@ -1587,6 +1635,10 @@
     .pkbj-tbl col.c-d { width: 15%; } .pkbj-tbl col.c-e { width: 18%; }
     .pkbj-tbl td.up { color: #4ade80; } .pkbj-tbl td.down { color: #f87171; }
     .pkbj-tbl tr.live td:first-child { color: #fbbf24; }
+    /* The button that costs the most. Marked every time rather than above a threshold —
+       it is the one press this panel exists to stop, and it is never ambiguous. */
+    .pkbj-tbl tr.worst td { background: #2a1215; }
+    .pkbj-tbl tr.worst td:first-child { color: #fca5a5; }
 
     /* The strategy grid: eleven columns of one character each, which is the one
        shape that stays legible when the panel is a margin. */
@@ -2162,12 +2214,27 @@
     const i = num(h.cur) ?? 0;
     const mine = (h.hands || [])[i];
     const s = mine ? solve(mine.cards, up, v.comp, h.allowed) : null;
+    // Solved once and read twice: the headline under the recommendation, and the row it
+    // marks in the table further down. It lives out here rather than beside the first of
+    // those because the second is in a different block, and a const that is not is a
+    // ReferenceError that takes the whole action table down with it.
+    const cost = s ? pressCost(s.ev, mine && mine.stake) : null;
 
     // The recommendation, and the price of the alternatives. This is the only loud
     // thing in the panel because it is the only time-critical one.
     if (s && s.pick) {
       const box = el('div', 'pkbj-pick');
       box.append(el('b', null, WORD[s.pick] || s.pick.toUpperCase()));
+      // The magnitude, and the button it belongs to, directly under the action and above
+      // the per-dollar detail — at the table this is read in about that order and often
+      // only that far. Naming the worst press is the point: "up to" is a ceiling, and a
+      // ceiling with no name attached is the thing you have to go and work out yourself.
+      if (cost) {
+        const worst = WORD[cost.worst] || cost.worst;
+        box.append(el('span', 'cost', cost.cash === null
+          ? `${worst} costs ${ev(-cost.gap)} per $1 staked — the worst press here`
+          : `${worst} gives up ${money(cost.cash)} — the worst press here`));
+      }
       const rest = Object.keys(s.ev).filter((a) => a !== s.pick)
         .sort((a, b) => s.ev[b] - s.ev[a])
         .map((a) => `${WORD[a] || a} ${ev(s.ev[a])}`).join('  ·  ');
@@ -2200,20 +2267,30 @@
       t.append(cols);
       const thead = el('thead');
       const hr = el('tr');
-      for (const k of ['action', 'ev / $1', 'on this hand', '']) hr.append(el('th', null, k));
+      for (const k of ['action', 'ev / $1', 'on this hand', 'gives up']) hr.append(el('th', null, k));
       thead.append(hr);
       t.append(thead);
       const tb = el('tbody');
+      const top = Math.max(...Object.keys(s.ev).map((a) => s.ev[a]));
       for (const a of Object.keys(s.ev).sort((x, y) => s.ev[y] - s.ev[x])) {
-        const tr = el('tr');
+        // The pick keeps its mark by colouring the row rather than by a glyph in a column
+        // of its own: that column was 16% of a panel that lives in a margin, spent on
+        // repeating what the 15px word directly above already said, and it is now
+        // carrying the number this view did not have. The worst row is marked too, and
+        // that is the loud half — the pick tells you where to go, this tells you what
+        // not to touch, and only the second one has ever cost real money here.
+        const tr = el('tr', a === s.pick ? 'live' : (cost && a === cost.worst ? 'worst' : null));
         tr.append(el('td', null, WORD[a] || a));
         const e = s.ev[a];
         const c1 = el('td', e >= 0 ? 'up' : 'down', ev(e));
         tr.append(c1);
-        const cash = num(mine && mine.stake) === null ? null : e * mine.stake;
+        const stake = num(mine && mine.stake);
+        const cash = stake === null ? null : e * mine.stake;
         tr.append(el('td', cash === null ? null : (cash >= 0 ? 'up' : 'down'),
           cash === null ? '—' : signed(cash)));
-        tr.append(el('td', null, a === s.pick ? '◀' : ''));
+        const give = top - e;
+        tr.append(el('td', give > 0 ? 'down' : null,
+          give <= 0 ? '—' : (stake === null ? ev(-give) : '−' + money(give * stake))));
         tb.append(tr);
       }
       t.append(tb);
@@ -2228,8 +2305,12 @@
     body.append(el('div', 'pkbj-note',
       'EV is per dollar already on this hand, so DOUBLE and SPLIT can exceed ±1 — they stake '
       + 'more. Only actions the table itself offered are priced; the list comes from the '
-      + 'server. Two approximations, both in docs/19: the dealer distribution is held fixed '
-      + 'while your own draws are enumerated, and a split is priced as twice one hand.'));
+      + 'server — so "gives up" measures each row against the best button actually in front '
+      + 'of you, the pick gives up nothing by definition, and the figure above the cards is '
+      + 'the worst row here. A large one means money rides on the press, not that the '
+      + 'decision is close: how close it is, is two rows sitting a thousandth apart. Two '
+      + 'approximations, both in docs/19: the dealer distribution is held fixed while your '
+      + 'own draws are enumerated, and a split is priced as twice one hand.'));
   };
 
   const renderCount = (v) => {
