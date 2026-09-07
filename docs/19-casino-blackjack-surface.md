@@ -573,6 +573,60 @@ nothing on this surface sees the player. So the loudness is structural instead o
 conditional — the worst press is named every time, in dollars, and the digits carry the
 alarm. $720 does not need red to read as small.
 
+### The blind spot the flat export could not show — added 2026-09-06
+
+Reviewing what the ledger actually retains turned up a hole that had been there since the
+decision replay was written, and it is not a small one.
+
+**`replayHand` refuses splits outright.** Which half of a split took which card is not on
+the wire, so the walk cannot be done and the round is dropped. That is the correct
+behaviour — guessing would be worse — but the consequence had never been stated: a split
+round contributes **zero** decisions, and in an export that only records decisions it is
+indistinguishable from a round played perfectly. The decision rate reads as though those
+rounds went fine. Nobody looked at them.
+
+Splits are also where the expensive mistakes live, which makes this the worst possible
+place for a silent absence.
+
+Three shapes are excluded, not one — a dealer natural, your own natural, and a split — and
+only the split is a real blind spot. The two naturals are rounds where there was genuinely
+nothing to decide. So as of 0.7.0 the gate is `replayNote`, which returns the **reason**
+rather than a bare refusal, and `replayHand` runs on it rather than keeping its own copy of
+the list. The export prints the reason per round. An absence that names itself is a
+finding; an absence that does not is a lie by omission.
+
+### Why the second export button is JSON and not more columns
+
+The obvious response to "keep more" is a wider TSV. It does not work, and the reason is
+structural rather than a matter of taste.
+
+A split round holds two hands. Each has its own cards, its own stake and its own outcome.
+A flat row has one cell per column, so the existing export joins the hands with a pipe and
+drops the per-half money on the floor — at **any** width. Adding columns cannot fix a
+one-to-many relationship; it can only pick a fixed number of halves and hope.
+
+A double after a split is the cleanest demonstration, and it is legal at this table. The
+two halves then carry different stakes — one at twice the other — and there is no flat
+row that says so.
+
+So `copy` keeps doing exactly what it did, because a flat table is genuinely the right
+shape for eyeballing a run in a spreadsheet, and **`copy+`** emits JSON for the nested
+questions. Three things live only in the second one:
+
+| | why it cannot be a column |
+|---|---|
+| both halves of a split, with stakes and outcomes | one-to-many |
+| `allowed`, the menu the server offered | a list, and the replay only ever *assumed* one |
+| `no_decisions`, the reason a round has none | it did not exist before 0.7.0 |
+
+The second of those is worth its own line. The replay **synthesises** the action menu from
+the rules — hit and stand always, double on the first decision, split on a pair — and
+nothing has ever compared that to what the table really offered. A double the house would
+not have covered would be scored as a mistake that was never available to make. The store
+has had the real `allowed` array all along; nothing was reading it. Exporting both is what
+makes the check possible, and it is the sort of thing that only turns up when you ask what
+is being thrown away.
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count

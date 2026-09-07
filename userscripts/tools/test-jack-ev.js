@@ -57,7 +57,7 @@ const E = new Function(`${SRC.slice(i, j)}
            doubleEV, splitEV, solve, roundEV, gridOf, countOf, shoeState, isHand,
            isSettled, netOf, slimHand, mergeHand, above, rollup, mean, stdev,
            roundReturns, replayHand, upOf, decisionRoll, plan, betBounds,
-           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation, pressCost };`)();
+           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation, pressCost, replayNote, exportBundle };`)();
 
 let fail = 0;
 const check = (label, got, want) => {
@@ -650,6 +650,108 @@ console.log('\n— naming the worst press —');
 
   check('no stake, no cash figure', E.pressCost(s.ev, null).cash, null);
   check('...but the gap survives it', E.pressCost(s.ev, null).gap > 0, true);
+}
+
+console.log('\n— why a round carries no decisions —');
+{
+  const settled = (o) => Object.assign({ id: 1, status: 'settled', open: 100, total: 100 }, o);
+
+  // The gate replayHand runs on, asked as a question. Every branch, because the export
+  // prints this string and a wrong one is a wrong claim about how you played.
+  check('an unsettled round is named as such',
+    E.replayNote(settled({ status: 'player_turn' })), 'unsettled');
+  check('a split is named, and is the reason splits are invisible',
+    E.replayNote(settled({ dealer: ['9H', '7C'], hands: [{ cards: ['8S', '5D'] }, { cards: ['8H', '2C'] }] })),
+    'split');
+  check('a dealer natural: you never got to act',
+    E.replayNote(settled({ dealer: ['AS', 'KD'], hands: [{ cards: ['9S', '7D'] }] })),
+    'dealer natural');
+  check('your own natural: there was nothing to decide',
+    E.replayNote(settled({ dealer: ['9H', '7C'], hands: [{ cards: ['AS', 'KD'] }] })),
+    'player natural');
+  check('no bet, no priced decision',
+    E.replayNote(settled({ dealer: ['9H', '7C'], hands: [{ cards: ['8S', '5D'] }], open: 0, total: 0 })),
+    'no bet');
+  check('...and a round that DOES carry decisions says nothing',
+    E.replayNote(settled({ dealer: ['9H', '7C'], hands: [{ cards: ['8S', '5D'] }] })), null);
+
+  // The load-bearing property: the note and the walk agree. Two copies of a bail list is
+  // the bug this function exists to prevent, so assert they never disagree rather than
+  // asserting either one in isolation.
+  const cases = [
+    settled({ status: 'player_turn' }),
+    settled({ dealer: ['AS', 'KD'], hands: [{ cards: ['9S', '7D'] }] }),
+    settled({ dealer: ['9H', '7C'], hands: [{ cards: ['AS', 'KD'] }] }),
+    settled({ dealer: ['9H', '7C'], hands: [{ cards: ['8S', '5D'] }, { cards: ['8H', '2C'] }] }),
+    settled({ dealer: ['9H', '7C'], hands: [{ cards: ['8S', '5D'] }] }),
+    settled({ dealer: ['TS', '6D'], hands: [{ cards: ['5C', '6D', '9H'] }], total: 200 }),
+  ];
+  check('a note always means no decisions, and no note always means some',
+    cases.every((h) => (E.replayNote(h) === null) === (E.replayHand(h).length > 0)), true);
+}
+
+console.log('\n— the export carries what a flat row cannot —');
+{
+  const rounds = [
+    // A split: two hands, two stakes, two outcomes. This is the shape the TSV loses.
+    { id: 7, status: 'settled', seen: 1000, open: 100, total: 200, gross: 300, tax: 0, net: 300,
+      outcome: 'win', allowed: [], cur: 1, dealer: ['9H', '7C'],
+      hands: [{ cards: ['8S', '5D'], stake: 100, outcome: 'win', status: 'settled' },
+              { cards: ['8H', '2C', '9D'], stake: 100, outcome: 'lose', status: 'settled' }] },
+    // An ordinary round that DID produce decisions.
+    { id: 6, status: 'settled', seen: 900, open: 100, total: 100, gross: 0, tax: 0, net: 0,
+      outcome: 'lose', allowed: ['hit', 'stand'], cur: 0, dealer: ['TS', '6D'],
+      hands: [{ cards: ['9S', '7D'], stake: 100, outcome: 'lose', status: 'settled' }] },
+  ];
+  const b = E.exportBundle({
+    tool: 'jack-watch test', at: 0, id: '30', list: rounds, held: 9, hidden: 7, floor: 5,
+    cfg: { blackjack_min_bet: 10 }, edge: 0.004593, drag: 0, effEdge: 0.004593,
+    shoe: { cards: 40, hidden: 2, breaks: [3], segments: 2 },
+    roll: { net: 300 }, luck: null,
+    decisions: E.replayHand(rounds[1]).map((d) => Object.assign({}, d, { id: 6 })),
+  });
+
+  check('it is stamped with a format and a version', [b.format, b.version],
+    ['jack-watch/round-ledger', 1]);
+  check('...and with the build that wrote it', b.tool, 'jack-watch test');
+  check('the scope says how much was left out by the mark',
+    [b.scope.rounds_exported, b.scope.rounds_held, b.scope.hidden_by_mark, b.scope.mark],
+    [2, 9, 7, 5]);
+
+  const split = b.rounds[0];
+  check('a split round is flagged as one', split.split, true);
+  check('...and keeps BOTH hands rather than joining them',
+    split.hands.map((h) => h.cards.join(' ')), ['8S 5D', '8H 2C 9D']);
+  check('...with each half\'s own stake', split.hands.map((h) => h.stake), [100, 100]);
+  check('...and each half\'s own outcome', split.hands.map((h) => h.outcome), ['win', 'lose']);
+  check('...and it says why it contributed no decisions', split.no_decisions, 'split');
+  check('...which is not the same as having none silently', split.decisions, null);
+
+  const plain = b.rounds[1];
+  check('an ordinary round carries its decisions', plain.decisions.length > 0, true);
+  check('...numbered so the order survives a spreadsheet',
+    plain.decisions.map((d) => d.step), plain.decisions.map((_, i) => i + 1));
+  check('...naming what was played and what was maximum',
+    [plain.decisions[0].played, plain.decisions[0].maximum], ['stand', 'stand']);
+  check('...and no reason, because it has decisions', plain.no_decisions, null);
+  check('the menu the SERVER offered is kept, not the one replay assumes',
+    plain.allowed_at_last_sighting, ['hit', 'stand']);
+
+  check('the proven reshuffles survive, being the one thing cards cannot rebuild',
+    b.shoe.proven_reshuffles, [3]);
+  check('the limits are stated in the file itself', b.limits.length >= 4, true);
+  check('...and name the split hole by name',
+    b.limits.some((l) => /split/i.test(l)), true);
+  check('...and that decisions are replayed rather than watched',
+    b.limits.some((l) => /never observed|REPLAYED/i.test(l)), true);
+
+  // It is a serialiser. Handed nothing, it must still produce a valid, honest envelope
+  // rather than throw on a fresh install with an empty table.
+  const empty = E.exportBundle({});
+  check('an empty ledger exports an envelope, not an exception', empty.rounds, []);
+  check('...and still says what it is', empty.format, 'jack-watch/round-ledger');
+  check('the whole thing survives a JSON round trip',
+    JSON.parse(JSON.stringify(b)).rounds[0].hands[1].cards.join(' '), '8H 2C 9D');
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

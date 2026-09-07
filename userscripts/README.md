@@ -1823,6 +1823,34 @@ doubled $25,000 one are the same row, and the staking multiplier cannot be check
 the rows it came from. Without the cards the shoe question cannot be asked at all — the
 sighting test is per exact code, so an export with no suits has nothing in it to test.
 
+Beside it since 0.7.0 is **copy+**, which writes JSON. The split between the two is not
+terse against verbose — it is a **shape** problem, and the shape is the split. A round where
+you split holds two hands, each with its own cards, its own stake and its own outcome, and
+a flat row cannot carry that at any width: the TSV joins the hands with a pipe and drops the
+per-half money entirely. So the second button emits the thing that is actually nested.
+
+Three things are in it that the TSV structurally cannot hold:
+
+- **Both halves of a split**, with their own stakes and outcomes. Given that the decision
+  replay refuses splits outright, this is currently the only way to ask anything at all
+  about them — how often, how much, how they landed. A double after a split makes the point
+  on its own: the two halves then carry *different* stakes.
+- **`allowed`, the menu the server actually offered.** The replay *synthesises* a menu from
+  the rules — hit and stand always, double on the first decision, split on a pair — and
+  nothing has ever checked that against what the table really put in front of you. A double
+  the house would not have covered is currently scored as a mistake you never had the
+  chance to make. Exporting both is what makes them comparable.
+- **`no_decisions`**, the reason a round contributed none. In the TSV a round excluded for a
+  split and a round played perfectly are the same absence, and they are not the same thing.
+  The reasons come from `replayNote`, which is the same gate `replayHand` runs on rather
+  than a second copy of it — `test-jack-passive` fails the build if the two ever part ways.
+
+It also carries the replayed decisions themselves, so an analysis does not have to
+reimplement the solver, and the proven reshuffle points, which are the one piece of shoe
+state the cards alone cannot rebuild. It is the jack-watch section of
+[`tools/collect-stores.js`](../tools/collect-stores.js) behind a button — which means the
+export worth having most often no longer needs the DevTools console at all.
+
 ## The count, and why it comes with a warning label
 
 Six decks and a card-by-card record is the setup for a running count, and the count

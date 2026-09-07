@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.6.0
+// @version      0.7.0
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -73,7 +73,12 @@
  *             above some threshold, so it never fires and never stops firing; it is a
  *             repaint of a panel you are already looking at, nothing more.
  *
- *   Clipboard: written ONLY when you click "copy".
+ *   Clipboard: written ONLY when you click one of the two buttons in LOG that say so.
+ *             "copy" writes the ledger as TSV. "copy+" writes the same rounds as JSON,
+ *             with the split hands kept nested, the action menu the server offered, the
+ *             replayed decisions, and the reason any round has none. Both are the rounds
+ *             already on your screen; neither adds a request, and nothing is transmitted
+ *             anywhere — the clipboard is where it stops.
  *
  * Design rule for this repo: consume, don't request. See docs/01-rules-envelope.md.
  * Every field name and every rule below was measured off
@@ -141,6 +146,12 @@
 
   const TAG = '[pk-jack-watch]';
   const log = (...a) => console.debug(TAG, ...a);
+
+  // Stamped into the JSON export so a bundle pasted somewhere months later still says
+  // which build produced it. Deliberately outside the engine markers below: the engine is
+  // lifted whole by tools/test-jack-ev.js and must reference nothing it was not handed,
+  // so exportBundle takes this as an argument rather than reaching for it.
+  const SCRIPT_VERSION = '0.7.0';
 
   const K = { data: 'pkbj:data', ui: 'pkbj:ui' };
 
@@ -868,18 +879,36 @@
   // those three cards have just made ten-rich, and standing it can price higher than
   // hitting it — a real result, not a bug, and why the panel says you played the MAX
   // rather than that you played it by the book.
-  const replayHand = (h) => {
-    if (!h || h.status !== 'settled') return [];
+  // Why a round carries no decisions, or null if it carries some. This is the gate
+  // `replayHand` runs on, lifted out so it can be asked as a question rather than only
+  // acted on — the export prints the reason per round, and a round that contributes
+  // nothing to the decision ledger stops being indistinguishable from one that was
+  // played perfectly. It is the same list of conditions in the same order, in one place,
+  // because two copies of a bail list are two answers waiting to disagree.
+  //
+  // `split` is the one worth staring at. Which half of a split took which card is not on
+  // the wire, so the replay cannot walk it — and splits are where the expensive mistakes
+  // live. A ledger that silently omits them reads as "you played fine" when the truth is
+  // "nobody looked". Naming the reason is what makes that visible in an export.
+  const replayNote = (h) => {
+    if (!h || h.status !== 'settled') return 'unsettled';
     const hands = h.hands || [];
-    if (hands.length !== 1) return [];                 // a split cannot be replayed
+    if (hands.length !== 1) return 'split';            // a split cannot be replayed
     const cards = (hands[0].cards || []).filter((c) => rankOf(c) !== null);
-    if (cards.length < 2) return [];
-    const up = upOf(h);
-    if (up === null) return [];
-    if (handOf(h.dealer || []).natural) return [];     // you never got to act
-    if (handOf(cards.slice(0, 2)).natural) return [];  // nothing to decide
+    if (cards.length < 2) return 'no cards';
+    if (upOf(h) === null) return 'no up card';
+    if (handOf(h.dealer || []).natural) return 'dealer natural';   // you never got to act
+    if (handOf(cards.slice(0, 2)).natural) return 'player natural'; // nothing to decide
     const bet = num(h.open) ?? num(h.total);
-    if (bet === null || bet <= 0) return [];
+    if (bet === null || bet <= 0) return 'no bet';
+    return null;
+  };
+
+  const replayHand = (h) => {
+    if (replayNote(h)) return [];
+    const cards = (h.hands[0].cards || []).filter((c) => rankOf(c) !== null);
+    const up = upOf(h);
+    const bet = num(h.open) ?? num(h.total);
     // A double takes exactly one card, so it is the only way to stake twice the bet on a
     // three-card hand. Splits are already gone above, which is what makes that unambiguous.
     const doubled = num(h.total) === 2 * bet && cards.length === 3;
@@ -1033,6 +1062,117 @@
     if (hi === lo) { const pad = Math.max(1, Math.abs(hi) * 0.02); lo -= pad; hi += pad; }
     else { const pad = (hi - lo) * 0.08; lo -= pad; hi += pad; }
     return { lo, hi };
+  };
+
+  // --- the export, in full --------------------------------------------------
+  //
+  // `copy` puts a flat TSV on the clipboard and is the right shape for eyeballing a run
+  // in a spreadsheet. This is the other half, and the split between them is not
+  // terse-versus-verbose — it is a shape problem. A round with a split holds TWO hands,
+  // each with its own cards, its own stake and its own outcome, and a flat row cannot
+  // carry that: the TSV joins the hands with a pipe and drops the per-half money on the
+  // floor. So the second button emits JSON, because the thing being exported is nested.
+  //
+  // What is here that the TSV cannot have:
+  //
+  //   Per-hand stake and outcome, so a split stops being one blurred row. Given that the
+  //   decision replay refuses splits outright, this is currently the ONLY way to ask
+  //   anything at all about them — how often, how much, how they landed.
+  //
+  //   `allowed`, the menu the server actually offered. The replay SYNTHESISES a menu from
+  //   the rules (hit and stand always, double on the first decision, split on a pair), and
+  //   nothing has ever checked that against what the table really put in front of you. A
+  //   double the house would not have covered would be scored as a mistake you never had
+  //   the chance to make. Exporting both is what makes the two comparable.
+  //
+  //   `decisions`, so an analysis does not have to reimplement the solver to see the
+  //   answers this panel already computed — and `no_decisions`, which says WHY a round
+  //   contributed none. A round excluded for a split and a round played perfectly are the
+  //   same absence in the old export, and they are not the same thing.
+  //
+  //   The proven reshuffle points. Everything else about the shoe is recomputable from the
+  //   cards, which are all here in dealing order, but the seventh-sighting proof is the
+  //   one piece of state that took a whole ledger to establish.
+  //
+  // Nothing is derived here that the panel does not already derive for itself; this is a
+  // serialiser, not a second engine.
+  const exportBundle = (o) => {
+    const list = o.list || [];
+    const byRound = new Map();
+    for (const d of o.decisions || []) {
+      if (!byRound.has(d.id)) byRound.set(d.id, []);
+      byRound.get(d.id).push({
+        step: byRound.get(d.id).length + 1,
+        played: d.act, maximum: d.want, ev: d.ev, bestEV: d.bestEV,
+        gap: num(d.bestEV) === null || num(d.ev) === null ? null : d.bestEV - d.ev,
+        cost: d.cost, stake: d.stake,
+      });
+    }
+    return {
+      format: 'jack-watch/round-ledger',
+      version: 1,
+      // Handed in rather than read off a constant: the engine is lifted whole by
+      // tools/test-jack-ev.js and has to reference nothing it was not given.
+      tool: typeof o.tool === 'string' ? o.tool : 'jack-watch',
+      collected_at: new Date(num(o.at) ?? Date.now()).toISOString(),
+      scope: {
+        corporation: o.id ?? null,
+        rounds_exported: list.length,
+        rounds_held: num(o.held) ?? null,
+        hidden_by_mark: num(o.hidden) ?? null,
+        mark: num(o.floor),
+      },
+      rules: {
+        decks: RULES.decks, blackjack_pays: 1.5, dealer_stands_soft_17: true,
+        double_after_split: true, splits_allowed: 1, split_aces_one_card: true,
+        dealer_peeks: true, insurance: false, surrender: false,
+      },
+      table: o.cfg || null,
+      edge: {
+        computed: num(o.edge), tax_drag_measured: num(o.drag), effective: num(o.effEdge),
+        note: 'computed is exact given perfect play; drag is measured from these rounds.',
+      },
+      shoe: o.shoe ? {
+        cards_seen: num(o.shoe.cards), hole_cards_never_seen: num(o.shoe.hidden),
+        proven_reshuffles: (o.shoe.breaks || []).slice(),
+        segments: num(o.shoe.segments),
+        note: 'A seventh sighting of one exact card proves a reshuffle. Nothing can prove '
+            + 'the absence of one, and other players at this table are never visible.',
+      } : null,
+      money: o.roll || null,
+      luck: o.luck || null,
+      limits: [
+        'Decisions are REPLAYED from the settled cards, never observed. The wire never '
+        + 'says which button was pressed.',
+        'A split contributes no decisions at all — which half took which card is not on '
+        + 'the wire. See no_decisions on each round.',
+        'Every replay is priced against the TABLE shoe (a fresh shoe less the cards '
+        + 'visible in that round), not the counted one, so an old answer never moves.',
+        'Timestamps are when this tool FIRST SAW a round, not when it was played.',
+      ],
+      rounds: list.map((h) => ({
+        id: h.id,
+        first_seen: num(h.seen) === null ? null : new Date(h.seen).toISOString(),
+        status: h.status ?? null,
+        outcome: h.outcome ?? null,
+        opening_bet: num(h.open),
+        total_staked: num(h.total),
+        gross: num(h.gross), tax: num(h.tax), credited: num(h.net),
+        result: netOf(h),
+        allowed_at_last_sighting: h.allowed || null,
+        active_hand: num(h.cur),
+        dealer: (h.dealer || []).slice(),
+        split: (h.hands || []).length > 1,
+        hands: (h.hands || []).map((p) => ({
+          cards: (p.cards || []).slice(),
+          stake: num(p.stake),
+          outcome: p.outcome ?? null,
+          status: p.status ?? null,
+        })),
+        decisions: byRound.get(h.id) || null,
+        no_decisions: replayNote(h),
+      })),
+    };
   };
   // <<< ENGINE END
 
@@ -2678,6 +2818,17 @@
     }
   };
 
+  // The only timer in this file, and all it does is put a button's label back. Both export
+  // buttons share it rather than each bringing its own setTimeout, and that is a fence
+  // talking rather than taste: tools/test-jack-passive.js COUNTS the timers here, because a
+  // tool that reaches for setTimeout a second time is one edit away from reaching for it a
+  // third to repaint on a schedule — and a repaint on a schedule is the first half of
+  // alerting from a tab nobody is looking at. One timer, one job, easy to keep honest.
+  const flash = (btn, back) => {
+    btn.textContent = 'copied';
+    setTimeout(() => { btn.textContent = back; }, 1200);
+  };
+
   const renderLog = (v) => {
     const bar = el('div', 'pkbj-bar');
     const markBtn = el('button', 'pkbj-btn', 'clear');
@@ -2714,12 +2865,32 @@
           (h.hands || []).map((p) => (p.cards || []).join(' ')).join(' | '),
           new Date(h.seen).toISOString()].join('\t'));
       }
-      navigator.clipboard.writeText(rows.join('\n')).then(() => {
-        copy.textContent = 'copied';
-        setTimeout(() => { copy.textContent = 'copy'; }, 1200);
-      }, () => { copy.textContent = 'blocked'; });
+      navigator.clipboard.writeText(rows.join('\n')).then(() => flash(copy, 'copy'),
+        () => { copy.textContent = 'blocked'; });
     });
-    bar.append(copy, el('span', 'pkbj-n', `${v.held} held`));
+
+    // The nested half. See exportBundle in the engine for what it carries and why it is
+    // JSON rather than more columns — the short version is that a split round holds two
+    // hands with two stakes and two outcomes, and a flat row has never been able to say
+    // so. It also happens to be the jack-watch section of tools/collect-stores.js, which
+    // means the one export worth having most often no longer needs the DevTools console.
+    const copyJSON = el('button', 'pkbj-btn', 'copy+');
+    copyJSON.title = 'the whole ledger as JSON: nested split hands, the menu the server '
+      + 'offered, the replayed decisions, and why a round has none';
+    copyJSON.addEventListener('click', () => {
+      const bundle = exportBundle({
+        tool: `jack-watch ${SCRIPT_VERSION}`,
+        at: Date.now(),
+        id: v.id, cfg: v.cfg, list: v.list, held: v.held, hidden: v.hidden, floor: v.floor,
+        shoe: v.shoe, roll: v.roll, luck: v.luck,
+        edge: v.edge, effEdge: v.effEdge, drag: v.roll ? v.roll.taxDrag : null,
+        decisions: decisionsOf(v.list),
+      });
+      navigator.clipboard.writeText(JSON.stringify(bundle, null, 2)).then(() => flash(copyJSON, 'copy+'),
+        () => { copyJSON.textContent = 'blocked'; });
+    });
+
+    bar.append(copy, copyJSON, el('span', 'pkbj-n', `${v.held} held`));
     body.append(bar);
 
     if (!v.held) {

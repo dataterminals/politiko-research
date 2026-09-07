@@ -1282,6 +1282,27 @@ window.HARNESS_FIXTURES = {
         gross_payout: gross, tax_amount: tax, net_payout: gross - tax,
       });
 
+      // A split, which is a different shape rather than a longer one: TWO player hands,
+      // each with its own cards, its own wager and its own outcome. The bench needs one
+      // because it is the shape the panel handles worst and says so — the decision replay
+      // refuses splits outright (which half took which card is not on the wire), so this
+      // round contributes nothing to the decision ledger and `copy+` marks it
+      // `no_decisions: "split"` rather than leaving a silent gap that reads as perfect
+      // play. The first half is DOUBLED after the split, which is legal here and is the
+      // detail that makes the point: the two halves have DIFFERENT stakes, and a flat TSV
+      // row joining the hands with a pipe cannot say so at any width.
+      const splitRound = () => ({
+        id: 8808, status: 'settled', outcome: 'win',
+        current_hand: 1, allowed_actions: [],
+        dealer_cards: ['9S', '10H'],
+        player_hands: [
+          { cards: ['8D', '3C', '9H'], wager: 1000, outcome: 'win', status: 'resolved' },
+          { cards: ['8C', '2H', '7S'], wager: 500, outcome: 'lose', status: 'resolved' },
+        ],
+        opening_wager: 500, total_wager: 1500,
+        gross_payout: 2000, tax_amount: 40, net_payout: 1960,
+      });
+
       // One round, four states, the way the wire delivers it: each POST comes back with
       // the whole hand. The panel infers HIT, HIT and then the settle from the gaps
       // between them — the wire never says what was pressed.
@@ -1306,7 +1327,7 @@ window.HARNESS_FIXTURES = {
           },
         },
         {
-          label: 'history — seven rounds',
+          label: 'history — eight rounds, one of them a split',
           path: '/api/corporations/7/casino/blackjack/history',
           // Newest first, the way the page reads hands[0] as "last hand". Two are taxed
           // wins, which is what makes the tax drag a number rather than zero; one is a
@@ -1314,6 +1335,7 @@ window.HARNESS_FIXTURES = {
           // was doubled — which is what the staking multiplier measures.
           body: {
             hands: [
+              splitRound(),
               round(8802, 500, 500, 0, 0, ['10H', '7C'], ['9S', '10D'], 'lose'),
               round(8795, 500, 500, 1250, 90, ['AS', 'KH'], ['10C', '8D'], 'blackjack'),
               round(8781, 500, 1000, 2000, 150, ['5H', '6C', '10S'], ['10H', '9C'], 'win'),

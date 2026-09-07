@@ -430,11 +430,19 @@ check('the decision ledger is replayed, not kept',
     && /const replayMemo = new Map\(\);/.test(CODE)
     && !/c\.decisions\.push/.test(CODE) && !/decisions: \[\]/.test(CODE),
   'a stored decision list is a second answer to a question the cards already settle');
-check('...and the three shapes that carry no decision are dropped before anything is priced',
-  /if \(hands\.length !== 1\) return \[\];/.test(CODE)
-    && /if \(handOf\(h\.dealer \|\| \[\]\)\.natural\) return \[\];/.test(CODE)
-    && /if \(handOf\(cards\.slice\(0, 2\)\)\.natural\) return \[\];/.test(CODE),
+// The three shapes still have to be excluded before anything is priced; since 0.7.0 they
+// are excluded by name, in replayNote, so the export can say WHY a round contributed
+// nothing rather than leaving a silent gap that reads as perfect play. Two properties, and
+// the second is the one that matters: the bails must exist, AND replayHand must actually
+// consult them. A bail list in a function nobody calls is decoration.
+check('...and the three shapes that carry no decision are named, not just dropped',
+  /if \(hands\.length !== 1\) return 'split';/.test(CODE)
+    && /if \(handOf\(h\.dealer \|\| \[\]\)\.natural\) return 'dealer natural';/.test(CODE)
+    && /if \(handOf\(cards\.slice\(0, 2\)\)\.natural\) return 'player natural';/.test(CODE),
   'a dealer natural, your natural and a split each replay as nonsense if not excluded');
+check('...and the replay gates on that one list rather than keeping a second copy',
+  /const replayHand = \(h\) => \{\s*\n\s*if \(replayNote\(h\)\) return \[\];/.test(CODE),
+  'replayHand must consult replayNote, or the two bail lists drift apart');
 // The solved grid is derived and would be stale the moment the shoe moved, so it lives
 // in memory and dies with the tab. The edge is a constant and is kept.
 check('the grid is never persisted, and the edge always is',
