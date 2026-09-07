@@ -34,7 +34,7 @@ nothing in the shipped client ever puts the two together.
 |---|---|---|
 | where | Government screen | Faction → Jobs tab |
 | refresh | `staleTime: 6e4`, **no `refetchInterval`** | **`refetchInterval: 15e3`** |
-| gated by | `tier1_view_government` feature check | faction membership |
+| gated by | **nothing** — see below | faction membership |
 | 20 policy axes | ✅ with `description` | ✅ name + axis only |
 | congress | **buckets only** — `[{alignment, count}]` | **per member** — see below |
 | president / court / elections | ✅ | ✗ |
@@ -47,6 +47,13 @@ GovernmentPage    queryKey:['government']  queryFn:()=>f.get('/government')  sta
 FactionPage       queryKey:['faction-jobs', r.id]
                   queryFn:()=>a.get(`/factions/${r.id}/jobs`)  refetchInterval:15e3
 ```
+
+> **Correction, 2026-09-04.** The "gated by" row used to say `GET /api/government` was
+> behind a `tier1_view_government` **feature check**. It is not. That identifier is passed
+> to `useMissions`' ack effect, which fires **`POST /api/missions/tier1_view_government/ack`**
+> when the screen mounts — no gate, and a write rather than a read. So **opening the
+> Government screen POSTs**, which is worth knowing before anyone describes a jump button
+> as GET-only. Traced in [`20-newspaper-surface.md`](20-newspaper-surface.md).
 
 **The faction jobs feed is the only live feed of the law in the game.** Sit on that tab and
 the twenty policy axes re-arrive every fifteen seconds, along with every congress member's
@@ -228,10 +235,18 @@ What it must not do, and the reasons are the repo's hard rules rather than taste
 ## Still unknown
 
 - **Whether `cycle_month` is a game month.** The one measurement that would make every
-  countdown here real rather than projected.
+  countdown here real rather than projected. **Now checkable without a capture** — the
+  Herald's masthead computes `Edition No. = floor(gametime / 2592000) + 1`, a game-month
+  index off a server timestamp, and it sits on a sidebar card. Read it against this
+  screen's `next_cycle_month` and subtract; see
+  [`20-newspaper-surface.md`](20-newspaper-surface.md).
 - **What moves a policy axis besides lobbying.** Protest `forecast_shift` claims to (13);
-  bills are not in this client at all; the relationship between a resolved job's `score` and
-  the size of the axis move is not printed anywhere.
+  the relationship between a resolved job's `score` and the size of the axis move is not
+  printed anywhere. **"Bills are not in this client at all" was wrong** — corrected
+  2026-09-04. `GET /newspaper` publishes a Congressional Record with per-chamber yea/nay
+  counts and an outcome per bill, on a 60-second poll, and has been all along. It does not
+  print the axis move, but it names the bill, the chambers and the result, which is the
+  first half of the measurement. See [`20`](20-newspaper-surface.md).
 - **Whether axes are integers.** Unchanged from 13 — but now with three specific render
   symptoms that would make a fractional value visible if one ever arrives.
 - **What moves presidential favorability, and how fast.** No feed, no history, no formula.

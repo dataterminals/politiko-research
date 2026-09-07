@@ -45,8 +45,15 @@ figure the tool prints.
 
 ### `GET /api/government` — the law, both chambers, the court
 
-`GovernmentPage`, `staleTime: 6e4`, fetched when you open the screen. Gated by a
-`tier1_view_government` feature check.
+`GovernmentPage`, `staleTime: 6e4`, fetched when you open the screen.
+
+> **Correction, 2026-09-04.** This line used to read *"Gated by a `tier1_view_government`
+> feature check."* **Both halves were wrong.** `GovernmentPage` calls
+> `useMissions`' third export, which is not a check at all — it is an effect that fires
+> **`POST /api/missions/tier1_view_government/ack`** on mount. Nothing is gated, and
+> opening the screen is a *write*. Measured from the 2026-09-03 bundles; see
+> [`20-newspaper-surface.md`](20-newspaper-surface.md), which found the same pattern on
+> `NewspaperPage` and traced the hook.
 
 ```
 president          { name, alignment, favorability, term_number }
@@ -345,7 +352,10 @@ Two things it deliberately does not do:
   location, so they read as country-wide, but a server that quietly scoped them to your
   current city would look identical from here.
 - **What moves a policy axis, and how fast.** Bills and protest forecasts both claim to;
-  neither is measured.
+  neither is measured. **But bills are now readable** — `GET /newspaper` carries a
+  Congressional Record with per-chamber vote counts and an outcome per bill, on a
+  60-second poll that the sidebar already makes. See
+  [`20-newspaper-surface.md`](20-newspaper-surface.md).
 - **Whether NPC citizens carry alignment.** Profiles have `is_npc`, and if NPCs have
   compass positions the citizen sample is really two populations wearing one hat.
 

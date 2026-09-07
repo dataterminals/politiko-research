@@ -210,6 +210,121 @@ question this file has been holding since July. If it lands, these three channel
   **Claude must not click through game actions.** Read-only inspection of an
   already-open, human-driven page only.
 
+## The penalty, as the client models it — measured 2026-09-06
+
+Every verdict in this file has been priced against the words *game ban* and *account
+deletion*, taken from the rules page. The client ships the screen those words lead to, and
+it has been in the bundles all along. Read from the 2026-09-03 pull already on disk
+(`FeddedPage-aIzywwsG.js`, `index-Bietqk7D.js`, `PlayerMarketPage-DGMXKH1r.js`); zero
+requests, no page opened.
+
+### `FeddedPage`, and an appeal that is a ticket queue
+
+```
+GET  /api/fed/appeal            retry: 1, no polling
+POST /api/fed/appeal/messages
+```
+
+```
+fed_state  { fedded_at, fedded_until, fedded_permanent, fedded_reason }
+appeal log [ { author_type, author_username, created_at, … } ]
+closed     { close_reason, closed_by }
+```
+
+The page's own copy is unambiguous about who is on the other end: it is headed *"Federal
+Detention / Custody"* over a *"Detainee record"*, states that *"All game systems locked
+until release"*, offers to open a case because *"Staff review every federal hold on
+request"*, answers a filed statement with *"Awaiting review by a moderator"*, and warns that
+*"Statements are logged to the case file and visible to staff."* It also discloses its own
+rate limit on screen — case refresh and appeal messages are capped at three requests per
+second.
+
+**Inferred, and not weakly: this is staff moderation wearing game fiction.** Moderator,
+staff, case file, appeal, `fedded_permanent` — none of that vocabulary belongs to a timed
+game mechanic, and the game's timed detentions are separate systems with their own release
+keys in the push vocabulary recorded above (`jail_release`, `hospital_release`). The client
+never says *rules violation* in those words, which is why this is filed as a reading rather
+than a measurement.
+
+**It is not the activism "watchlist."** `ActivismPage`'s hard-left stance warns that *"The
+watchlist notices"*, and that string has no field, no counter and no screen anywhere in the
+client — see [`07-alignment-surface.md`](07-alignment-surface.md). Two systems that both
+sound like law enforcement, and conflating them would misprice both: it would make a stance
+selector look account-threatening while making the thing that actually ends an account look
+like flavour.
+
+### The state is written into `auth`
+
+```js
+t.state.fedded          = e.fedded === true
+t.state.feddedUntil     = typeof e.fedded_until === 'string' ? e.fedded_until : null
+t.state.feddedPermanent = e.fedded_permanent === true
+t.state.feddedReason    = typeof e.fedded_reason === 'string' ? e.fedded_reason : null
+localStorage.setItem('auth', JSON.stringify(t))
+```
+
+So `localStorage['auth']` holds the access token, the refresh token, the username, the role
+**and the account's moderation record**. [`07-alignment-surface.md`](07-alignment-surface.md)
+already says no tool has any business touching that key; this is a second and independent
+reason, and it lands hardest on anything that *exports*. A tool that moves data out of the
+browser has to exclude `auth` **by construction rather than by intention** — which is why
+[`../tools/collect-stores.js`](../tools/collect-stores.js) filters on an anchored
+`/^pk[a-z]{2,4}:/` that cannot match it, keeps `auth` and `device_signals` on an explicit
+denylist besides, and is fenced by `userscripts/tools/test-collect.js` failing the build if
+either stops being true.
+
+### What a hold costs, in public
+
+`PlayerMarketPage` — *"Market · Labor Auctions"*, `GET /api/market/player-auctions?page=`,
+`POST /api/market/player-auctions/{id}/bids` — lists **players** as lots:
+
+```
+target_username  profile_picture_url  average_non_combat_stat  eligibility_reason
+current_bid  next_bid  bid_count  ends_at  leading_bidder  leading_corporation
+```
+
+`eligibility_reason` renders through the client's own map:
+
+| server value | rendered |
+|---|---|
+| `fedded` | Fedded |
+| `inactive and fedded` | Inactive · Fedded |
+| anything else | Inactive 30+ days |
+
+**A held account is auctioned as labour**, priced by its average non-combat stat, with
+corporations among the bidders, in the same list as accounts abandoned for thirty days. What
+transfers to the winner is not stated in what was read here. But the shape of the penalty
+is: losing access is the private half, and the public half is being itemised on a board the
+rest of the server bids on.
+
+### What this changes here
+
+Not the verdicts — the table above still describes Politiko's clause and stays accurate.
+Three smaller things:
+
+1. **The risk stops being an abstraction.** This file's standing advice is conservatism on
+   the single account, and it was already right. It now has `fedded_permanent` as a boolean
+   and an auction block attached to it.
+2. **The appeal channel is the operator's, not a tool's.** Same posture as the `/contact`
+   ticket desk below: an ordinary authenticated screen a human loads by hand, and no tool
+   calls `/fed/appeal` or anything under it. The page publishing its own rate limit is worth
+   noting for one reason — a limit that exists is a limit a retry loop can trip, and
+   tripping a rate limit while appealing a hold is a bad way to make a first impression.
+3. **`auth` is now worth more than a token.** Anything that reads, copies, exports or logs
+   localStorage inherits this section.
+
+### Still unknown
+
+- **Whether `fedded` is only ever moderation.** A game mechanic that sets the same flag
+  would look identical from the client, and `fedded_until` implies holds that expire.
+- **What `fedded_reason` carries** — free text, an enum, or a staff note. The renderer
+  prints whatever arrives.
+- **Whether the scripting clause's "game ban" is this**, a different state, or account
+  deletion — the rules page names penalties and the client names a mechanism, and nothing
+  read here joins them.
+- **What else is disposed of.** Labour is auctioned; holdings, faction membership,
+  properties and stock positions are not mentioned on that screen.
+
 ## The design principle this produces
 
 **Consume, don't request.**
