@@ -1981,6 +1981,7 @@ node userscripts/tools/test-slot-passive.js
 node userscripts/tools/test-jack-ev.js
 node userscripts/tools/test-jack-passive.js
 node userscripts/tools/test-http-tap.js
+node userscripts/tools/test-collect.js
 ```
 
 Every suite slices the layer it covers straight out of the shipped script rather than
