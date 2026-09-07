@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.8.2
+// @version      0.9.0
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -82,6 +82,16 @@
  *             the browser's own download path, from a Blob built in the page. Nothing is
  *             transmitted and no destination is named — it exists so that a large export
  *             does not have to go through the clipboard.
+ *
+ *   Advice:   the panel names the best action and prices every other one. It says nothing
+ *             about HOW MUCH to bet, and that is deliberate rather than missing: at this
+ *             table's 0.4593% house edge the stake that maximises a bankroll is zero, so
+ *             any recommended size would be a fiction. HAND reports the exposure instead —
+ *             what fraction of your bankroll the bet is, what the round could stake in the
+ *             worst case the rules allow (four times the opener), and how many more bets
+ *             that size your cash covers. No risk of ruin and no probability of anything
+ *             is offered; see docs/19 for why a percentage on this distribution would be
+ *             worst where it was most wanted.
  *
  *   Alerts:   none. No notifications, no sound, no title or favicon writes, nothing raised
  *             from an unfocused tab. The panel is in-page and that is all — including the
@@ -168,7 +178,7 @@
   // which build produced it. Deliberately outside the engine markers below: the engine is
   // lifted whole by tools/test-jack-ev.js and must reference nothing it was not handed,
   // so exportBundle takes this as an argument rather than reaching for it.
-  const SCRIPT_VERSION = '0.8.2';
+  const SCRIPT_VERSION = '0.9.0';
 
   const K = { data: 'pkbj:data', ui: 'pkbj:ui' };
 
@@ -212,6 +222,16 @@
     surrender: false,      // "No insurance or surrender"
     insurance: false,
   });
+
+  // The most a round can end up staking, in units of the opening bet, derived from the
+  // rules rather than written down as a 4. One split makes two hands, and doubling after
+  // a split is allowed, so each of those two can be doubled: 2 x 2. If the operator ever
+  // reads a table that permits two splits, or forbids DAS, this follows without an edit.
+  //
+  // It is a ceiling and not a forecast. Measured across real play the multiplier sits near
+  // 1.1, which is exactly why nobody has the ceiling in mind when they size a bet — and
+  // why exposure() prints it.
+  const MAX_STAKE_MULT = (RULES.splits + 1) * (RULES.doubleAfterSplit ? 2 : 1);
 
   // Ten rank classes, because ten J Q and K are one card as far as any of the
   // arithmetic is concerned. The ace is index 0 and is worth 1 here; the extra 10
@@ -1083,6 +1103,50 @@
     if (hi === lo) { const pad = Math.max(1, Math.abs(hi) * 0.02); lo -= pad; hi += pad; }
     else { const pad = (hi - lo) * 0.08; lo -= pad; hi += pad; }
     return { lo, hi };
+  };
+
+  // --- what a bet actually puts at risk -------------------------------------
+  //
+  // This panel prices every decision to three decimal places and, until now, said nothing
+  // whatsoever about the bet. A 109-round session made the case: 128 of 129 decisions were
+  // the maximum, the result sat 0.49 SD from expectation — and the bankroll still fell 88%,
+  // because three bets went in at 43%, 48% and 52% of everything on hand. The play was
+  // fine. The exposure was the whole story, and nothing on screen mentioned it.
+  //
+  // Two things it must NOT do, both of which are the obvious version.
+  //
+  //   No risk of ruin, and no probability of anything. slot-watch refuses one for a reason
+  //   that applies harder here: the per-round distribution is not remotely normal — a
+  //   natural pays 1.5 and a split with both halves doubled swings four units — so a
+  //   percentage hung on it would be worst in exactly the tail somebody would want it for.
+  //   docs/19 has the argument. What is offered instead is arithmetic that assumes nothing:
+  //   how many more bets this size your cash covers.
+  //
+  //   No recommended bet. At a 0.4593% disadvantage the Kelly-optimal stake is zero, so any
+  //   "correct" size this could print would be a fiction dressed as advice. It reports what
+  //   is at risk and lets the number be the argument, the same way HAND names the worst
+  //   press in dollars rather than colouring it.
+  //
+  // `worst` is the part that is easy to get wrong by leaving it out. The opening bet is not
+  // the exposure: one split is allowed and doubling after it is, so a round can stake FOUR
+  // times what you put up, and a $200,000 opener is a $800,000 hand in the worst case the
+  // rules permit. The measured multiplier on real play is about 1.1, which is exactly why
+  // nobody thinks about the ceiling.
+  const exposure = ({ bet, cash }) => {
+    const b = num(bet), c = num(cash);
+    if (b === null || c === null || b <= 0 || c < 0) return null;
+    const total = c + b;                  // the bet is already out of your cash
+    const worst = b * MAX_STAKE_MULT;
+    return {
+      bet: b, cash: c, bankroll: total,
+      frac: total > 0 ? b / total : null,
+      worst,
+      worstFrac: total > 0 ? worst / total : null,
+      // Pure division, no distribution: how many more bets of this size the cash covers.
+      // A player who wants to know the odds of that happening is asking for the number
+      // this deliberately does not compute.
+      covers: Math.floor(c / b),
+    };
   };
 
   // --- the trail: what was on the table, and when ---------------------------
@@ -2496,6 +2560,37 @@
       stat(grid, 'max bet now', money(v.bounds.max), null, 'held by ' + v.bounds.why);
     }
     body.append(grid);
+
+    // What the bet puts at risk. The bet in question is the live hand's if one is in
+    // play, and otherwise the last one you placed — which is the best available guess at
+    // the next one, because the bet is chosen in the game's own UI and this panel never
+    // sees it until it has been placed. Labelled for which it is, so a stale reference is
+    // never mistaken for a live one.
+    const ref = v.live ? num((v.live.hands || [])[0] && v.live.hands[0].stake) ?? num(v.live.open)
+      : (v.last ? num(v.last.open) : null);
+    const exp = exposure({ bet: ref, cash: cfg.cash });
+    if (exp) {
+      const g = el('div', 'pkbj-stats');
+      stat(g, v.live ? 'this bet' : 'last bet', money(exp.bet), null,
+        exp.frac === null ? null : pct(exp.frac, 1) + ' of your bankroll');
+      // The ceiling nobody has in mind. A round can stake four times the opener under
+      // these rules, and the measured multiplier of about 1.1 is why that is a surprise.
+      stat(g, 'worst case', money(exp.worst), exp.worstFrac > 0.5 ? 'down' : null,
+        `if split and both doubled — ${pct(exp.worstFrac, 1)} of it`);
+      // Arithmetic, not a forecast. No probability is offered anywhere here and the
+      // engine note says why.
+      stat(g, 'cash covers', `${exp.covers}`, exp.covers <= 2 ? 'down' : null,
+        exp.covers === 0 ? 'you cannot bet this again'
+          : (exp.covers === 1 ? 'one more bet this size' : 'more bets this size'));
+      body.append(g);
+      body.append(el('div', 'pkbj-note',
+        'Exposure, not advice. There is no recommended bet here and there never will be: at '
+        + 'a house edge of ' + pct(v.edge ?? 0.004593, 4) + ' the stake that maximises your '
+        + 'bankroll is zero, so any "right" size would be a fiction. No risk of ruin either '
+        + '— the per-round payouts run from −2 to +4 and nothing about that shape is normal, '
+        + 'so a percentage hung on it would be worst exactly where you would want it. '
+        + '"Cash covers" is division and assumes nothing.'));
+    }
 
     if (!v.live) {
       body.append(el('div', 'pkbj-empty',

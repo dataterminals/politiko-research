@@ -57,7 +57,7 @@ const E = new Function(`${SRC.slice(i, j)}
            doubleEV, splitEV, solve, roundEV, gridOf, countOf, shoeState, isHand,
            isSettled, netOf, slimHand, mergeHand, above, rollup, mean, stdev,
            roundReturns, replayHand, upOf, decisionRoll, plan, betBounds,
-           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation, pressCost, replayNote, exportBundle, trailSig, pushTrail };`)();
+           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation, pressCost, replayNote, exportBundle, trailSig, pushTrail, exposure, MAX_STAKE_MULT };`)();
 
 let fail = 0;
 const check = (label, got, want) => {
@@ -942,6 +942,42 @@ console.log('\n— the pointer is reported raw, under the name it actually has �
     b.limits.some((l) => /current_hand[\s\S]*COMPLETED/.test(l)), true);
   check('...and warns about the collision by name',
     b.limits.some((l) => /active_hand/.test(l)), true);
+}
+
+console.log('\n— what a bet actually puts at risk —');
+{
+  check('the ceiling falls out of the rules rather than being written down',
+    E.MAX_STAKE_MULT, 4);   // one split makes two hands, DAS doubles each
+
+  // The hand that made the case. Round 988 of a real 109-round session: $200,000 in, and
+  // $181,755 left in cash, so the bet was 52.4% of everything on hand. The panel priced
+  // the decision to three decimals and said nothing about this.
+  const e = E.exposure({ bet: 200000, cash: 181755 });
+  check('the bankroll counts the money already on the table', e.bankroll, 381755);
+  near('...so the bet is over half of it', e.frac, 200000 / 381755, 1e-12);
+  check('the worst case is four times the opener, not the opener', e.worst, 800000);
+  check('...which is more than the bankroll', e.worstFrac > 1, true);
+  check('cash covers no more bets that size', e.covers, 0);
+
+  // A sane bet, for contrast, and to show `covers` is doing real division.
+  const s = E.exposure({ bet: 20000, cash: 380000 });
+  near('a 5% bet reads as one', s.frac, 20000 / 400000, 1e-12);
+  check('...and the cash behind it covers nineteen more', s.covers, 19);
+
+  check('no bet, no reading', E.exposure({ bet: null, cash: 100 }), null);
+  check('...nor a zero one', E.exposure({ bet: 0, cash: 100 }), null);
+  check('...nor an unknown cash', E.exposure({ bet: 100, cash: null }), null);
+  check('broke, with a bet still live, is a real state and not an error',
+    E.exposure({ bet: 100, cash: 0 }).covers, 0);
+
+  // The two things this must never grow. Both are refusals with arguments behind them:
+  // Kelly is zero at a negative edge so any recommendation is fiction, and the per-round
+  // payouts run -2..+4 so a normal approximation is worst in the tail somebody wants.
+  const keys = Object.keys(e);
+  check('it offers no probability of anything',
+    keys.some((k) => /ruin|prob|chance|odds|pct|risk/i.test(k)), false, keys.join(','));
+  check('...and recommends no bet',
+    keys.some((k) => /should|recommend|optimal|kelly|suggest/i.test(k)), false, keys.join(','));
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

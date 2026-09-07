@@ -747,6 +747,61 @@ The bundle's `version` goes from 1 to 2 with it. A rename is exactly the change 
 cannot detect by inspection, because an old file and a new one are both valid JSON with a
 plausible field in it; the number is what says which one is in your hand.
 
+### The panel priced every decision and never mentioned the bet — added 2026-09-06
+
+A 109-round session on corporation 30, exported and analysed, made the case better than any
+argument could have. Three numbers from it:
+
+| | |
+|---|---|
+| decisions matching the maximum | **128 of 129** |
+| result against expectation | **−0.49 SD** — ordinary weather |
+| bankroll, start to trough | **$416,755 → $51,755**, an **88% drawdown** |
+
+Nothing was wrong with the play and nothing was wrong with the luck. What happened was
+three bets, at **43%, 48% and 52%** of everything on hand. All three lost: −$600,000 across
+three hands out of 109. The panel priced every one of those hands' decisions to three
+decimal places and said not one word about the size of the wager riding on them.
+
+Two related findings from the same export, both worth keeping:
+
+**The one misplay cost more than the casino did.** Round 911, a hard 10 against a dealer 8
+on a $200,000 bet, **stood** — standing on 10 is never correct, since the hand cannot bust.
+Double +0.294 against stand −0.513 is 0.807 units, **$161,365**, against an expected house
+take of **$23,701** for the entire session. One press was 6.8x the edge. The trail says it
+took **8.7 seconds**, seven times the median decision, so it was deliberation rather than a
+misclick — which is the first thing the 0.8.0 timing data has said that the cards could not.
+
+**Busting is not the problem, though it feels like it.** Actual busts 14, expected 14.84
+when the true bust chance is summed over each of the 59 hits from the composition: **−0.31
+SD**. The feeling tracks a different denominator — you only hit in 50 of 108 rounds, and
+28% of those blew up — plus the fact that busts are the loud losses. Of 51 losses only 14
+were busts; the other 37 were the dealer quietly beating you, nearly three times as many.
+
+### What the exposure readout refuses to do
+
+`exposure()` prints the bet as a fraction of bankroll, the worst case the rules permit, and
+how many more bets that size the cash covers. It will not grow two things, and both
+refusals are load-bearing enough to be fenced.
+
+**No risk of ruin, and no probability of anything.** slot-watch already refuses one and the
+argument applies harder here: the per-round payouts run from −2 to +4, a natural pays 1.5
+and a split with both halves doubled swings four units, so nothing about the distribution is
+normal. A percentage hung on it would be least trustworthy in exactly the tail somebody
+would consult it for. "Cash covers N more bets this size" is division and assumes nothing at
+all.
+
+**No recommended bet.** At a 0.4593% disadvantage the stake that maximises a bankroll is
+zero. Every positive number this could print would be advice the arithmetic does not
+support, so it reports what is at risk and lets the figure be the argument — the same
+reasoning that made the press cost a printed number rather than a colour.
+
+The worst case is the part that is easy to omit and is the whole point. **The opening bet is
+not the exposure**: one split is allowed and doubling after it is, so a round can stake four
+times what you put up. On round 988 that is a $200,000 opener against a $800,000 ceiling —
+**210% of the bankroll**. The multiplier measured across real play is about 1.1, which is
+precisely why nobody has the ceiling in mind while sizing a bet.
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count

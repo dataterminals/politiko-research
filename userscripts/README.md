@@ -1776,6 +1776,32 @@ When there is no hand in progress it shows the last receipt and the three things
 decide whether DEAL will even light up: free dealers, your cash, and the largest bet the
 house will currently cover.
 
+Since 0.9.0 it also says what the bet puts at risk, which is the one thing this panel used
+to be completely silent about. A 109-round session settled the argument: **128 of 129
+decisions matched the maximum** and the result sat **0.49 SD** from expectation - and the
+bankroll still fell **88%**, because three bets went in at 43%, 48% and 52% of everything
+on hand. The play was fine. The exposure was the whole story, and nothing on screen
+mentioned it.
+
+Three figures, and the middle one is the point:
+
+- **the bet as a fraction of your bankroll** - the live hand's if one is in play, otherwise
+  the last one you placed, labelled for which.
+- **the worst case**, because the opening bet is not the exposure. One split is allowed and
+  doubling after it is, so a round can stake **four times** what you put up: a $200,000
+  opener is an $800,000 hand at the ceiling the rules permit. The multiplier measured on
+  real play is about 1.1, which is exactly why nobody has the ceiling in mind.
+- **how many more bets that size your cash covers.**
+
+Two things it refuses, both fenced because the eroded version looks like an improvement.
+**No risk of ruin and no probability of anything** - slot-watch refuses one already and the
+reason applies harder here, since the per-round payouts run -2 to +4 and a percentage hung
+on that shape is least trustworthy in the tail somebody would consult it for. "Cash covers"
+is division and assumes nothing. And **no recommended bet**: at a 0.4593% disadvantage the
+stake that maximises a bankroll is zero, so any positive number would be advice the
+arithmetic does not support. It reports what is at risk and lets the figure be the argument
+- the same reasoning that made the press cost a printed number rather than a colour.
+
 **COUNT** is the shoe, and the honest treatment of it. Running count, true count, cards
 seen — and then the evidence, which is the reason those are allowed on screen at all. See
 below.

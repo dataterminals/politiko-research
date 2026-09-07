@@ -472,6 +472,28 @@ check('a round first seen already settled is never given a trail',
   'a timestamp on a back-catalogue round would be invented, and inventing one is worse '
   + 'than having none');
 
+// The bankroll readout (0.9.0) is the one place in this panel that talks about the BET
+// rather than the play, and it carries two refusals that are much easier to erode than to
+// argue with. Both are pinned because the eroded version looks like an improvement.
+//
+//   No risk of ruin, and no probability of anything. slot-watch refuses one already and
+//   the reason applies harder here: the per-round payouts run -2 to +4, so nothing about
+//   the shape is normal and a percentage hung on it is worst in exactly the tail somebody
+//   would want it for. "Cash covers N more bets this size" is division and assumes nothing.
+//
+//   No recommended bet. At a 0.4593% disadvantage the stake that maximises a bankroll is
+//   zero, so a "correct" size would be a fiction dressed as advice.
+check('the bankroll readout quotes no probability and no risk of ruin',
+  /const exposure = /.test(CODE)
+    && !/exposure[\s\S]{0,900}\b(ruinP|riskOfRuin|pRuin|probability\s*:|chance\s*:)/.test(CODE),
+  'a percentage on a -2..+4 distribution is worst where it would be wanted');
+check('...and recommends no bet size',
+  !/exposure[\s\S]{0,900}\b(recommended|optimal|kelly|shouldBet|suggestBet)\s*[:=]/i.test(CODE),
+  'Kelly is zero at a negative edge, so any recommended stake would be invented');
+check('...and the ceiling is derived from the rules, not hardcoded',
+  /const MAX_STAKE_MULT = \(RULES\.splits \+ 1\) \* \(RULES\.doubleAfterSplit \? 2 : 1\);/.test(CODE),
+  'a literal 4 stops being true the moment the table permits a second split');
+
 // It stops when the round does. Without this every settled round grows a duplicate entry
 // on the next history poll, because the server reports current_hand as the number of hands
 // COMPLETED at settle while the poll re-sends the same round with 0 — a third of an
