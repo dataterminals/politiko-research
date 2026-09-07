@@ -871,5 +871,41 @@ console.log('\n— the trail logs the sighting, never the merge —');
     JSON.stringify(fromSighting[0].c) !== JSON.stringify(fromMerge[0].c), true);
 }
 
+console.log('\n— the trail stops when the round does —');
+{
+  // Taken from a real 83-round export. 0.8.0 put `cur` in the signature and never stopped,
+  // and the server reports current_hand as the number of hands COMPLETED once a round is
+  // settled — 1 on a normal hand, 2 on a split — while the history poll re-sends the same
+  // finished round with 0. Two values, two signatures, so EVERY round carried a duplicate
+  // settled entry about 90ms after the real one, identical in every card and every stake.
+  const turn    = { status: 'player_turn', cur: 0, dealer: ['7H'],
+    hands: [{ cards: ['6S', 'KS'], stake: 25000 }], allowed: ['hit', 'stand', 'double'] };
+  const settled = { status: 'settled', cur: 1, dealer: ['7H', '8S'],
+    hands: [{ cards: ['6S', 'KS', 'JD'], stake: 25000 }], allowed: [] };
+  const poll    = { status: 'settled', cur: 0, dealer: ['7H', '8S'],
+    hands: [{ cards: ['6S', 'KS', 'JD'], stake: 25000 }], allowed: [] };
+
+  check('the two settled sightings really do differ, which is why 0.8.0 kept both',
+    E.trailSig(settled) !== E.trailSig(poll), true);
+
+  let t = E.pushTrail(null, turn, 1000, 16);
+  t = E.pushTrail(t, settled, 2000, 16);
+  check('the deal and the settle are both recorded', t.length, 2);
+  t = E.pushTrail(t, poll, 2090, 16);
+  check('...and the poll waving at a finished round is not', t.length, 2);
+
+  // Not just the next one: the poll re-sends a settled round for as long as it stays in
+  // the history array, which is forever.
+  for (let i = 0; i < 50; i++) t = E.pushTrail(t, poll, 3000 + i * 15000, 16);
+  check('...however many times it re-sends it', t.length, 2);
+  check('the last entry is the real settle, with its own clock', t[1].at, 2000);
+
+  // The stop is on the round being over, not on the shape of the duplicate — a later
+  // sighting that differs in some other field must not restart it either.
+  const odd = { status: 'settled', cur: 9, dealer: ['7H', '8S', '2C'],
+    hands: [{ cards: ['6S', 'KS', 'JD'], stake: 999 }], allowed: ['hit'] };
+  check('...and nothing after the settle reopens it', E.pushTrail(t, odd, 99999, 16).length, 2);
+}
+
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);

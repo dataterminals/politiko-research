@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.8.0
+// @version      0.8.1
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -72,10 +72,16 @@
  *             what was on the table, whose turn it was, the stakes, the menu on offer, and
  *             when. It stores no conclusion about any of it: no action is named, nothing
  *             is scored, and the decisions on screen are still replayed from the cards.
- *             Capped at 16 sightings per round and dropped entirely for rounds older than
- *             the most recent 120. Rounds read off the history poll get NO trail, because
+ *             Recording stops when the round settles, so the fifteen-second poll re-sending
+ *             a finished hand adds nothing. Capped at 16 sightings per round and dropped
+ *             entirely for rounds older than the most recent 120. Rounds read off the history poll get NO trail, because
  *             they were played before this tool was looking and any timestamp on them
- *             would be invented. It never leaves your browser unless you press "copy+".
+ *             would be invented. It leaves your browser only through "copy+" or "save".
+ *
+ *   Downloads: "save" in LOG writes the same JSON that "copy+" produces to a file, through
+ *             the browser's own download path, from a Blob built in the page. Nothing is
+ *             transmitted and no destination is named — it exists so that a large export
+ *             does not have to go through the clipboard.
  *
  *   Alerts:   none. No notifications, no sound, no title or favicon writes, nothing raised
  *             from an unfocused tab. The panel is in-page and that is all — including the
@@ -162,7 +168,7 @@
   // which build produced it. Deliberately outside the engine markers below: the engine is
   // lifted whole by tools/test-jack-ev.js and must reference nothing it was not handed,
   // so exportBundle takes this as an argument rather than reaching for it.
-  const SCRIPT_VERSION = '0.8.0';
+  const SCRIPT_VERSION = '0.8.1';
 
   const K = { data: 'pkbj:data', ui: 'pkbj:ui' };
 
@@ -1116,8 +1122,21 @@
   // a log of the poll rather than of the play.
   const pushTrail = (trail, h, at, cap) => {
     const list = Array.isArray(trail) ? trail : [];
+    const last = list[list.length - 1];
+    // The round is over, and a trail is a record of it unfolding. Everything after the
+    // settle is the fifteen-second poll re-sending a finished hand, which is a log of the
+    // polling and not of the play.
+    //
+    // This was not theoretical. 0.8.0 shipped with `cur` in the signature and no stop, and
+    // the server reports `current_hand` as the number of hands COMPLETED once a round
+    // settles — 1 on a normal hand, 2 on a split — while the history poll re-sends the
+    // same finished round with 0. Two different values, so two different signatures, so
+    // every single round in an 83-round export carried a duplicate settled entry about
+    // 90ms after the real one, identical in every card and every stake. A third of the
+    // trail was the poll waving at itself.
+    if (last && last.st === 'settled') return list;
     const sig = trailSig(h);
-    if (list.length && list[list.length - 1].sig === sig) return list;
+    if (last && last.sig === sig) return list;
     const next = list.concat([{
       at: num(at),
       sig,
@@ -2957,10 +2976,13 @@
   // tool that reaches for setTimeout a second time is one edit away from reaching for it a
   // third to repaint on a schedule — and a repaint on a schedule is the first half of
   // alerting from a tab nobody is looking at. One timer, one job, easy to keep honest.
-  const flash = (btn, back) => {
-    btn.textContent = 'copied';
+  const flash = (btn, word, back) => {
+    btn.textContent = word;
     setTimeout(() => { btn.textContent = back; }, 1200);
   };
+
+  // At most one outstanding Blob URL from the save button, released on the next save.
+  let lastSaveURL = null;
 
   const renderLog = (v) => {
     const bar = el('div', 'pkbj-bar');
@@ -2998,7 +3020,7 @@
           (h.hands || []).map((p) => (p.cards || []).join(' ')).join(' | '),
           new Date(h.seen).toISOString()].join('\t'));
       }
-      navigator.clipboard.writeText(rows.join('\n')).then(() => flash(copy, 'copy'),
+      navigator.clipboard.writeText(rows.join('\n')).then(() => flash(copy, 'copied', 'copy'),
         () => { copy.textContent = 'blocked'; });
     });
 
@@ -3019,11 +3041,46 @@
         edge: v.edge, effEdge: v.effEdge, drag: v.roll ? v.roll.taxDrag : null,
         decisions: decisionsOf(v.list),
       });
-      navigator.clipboard.writeText(JSON.stringify(bundle, null, 2)).then(() => flash(copyJSON, 'copy+'),
+      navigator.clipboard.writeText(JSON.stringify(bundle, null, 2)).then(() => flash(copyJSON, 'copied', 'copy+'),
         () => { copyJSON.textContent = 'blocked'; });
     });
 
-    bar.append(copy, copyJSON, el('span', 'pkbj-n', `${v.held} held`));
+    // The same bundle, as a file. `copy+` on a real session is fifteen to fifty kilobytes
+    // of JSON, and the clipboard is a bad pipe for that — it has to be pasted somewhere to
+    // exist, and "somewhere" is usually a chat box that was not built for it. This hands
+    // it to the browser's own download path instead, exactly the way
+    // tools/collect-stores.js does, so the export arrives as a file you can attach.
+    //
+    // Nothing is transmitted: the Blob is built in the page from rounds already on your
+    // screen and handed to the browser. There is no request here and no destination.
+    const save = el('button', 'pkbj-btn', 'save');
+    save.title = 'the same JSON as a downloaded file, for when it is too big to paste';
+    save.addEventListener('click', () => {
+      const bundle = exportBundle({
+        tool: `jack-watch ${SCRIPT_VERSION}`,
+        at: Date.now(),
+        id: v.id, cfg: v.cfg, list: v.list, held: v.held, hidden: v.hidden, floor: v.floor,
+        shoe: v.shoe, roll: v.roll, luck: v.luck,
+        edge: v.edge, effEdge: v.effEdge, drag: v.roll ? v.roll.taxDrag : null,
+        decisions: decisionsOf(v.list),
+      });
+      const stamp = bundle.collected_at.replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+      // The previous URL is released on the NEXT save rather than on a timer. A second
+      // setTimeout would be the cheap way and it is the wrong one: this file is allowed
+      // exactly one timer, tools/test-jack-passive.js counts them, and the reason is that
+      // a tool reaching for a schedule twice is one edit from repainting on one. At most
+      // one object URL is ever outstanding, and it dies with the tab regardless.
+      if (lastSaveURL) URL.revokeObjectURL(lastSaveURL);
+      lastSaveURL = URL.createObjectURL(
+        new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }));
+      const a = el('a');
+      a.href = lastSaveURL;
+      a.download = `jack-watch-${v.id}-${stamp}.json`;
+      a.click();
+      flash(save, 'saved', 'save');
+    });
+
+    bar.append(copy, copyJSON, save, el('span', 'pkbj-n', `${v.held} held`));
     body.append(bar);
 
     if (!v.held) {

@@ -1883,11 +1883,28 @@ Three things about it are load-bearing rather than incidental, and all three are
   status — a state that was never on the wire at any instant. This one was found by running
   it, not by reading it.
 
+**It stops when the round does.** 0.8.0 shipped without that and an 83-round export off the
+live table showed the cost: every settled round carried a duplicate entry about 90ms after
+the real one, identical in every card and stake. The server reports `current_hand` as the
+number of hands *completed* at settle — 1 normally, 2 on a split — while the history poll
+re-sends the same finished round with 0, so the two sightings had different signatures and
+"append only on change" dutifully appended. The rule was fine; the premise was not. A
+settled round has stopped unfolding, so nothing after the first settled sighting is
+recorded. It needed a live session to find, because the harness fires each fixture once.
+
 It is capped at 16 sightings per round and dropped entirely for rounds older than the most
 recent 120, because this store is shared with fifteen other tools and a runaway list here
-surfaces as a quota failure in one of them. It never leaves the browser unless you press
-**copy+**, where it arrives as `observed[]` with the gap between sightings already
+surfaces as a quota failure in one of them. It leaves the browser only through **copy+** or
+**save**, where it arrives as `observed[]` with the gap between sightings already
 differenced out.
+
+### Three buttons, because the clipboard is a bad pipe for fifty kilobytes
+
+`copy` is TSV for eyeballing a run in a spreadsheet. `copy+` is the nested JSON. **`save`**
+is that same JSON as a downloaded file, built as a Blob in the page and handed to the
+browser's own download path exactly as [`tools/collect-stores.js`](../tools/collect-stores.js)
+does it — nothing transmitted, no destination named. A real session runs fifteen to fifty
+kilobytes, and a clipboard only holds what you can paste somewhere.
 
 ## The count, and why it comes with a warning label
 

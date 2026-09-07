@@ -670,6 +670,51 @@ The middle one is worth keeping because the wrong version is the one that reads 
 `merged` is in scope, it is what the ledger uses two lines later, and it looks like the
 obvious argument. It is pinned by a fence for exactly that reason.
 
+### A third of the trail was the poll waving at itself — added 2026-09-06
+
+An 83-round export off the live table found the defect that 0.8.0's harness run could not.
+**Every settled round carried a duplicate trail entry**, roughly 90ms after the real one and
+identical in every card and every stake.
+
+The cause is a field nobody had reason to look at. The server reports `current_hand` as the
+number of hands **completed** once a round settles — 1 on an ordinary hand, 2 on a split —
+while the history poll re-sends that same finished round with 0. `trailSig` included `cur`,
+so those are two different signatures, so the "append only on change" rule dutifully
+appended. The rule was working. The premise was wrong: `cur` is not a state of play once
+the round is over.
+
+The fix is not to drop `cur` from the signature — during play it is the only thing that
+says which half of a split is live, and a split that moves from one half to the other with
+no card yet dealt is a real transition. The fix is that **a settled round has stopped
+unfolding**, so nothing after the first settled sighting is recorded at all. That also
+disposes of the general case: the poll re-sends a settled round for as long as it stays in
+the history array, which is indefinitely.
+
+Two things worth keeping from how this was found. The bug needed a *live* session — the
+harness fires each fixture once, so a duplicate that only appears when the same finished
+round arrives twice by two different routes could not show up there. And the export was
+what surfaced it, which is the argument for the export: the panel showed nothing wrong,
+because a panel does not draw its own storage.
+
+### The export is a file, because it was always going to be
+
+`copy+` writes to the clipboard, and on a real session that is fifteen to fifty kilobytes
+of JSON. A clipboard is a poor pipe for that: the content has to be pasted somewhere to
+exist at all, and the somewhere is usually a chat box that was not built to hold it.
+
+So LOG has a third button, **save**, which writes the same bundle to a file through the
+browser's own download path — a Blob built in the page, exactly as
+[`tools/collect-stores.js`](../tools/collect-stores.js) does it. Nothing is transmitted and
+no destination is named. `copy` stays for a quick look at a handful of rounds, `copy+` for
+pasting a small export, and `save` for a session anyone actually intends to analyse.
+
+One implementation note that is a fence talking rather than taste: the object URL is
+released on the *next* save rather than on a timer. A second `setTimeout` is the obvious
+way and `tools/test-jack-passive.js` counts the timers in this file, because a tool that
+reaches for a schedule twice is one edit from repainting on one, and a repaint on a
+schedule is the first half of alerting from a tab nobody is looking at. At most one object
+URL is ever outstanding and it dies with the tab regardless.
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count

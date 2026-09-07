@@ -472,6 +472,23 @@ check('a round first seen already settled is never given a trail',
   'a timestamp on a back-catalogue round would be invented, and inventing one is worse '
   + 'than having none');
 
+// It stops when the round does. Without this every settled round grows a duplicate entry
+// on the next history poll, because the server reports current_hand as the number of hands
+// COMPLETED at settle while the poll re-sends the same round with 0 — a third of an
+// 83-round export was the poll waving at finished hands. The trail is a record of a round
+// unfolding, and a settled round has stopped unfolding.
+check('the trail stops recording once the round has settled',
+  /if \(last && last\.st === 'settled'\) return list;/.test(CODE),
+  'the poll re-sends settled rounds forever; without a stop the trail logs the polling');
+
+// The export is tens of kilobytes on a real session, so it is offered as a file too. The
+// download path is the browser's own, from a Blob built in the page — there is no
+// destination and nothing is transmitted. Pinned so it stays that way.
+check('the save button hands a Blob to the browser and names no destination',
+  /new Blob\(\[JSON\.stringify\(bundle, null, 2\)\], \{ type: 'application\/json' \}\)/.test(CODE)
+    && /a\.download = /.test(CODE) && !/a\.href = ['"`]http/.test(CODE),
+  'the file must be built locally and handed to the browser, never posted anywhere');
+
 // It logs the sighting, not the merge. mergeHand keeps the longest card list it has ever
 // seen — right for the ledger, wrong for a record of observations, because a poll that
 // re-sends an older view of a live round would then produce an entry pairing the newest
