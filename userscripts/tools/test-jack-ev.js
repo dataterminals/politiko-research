@@ -712,7 +712,7 @@ console.log('\n— the export carries what a flat row cannot —');
   });
 
   check('it is stamped with a format and a version', [b.format, b.version],
-    ['jack-watch/round-ledger', 1]);
+    ['jack-watch/round-ledger', 2]);
   check('...and with the build that wrote it', b.tool, 'jack-watch test');
   check('the scope says how much was left out by the mark',
     [b.scope.rounds_exported, b.scope.rounds_held, b.scope.hidden_by_mark, b.scope.mark],
@@ -905,6 +905,43 @@ console.log('\n— the trail stops when the round does —');
   const odd = { status: 'settled', cur: 9, dealer: ['7H', '8S', '2C'],
     hands: [{ cards: ['6S', 'KS', 'JD'], stake: 999 }], allowed: ['hit'] };
   check('...and nothing after the settle reopens it', E.pushTrail(t, odd, 99999, 16).length, 2);
+}
+
+console.log('\n— the pointer is reported raw, under the name it actually has —');
+{
+  // Called active_hand until 0.8.2, which was wrong twice. The game already HAS an
+  // `active_hand`, on the table config, and it is a different thing entirely — the hand in
+  // progress, or null. And the value here is not an active hand once a round settles: it is
+  // an index into hands[] while you play, and the count of hands COMPLETED afterwards.
+  // Reporting the server's own field name uninterpreted beats inventing one that would be
+  // a lie in one of the two states.
+  const live = {
+    id: 2, status: 'player_turn', seen: 10, open: 100, total: 100, cur: 1,
+    dealer: ['9S'], hands: [{ cards: ['8D', '3C'], stake: 100 }, { cards: ['8C'], stake: 100 }],
+    trail: [{ at: 1000, sig: 'a', st: 'player_turn', cur: 1, c: [['8D', '3C'], ['8C']],
+              s: [100, 100], d: ['9S'], a: ['hit', 'stand'] },
+            { at: 2000, sig: 'b', st: 'settled', cur: 2, c: [['8D', '3C'], ['8C', '9H']],
+              s: [100, 100], d: ['9S', '10H'], a: [] }],
+  };
+  const b = E.exportBundle({ list: [live], at: 0 });
+  const r = b.rounds[0];
+
+  check('the round carries current_hand', r.current_hand, 1);
+  check('...and not the game\'s own active_hand, which means something else',
+    'active_hand' in r, false);
+  check('a sighting carries it too', r.observed.map((o) => o.current_hand), [1, 2]);
+  check('...and never under the colliding name',
+    r.observed.every((o) => !('active_hand' in o)), true);
+
+  // The value at settle is 2 on a split — hands completed, not an index into a
+  // two-element array. Pinned because it reads like an index and is not one.
+  check('at settle it is a count, which can point past the last hand',
+    r.observed[1].current_hand >= r.observed[1].hands.length, true);
+
+  check('the bundle says so itself, rather than leaving it to be discovered',
+    b.limits.some((l) => /current_hand[\s\S]*COMPLETED/.test(l)), true);
+  check('...and warns about the collision by name',
+    b.limits.some((l) => /active_hand/.test(l)), true);
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

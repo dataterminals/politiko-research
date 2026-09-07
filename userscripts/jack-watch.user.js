@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.8.1
+// @version      0.8.2
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -168,7 +168,7 @@
   // which build produced it. Deliberately outside the engine markers below: the engine is
   // lifted whole by tools/test-jack-ev.js and must reference nothing it was not handed,
   // so exportBundle takes this as an argument rather than reaching for it.
-  const SCRIPT_VERSION = '0.8.1';
+  const SCRIPT_VERSION = '0.8.2';
 
   const K = { data: 'pkbj:data', ui: 'pkbj:ui' };
 
@@ -1202,7 +1202,11 @@
     }
     return {
       format: 'jack-watch/round-ledger',
-      version: 1,
+      // 1 -> 2 in 0.8.2: `active_hand` became `current_hand` on both the round and each
+      // sighting. That is a rename a reader cannot detect by inspection — an old file and
+      // a new one are both valid JSON with a plausible field — so the number is what says
+      // which one is in your hand.
+      version: 2,
       // Handed in rather than read off a constant: the engine is lifted whole by
       // tools/test-jack-ev.js and has to reference nothing it was not given.
       tool: typeof o.tool === 'string' ? o.tool : 'jack-watch',
@@ -1246,6 +1250,10 @@
         + 'because any timing put on it would be invented.',
         'observed[] is the only place a split can be reconstructed: which half took which '
         + 'card is visible one sighting at a time, and not at all once the round settles.',
+        'current_hand is the server\'s field, reported raw: an index into hands[] while '
+        + 'the round is live, and the number of hands COMPLETED once it is settled (1 '
+        + 'ordinarily, 2 after a split). It is NOT the game\'s `active_hand`, which is a '
+        + 'different field on the table config holding the hand in progress.',
       ],
       rounds: list.map((h) => ({
         id: h.id,
@@ -1257,7 +1265,15 @@
         gross: num(h.gross), tax: num(h.tax), credited: num(h.net),
         result: netOf(h),
         allowed_at_last_sighting: h.allowed || null,
-        active_hand: num(h.cur),
+        // The server's `current_hand`, under the server's own name and uninterpreted. It
+        // was called `active_hand` until 0.8.2, which was wrong twice over: the game
+        // already HAS an `active_hand` on the table config and it is a different thing
+        // entirely (the hand in progress, or null — see docs/19), and the value here is
+        // not an active hand once a round settles. It is an index into `hands` while you
+        // are still playing, and the number of hands COMPLETED afterwards — 1 on an
+        // ordinary round, 2 on a split. Reporting it raw and saying so beats renaming it
+        // to something that would be a guess in one of those two states.
+        current_hand: num(h.cur),
         dealer: (h.dealer || []).slice(),
         split: (h.hands || []).length > 1,
         hands: (h.hands || []).map((p) => ({
@@ -1276,7 +1292,10 @@
           at: num(t.at) === null ? null : new Date(t.at).toISOString(),
           since_previous_ms: null,     // filled below; the first entry has no previous
           status: t.st ?? null,
-          active_hand: num(t.cur),
+          // Same field, same caveat, and here it is the one that caused a bug: this
+          // flipping from 1 to 0 between the settle and the next poll is what made two
+          // identical settled sightings look like two different states in 0.8.0.
+          current_hand: num(t.cur),
           hands: (t.c || []).map((cards, i) => ({
             cards: (cards || []).slice(),
             stake: ((t.s || [])[i] ?? null),

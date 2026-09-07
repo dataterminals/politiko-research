@@ -715,6 +715,38 @@ reaches for a schedule twice is one edit from repainting on one, and a repaint o
 schedule is the first half of alerting from a tab nobody is looking at. At most one object
 URL is ever outstanding and it dies with the tab regardless.
 
+### `active_hand` was the wrong name twice over — added 2026-09-06
+
+The export called the round's hand pointer `active_hand`, and 0.8.2 renames it to
+`current_hand`. Two separate things were wrong with the old name, and only one of them was
+the obvious one.
+
+**It collides with a real field that means something else.** The table config already
+carries an `active_hand` — the hand in progress, or `null` between rounds — and it is
+recorded as such further up this document. Reusing that name for a hand *index* in an
+export means a reader who knows the surface is actively misled rather than merely
+uninformed.
+
+**And it is not an active hand once the round is over.** The server's `current_hand` is an
+index into `hands[]` while you are still playing, and the number of hands **completed**
+afterwards: 1 on an ordinary round, 2 on a split. At settle it routinely points one past
+the end of the array it looks like it indexes.
+
+The fix is to report the server's own field under the server's own name, uninterpreted, and
+to say in the bundle's own `limits` what it means in each of the two states. Renaming it to
+something self-describing was the other option and it is worse: every candidate
+(`hand_index`, `hands_completed`) is accurate in one state and a lie in the other, and a
+field that is silently wrong half the time is harder to catch than one that tells you to
+read the note.
+
+This is also the field behind the duplicate-entry bug two sections up — it flipping from 1
+to 0 between the settle and the next poll is what made two identical settled sightings look
+like two different states. It is worth one paragraph of documentation on that basis alone.
+
+The bundle's `version` goes from 1 to 2 with it. A rename is exactly the change a reader
+cannot detect by inspection, because an old file and a new one are both valid JSON with a
+plausible field in it; the number is what says which one is in your hand.
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count
