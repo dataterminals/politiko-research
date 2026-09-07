@@ -1763,6 +1763,38 @@ whether a button is tempting is a property of the player, and nothing on this su
 one. So the loudness is structural: name the worst press every time, and let the digits
 carry the alarm. The table is in [`docs/19`](../docs/19-casino-blackjack-surface.md).
 
+### The on-button guide
+
+The recommendation was always correct and always in the wrong place. A panel lives in a
+margin, so reading it costs a look at the cards, a look at the margin, a look back, then a
+press - three fixations per decision, several hundred times a night. Since 0.10.0 the
+`guide` switch puts the answer **on the control you are about to press**: the right button
+outlined in green, the worst press dimmed and dashed in red. It works with the panel shut,
+which is the entire point.
+
+**It cannot press them.** Finding the buttons is reading the DOM of a page you are actively
+viewing, which the rules envelope scores permitted on its first row, and restyling them is
+what `comms-move` already does to the Comms dock. Pressing one would be a script-initiated
+game action, and it would not matter that React builds the request rather than us - that is
+the hole `test-sleeper-passive` exists to close. So there is no `.click()` on anything it
+finds, no synthesised mouse, pointer or keyboard event, and nothing driven through focus or
+`requestSubmit`. The one `.click()` in the file is the export anchor, and the fence counts
+them.
+
+Four details that are load-bearing rather than incidental, all fenced:
+
+- **Matched on words, not classes**, because a generated class is a hash that changes every
+  deploy. An exact set, not a prefix - the prefix version was caught by its own test
+  claiming "doubles". A miss shows up as a count in the panel; a false positive highlights
+  the wrong control with total confidence.
+- **Re-applied by `MutationObserver`, never a clock.** React rebuilds the button row on every
+  state change; an observer is idle until the page changes, and this file is allowed exactly
+  one timer.
+- **Outline and box-shadow only**, so a marked button is the same size and in the same place
+  - measured to within half a pixel, not asserted.
+- **Off by default, and it reports what it found.** A guide that silently matches nothing is
+  worse than none, because the absence of a mark would read as meaning something.
+
 Underneath: the chance the next card busts you, the chance the dealer busts, and the
 win/push/lose split if you stand. All of those are exact off the stated rules; nothing there
 is sampled and nothing is a forecast. Only actions the table itself offered are priced —

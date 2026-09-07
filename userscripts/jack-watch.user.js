@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.9.1
+// @version      0.10.0
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -82,6 +82,22 @@
  *             the browser's own download path, from a Blob built in the page. Nothing is
  *             transmitted and no destination is named — it exists so that a large export
  *             does not have to go through the clipboard.
+ *
+ *   Page:     since 0.10.0, with the "guide" switch ON, it reads the labels of the visible
+ *             buttons on the blackjack page to find HIT / STAND / DOUBLE / SPLIT, and
+ *             outlines the one to press while dimming the worst one. Reading the DOM of a
+ *             page you are actively viewing is the permitted surface; restyling the game's
+ *             own controls is what comms-move already does to the Comms dock. It adds no
+ *             request.
+ *
+ *             It CANNOT PRESS THEM. There is no .click() on any control it finds, no
+ *             synthesised mouse, pointer or keyboard event, and nothing driven through
+ *             focus or requestSubmit — the single .click() in this file is the export
+ *             anchor, which touches no game UI. tools/test-jack-passive.js counts them and
+ *             fails the build on a second one. Marks use outline and box-shadow only, so a
+ *             marked button is the same size and in the same place as an unmarked one. The
+ *             switch is OFF until you turn it on, and the panel prints how many action
+ *             buttons it can see so a guide that matches nothing says so.
  *
  *   Advice:   the panel names the best action and prices every other one. It says nothing
  *             about HOW MUCH to bet, and that is deliberate rather than missing: at this
@@ -178,7 +194,7 @@
   // which build produced it. Deliberately outside the engine markers below: the engine is
   // lifted whole by tools/test-jack-ev.js and must reference nothing it was not handed,
   // so exportBundle takes this as an argument rather than reaching for it.
-  const SCRIPT_VERSION = '0.9.1';
+  const SCRIPT_VERSION = '0.10.0';
 
   const K = { data: 'pkbj:data', ui: 'pkbj:ui' };
 
@@ -1105,6 +1121,36 @@
     return { lo, hi };
   };
 
+  // --- reading a button's label -------------------------------------------
+  //
+  // The pure half of the on-button guide. Given the text on a control, which action is it?
+  // Matched on WORDS rather than on any class, because a generated class name is a hash
+  // that changes every deploy and this has to still work in a month (CLAUDE.md).
+  //
+  // Deliberately not generous. The marks are cosmetic — nothing here presses anything — so
+  // a miss costs a highlight that does not appear, which is visible and diagnosable. A
+  // false positive costs a highlight on the WRONG control, which is worse than none at all
+  // because it is confidently wrong. So exact matches for the short words, prefixes only
+  // where a table is known to pad them ("DOUBLE DOWN"), and a length ceiling so a paragraph
+  // that happens to contain the word "hit" is never mistaken for a button.
+  // Exact against a known set rather than a prefix. A prefix looked tidier and was wrong:
+  // `startsWith('DOUBLE')` also claims "doubles", which is how a label about the game
+  // becomes a highlight on the wrong control. The set is short and adding to it is a
+  // one-line change guided by the count the panel prints, which is the cheap direction to
+  // be wrong in.
+  const BUTTON_WORDS = {
+    HIT: 'hit', HITME: 'hit',
+    STAND: 'stand', STAY: 'stand',
+    DOUBLE: 'double', DOUBLEDOWN: 'double',
+    SPLIT: 'split', SPLITHAND: 'split', SPLITPAIR: 'split',
+  };
+  const actionOf = (label) => {
+    if (typeof label !== 'string') return null;
+    const w = label.toUpperCase().replace(/[^A-Z]/g, '');
+    if (!w || w.length > 20) return null;
+    return BUTTON_WORDS[w] || null;
+  };
+
   // --- what a bet actually puts at risk -------------------------------------
   //
   // This panel prices every decision to three decimal places and, until now, said nothing
@@ -1996,6 +2042,34 @@
     .pkbj-tbl tr.worst td { background: #2a1215; }
     .pkbj-tbl tr.worst td:first-child { color: #fca5a5; }
 
+    /* The on-button guide. These land on the GAME's own controls, which is why they are
+       drawn with outline and box-shadow and nothing else: both paint outside the box and
+       neither participates in layout, so a marked button is the same size and in the same
+       place as an unmarked one. Anything that changed the metrics would move the table's
+       buttons around under the cursor, which is a worse crime than being hard to see.
+
+       !important because these compete with a stylesheet we do not control and cannot
+       predict; specificity arguments against an unknown opponent are not winnable. */
+    .pkbj-best {
+      outline: 2px solid #4ade80 !important;
+      outline-offset: 2px !important;
+      box-shadow: 0 0 0 4px rgba(74, 222, 128, .25), 0 0 12px rgba(74, 222, 128, .45) !important;
+      border-radius: 4px;
+    }
+    .pkbj-avoid {
+      outline: 2px dashed #f87171 !important;
+      outline-offset: 2px !important;
+      opacity: .55 !important;
+    }
+    /* Motion is the thing the eye catches without being asked, which is the whole point —
+       but it is one short pulse on arrival rather than a loop, because a control that
+       throbs forever beside a money figure is a casino's trick and not ours. */
+    @keyframes pkbj-nudge {
+      from { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0), 0 0 0 rgba(74, 222, 128, 0); }
+    }
+    .pkbj-best { animation: pkbj-nudge .45s ease-out 1; }
+    @media (prefers-reduced-motion: reduce) { .pkbj-best { animation: none; } }
+
     /* The strategy grid: eleven columns of one character each, which is the one
        shape that stays legible when the panel is a margin. */
     .pkbj-grid { width: 100%; table-layout: fixed; border-collapse: collapse;
@@ -2059,6 +2133,10 @@
 
   const ui = readJSON(K.ui, null) || {};
   if (typeof ui.open !== 'boolean') ui.open = false;
+  // The on-button guide, off until asked for. It changes how the GAME's own controls
+  // look, which is a bigger imposition than anything else this panel does, so it is not
+  // something to discover by surprise.
+  if (typeof ui.guide !== 'boolean') ui.guide = false;
   if (!['HAND', 'COUNT', 'MONEY', 'PLAN', 'LOG'].includes(ui.tab)) ui.tab = 'HAND';
   // Which composition the solver runs against, and the single most consequential
   // switch in the panel — see the note it prints in COUNT.
@@ -2585,6 +2663,30 @@
     // never mistaken for a live one.
     const ref = v.live ? num((v.live.hands || [])[0] && v.live.hands[0].stake) ?? num(v.live.open)
       : (v.last ? num(v.last.open) : null);
+    // The on-button guide's switch, and its own diagnosis. A guide that quietly matches
+    // nothing is worse than no guide, because you would sit there believing the absence of
+    // a highlight meant something. So it says how many action controls it can actually see,
+    // and the count is the first thing to look at if the marks never appear.
+    {
+      const bar = el('div', 'pkbj-bar');
+      const b = el('button', 'pkbj-btn' + (ui.guide ? ' on' : ''),
+        ui.guide ? 'guide: on' : 'guide: off');
+      b.title = 'outline the action to press on the game\'s own button, and dim the worst '
+        + 'one. Marks only; this tool cannot press anything.';
+      b.addEventListener('click', () => {
+        ui.guide = !ui.guide;
+        saveUI();
+        render();
+      });
+      bar.append(b);
+      if (ui.guide) {
+        bar.append(el('span', 'pkbj-n', guideSeen
+          ? `${guideSeen} action button${guideSeen === 1 ? '' : 's'} found`
+          : (v.live ? 'no action buttons found on this page' : 'waiting for a hand')));
+      }
+      body.append(bar);
+    }
+
     const exp = exposure({ bet: ref, cash: cfg.cash, live: !!v.live });
     if (exp) {
       const g = el('div', 'pkbj-stats');
@@ -3287,6 +3389,12 @@
           + (v.floor === null ? '' : ` since #${v.floor}`)
         : 'Jack Watch — the blackjack table, solved');
 
+    // Above the early return on purpose. The guide's whole reason to exist is that you
+    // should not need the panel open to know what to press — a version that only marked
+    // buttons while the panel was showing would be solving the problem for the one case
+    // that never had it.
+    paintGuide(v);
+
     if (!ui.open) return;
 
     for (const name in tabBtn) tabBtn[name].classList.toggle('on', ui.tab === name);
@@ -3334,6 +3442,108 @@
   }
 
   // ---------------------------------------------------------------------------
+  // 12.5 The on-button guide.
+  //
+  //      The recommendation has always been correct and always been in the wrong
+  //      place. It lives in a panel, and a panel lives in a margin (CLAUDE.md), so
+  //      reading it costs a look at the cards, a look at the margin, a look back,
+  //      and then a press — three fixations per decision, several hundred times a
+  //      night. This puts the answer ON the control you are about to press, which
+  //      is where your eyes already are.
+  //
+  //      THE LINE, because this is the closest this file has ever been to it.
+  //
+  //      Locating the game's buttons is reading the DOM of a page you are actively
+  //      viewing, which docs/01-rules-envelope.md scores as permitted on its very
+  //      first row. Changing how they LOOK is the same modification comms-move
+  //      already makes to the Comms dock. Neither adds a request.
+  //
+  //      Pressing one would be a script-initiated game action, and it does not
+  //      matter that React would build the request rather than us — that is
+  //      precisely the hole tools/test-sleeper-passive.js exists to close, in its
+  //      own words a synthetic click "slips past every network check in this file".
+  //      So this section knows exactly where every action button is and cannot
+  //      press one: there is no .click() here, no dispatchEvent, no synthetic
+  //      pointer of any kind, and the fence counts them. The one .click() in this
+  //      file is the export anchor, which touches no game UI.
+  //
+  //      Marks are re-applied by a MutationObserver rather than a timer, for two
+  //      reasons. React re-renders the button row on every state change and would
+  //      otherwise wipe the class within milliseconds. And this file is allowed
+  //      exactly one timer — an observer is not one, it is idle until the page
+  //      itself changes, which is the same argument comms-move makes for watching
+  //      the dock.
+  // ---------------------------------------------------------------------------
+  const MARK_BEST = 'pkbj-best';
+  const MARK_WORST = 'pkbj-avoid';
+
+  // Only ever OUR marks come off, and only off elements we put them on.
+  const clearMarks = (root) => {
+    for (const n of (root || document).querySelectorAll('.' + MARK_BEST + ', .' + MARK_WORST)) {
+      n.classList.remove(MARK_BEST, MARK_WORST);
+    }
+  };
+
+  // Every visible control on the page whose label names an action, keyed by action.
+  // Our own panel is skipped outright: it has buttons too, and a tool that highlighted
+  // its own UI would be marking the wrong thing in the most confusing possible way.
+  const actionButtons = () => {
+    const found = new Map();
+    for (const n of document.querySelectorAll('button, [role="button"]')) {
+      if (n.closest('.pkbj-panel') || n.classList.contains('pkbj-fab')) continue;
+      if (!n.offsetParent) continue;                   // hidden, or not laid out
+      const a = actionOf(n.textContent);
+      if (a && !found.has(a)) found.set(a, n);
+    }
+    return found;
+  };
+
+  // What the marks should be right now, or null for "nothing to mark". Read off the same
+  // view the panel draws, so the button and the panel can never disagree.
+  const guideTargets = (v) => {
+    if (!ui.guide) return null;
+    if (!active || !ROUTE.test(location.pathname)) return null;   // not at this table
+    if (!v || !v.live) return null;
+    const i = num(v.live.cur) ?? 0;
+    const mine = (v.live.hands || [])[i];
+    if (!mine) return null;
+    const s = solve(mine.cards, upOf(v.live), v.comp, v.live.allowed);
+    if (!s || !s.pick) return null;
+    const cost = pressCost(s.ev, mine.stake);
+    return { best: s.pick, worst: cost ? cost.worst : null };
+  };
+
+  let guideSeen = 0;              // how many action buttons were found, for the panel
+  // `v` is handed in by render, which has just built it. The observer calls this with
+  // nothing and pays for its own view() — that path only runs when the page actually
+  // changed, which is exactly when the answer might be stale.
+  const paintGuide = (v) => {
+    const want = guideTargets(v === undefined ? view() : v);
+    clearMarks();
+    if (!want) { guideSeen = 0; return; }
+    const btns = actionButtons();
+    guideSeen = btns.size;
+    const best = btns.get(want.best);
+    if (best) best.classList.add(MARK_BEST);
+    // The worst press is only marked when it is a DIFFERENT control, which it always is
+    // by construction — but a table offering one action would otherwise get both marks on
+    // the same button, which reads as a contradiction.
+    if (want.worst && want.worst !== want.best) {
+      const bad = btns.get(want.worst);
+      if (bad) bad.classList.add(MARK_WORST);
+    }
+  };
+
+  // Idle until the page changes. `paintGuide` is cheap and re-entrant: it clears its own
+  // marks and re-derives them, so a burst of mutations settles correctly.
+  let guideObserver = null;
+  const watchButtons = () => {
+    if (guideObserver) return;
+    guideObserver = new MutationObserver(() => paintGuide());
+    guideObserver.observe(document.body, { childList: true, subtree: true });
+  };
+
+  // ---------------------------------------------------------------------------
   // 13. SPA lifecycle. React Router means no page loads, so the only way to know
   //     which table is in front of you is to watch the path.
   // ---------------------------------------------------------------------------
@@ -3358,6 +3568,10 @@
   // ---------------------------------------------------------------------------
   const boot = () => {
     document.head.append(style);
+    // Idle until the page mutates. Started unconditionally rather than when the guide is
+    // switched on, because the switch has to work while a hand is already on the table
+    // and an observer that starts late misses the render it was needed for.
+    watchButtons();
     document.body.append(fab, panel);
 
     // A hidden element has no geometry, so a stored size is applied on first open

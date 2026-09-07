@@ -853,6 +853,55 @@ reading called it 64.5% of a bankroll that no longer existed.
 `covers` never depended on the flag and was right throughout. It is the number that counted
 5, 4, 3, 2, 1, 0 through the bust while the percentage beside it was arguing with itself.
 
+### The answer was always in the wrong place — added 2026-09-07
+
+The recommendation has been correct since 0.1.0 and badly placed for just as long. A panel
+lives in a margin, because a panel over the play area is a panel you close (CLAUDE.md). So
+reading it costs a look at the cards, a look at the margin, a look back, and then a press —
+three fixations per decision, several hundred times a night.
+
+0.10.0 puts the answer **on the control you are about to press**. With the `guide` switch on,
+the button to press is outlined in green and the worst press is dimmed and dashed in red.
+
+**Where the line is, because this is the closest this file has come to it.**
+
+Locating the game's buttons is reading the DOM of a page you are actively viewing, which
+[`01-rules-envelope.md`](01-rules-envelope.md) scores ✅ on its very first row. Changing how
+they look is the same modification `comms-move` already makes to the Comms dock. Neither
+adds a request.
+
+**Pressing one would be a script-initiated game action**, and it would not matter that React
+builds the request rather than us — that is precisely the hole `test-sleeper-passive.js`
+exists to close, in its own words a synthetic click *"slips past every network check in this
+file"*. So the tool now knows exactly where every action button is and cannot press one:
+no `.click()` on anything it finds, no synthesised mouse, pointer or keyboard event, nothing
+driven through focus or `requestSubmit`. The single `.click()` in the file is the export
+anchor. The fence counts them and fails the build on a second.
+
+Four smaller decisions, each of which could have gone wrong quietly:
+
+**Matched on words, not classes.** A generated class name is a hash that changes every
+deploy. The matcher is an exact set — `HIT`, `STAND`, `STAY`, `DOUBLE`, `DOUBLEDOWN`,
+`SPLIT`, and a couple of variants. A prefix match looked tidier and was caught by its own
+test claiming *"doubles"*: a miss costs a highlight that does not appear, which the panel
+reports as a count you can look at, while a false positive costs a highlight on the wrong
+control, which is confidently wrong. Narrow and diagnosable beats loose.
+
+**Re-applied by MutationObserver, never a clock.** React re-renders the button row on every
+state change and would wipe the class within milliseconds. An observer is idle until the
+page itself changes — the same argument `comms-move` makes for watching the dock — and this
+file is allowed exactly one timer, which is the one that puts a button's label back.
+
+**Outline and box-shadow only.** Both paint outside the box and take part in no layout, so a
+marked button is the same size and in the same place as an unmarked one. Measured rather
+than asserted: same height, same top, to within half a pixel. Anything touching the metrics
+would shift the table's controls under the cursor, which is worse than being hard to see.
+
+**Off by default, and it says what it found.** It restyles controls this tool does not own,
+which is not something to discover by surprise. And a guide that silently matches nothing is
+worse than no guide, because the absence of a highlight would read as meaning something — so
+the panel prints how many action buttons it can actually see.
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count

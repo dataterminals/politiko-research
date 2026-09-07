@@ -472,6 +472,62 @@ check('a round first seen already settled is never given a trail',
   'a timestamp on a back-catalogue round would be invented, and inventing one is worse '
   + 'than having none');
 
+// The on-button guide (0.10.0) is the closest this file has ever come to the line, and it
+// is the reason this block is the most important one here. The tool now KNOWS WHERE every
+// action button on the table is. Locating them is reading the DOM of a page you are
+// actively viewing — permitted on the first row of docs/01-rules-envelope.md — and marking
+// them is the same modification comms-move makes to the Comms dock. Pressing one would be
+// a script-initiated game action, and it would not matter that React builds the request
+// rather than us: that is exactly the hole test-sleeper-passive.js was written to close,
+// where a synthetic click "slips past every network check in this file".
+//
+// So the count is the fence, and it is counted rather than pattern-matched for the reason
+// the sleeper fence gives: an earlier version keyed on `\w+.click()` and sailed straight
+// past `document.querySelector('button').click()`.
+const clickers = CODE.match(/\.click\s*\(\s*\)/g) || [];
+check('there is exactly one synthetic click in the file', clickers.length === 1,
+  `found ${clickers.length}`);
+const saveBody = (/const save = el\([\s\S]*?\n    \}\);/.exec(CODE) || [''])[0];
+check('...and it is the export anchor, which touches no game UI',
+  (saveBody.match(/\.click\(\)/g) || []).length === 1 && /a\.download = /.test(saveBody),
+  'the only click may be the download anchor');
+check('...so nothing presses a control it found on the table',
+  !/actionButtons\(\)[\s\S]{0,400}\.click\(\)/.test(CODE)
+    && !/(btns|best|bad)\s*\.\s*click\s*\(/.test(CODE),
+  'the guide locates the game\'s buttons; pressing one is the line');
+
+// The other half of the same hole. A click is not the only way to press a button, and a
+// tool that had been talked out of .click() would reach for these next.
+absent('it synthesises no events at all',
+  /dispatchEvent|new (Mouse|Pointer|Keyboard)Event|document\.execCommand/g);
+absent('...and drives no element through the accessibility layer',
+  /\.focus\(\)[\s\S]{0,60}\.(click|submit)\(|requestSubmit/g);
+
+// Re-marking is driven by the page changing, never by a clock. React re-renders the button
+// row on every state change and would otherwise wipe the class within milliseconds — an
+// observer is the comms-move answer to exactly that, and is not a timer.
+check('the guide re-applies on mutation rather than on a schedule',
+  /new MutationObserver\(\(\) => paintGuide\(\)\)/.test(CODE)
+    && !/set(?:Timeout|Interval)[\s\S]{0,120}paintGuide/.test(CODE),
+  'a redraw on a schedule is the first half of alerting from a background tab');
+
+// Marks are cosmetic and must stay that way: outline and box-shadow paint outside the box
+// and take part in no layout, so a marked button is the same size and in the same place.
+check('the marks cannot move the game\'s own buttons',
+  /\.pkbj-best \{\s*\n\s*outline:/.test(CODE.replace(/\r/g, ''))
+    || /outline: 2px solid/.test(SRC),
+  'anything that changed the metrics would shift the table\'s controls under the cursor');
+
+// It is off until asked for, because it restyles controls this tool does not own.
+check('the guide is off by default',
+  /if \(typeof ui\.guide !== 'boolean'\) ui\.guide = false;/.test(CODE),
+  'a tool that restyles the game on first run is a surprise, not a feature');
+
+// And it never marks our own UI, which would be the most confusing possible failure.
+check('it skips this tool\'s own controls when scanning',
+  /n\.closest\('\.pkbj-panel'\)/.test(CODE) && /classList\.contains\('pkbj-fab'\)/.test(CODE),
+  'highlighting our own buttons would point at the wrong thing with total confidence');
+
 // The bankroll readout (0.9.0) is the one place in this panel that talks about the BET
 // rather than the play, and it carries two refusals that are much easier to erode than to
 // argue with. Both are pinned because the eroded version looks like an improvement.

@@ -57,7 +57,7 @@ const E = new Function(`${SRC.slice(i, j)}
            doubleEV, splitEV, solve, roundEV, gridOf, countOf, shoeState, isHand,
            isSettled, netOf, slimHand, mergeHand, above, rollup, mean, stdev,
            roundReturns, replayHand, upOf, decisionRoll, plan, betBounds,
-           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation, pressCost, replayNote, exportBundle, trailSig, pushTrail, exposure, MAX_STAKE_MULT };`)();
+           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation, pressCost, replayNote, exportBundle, trailSig, pushTrail, exposure, MAX_STAKE_MULT, actionOf };`)();
 
 let fail = 0;
 const check = (label, got, want) => {
@@ -995,6 +995,38 @@ console.log('\n— what a bet actually puts at risk —');
     keys.some((k) => /ruin|prob|chance|odds|pct|risk/i.test(k)), false, keys.join(','));
   check('...and recommends no bet',
     keys.some((k) => /should|recommend|optimal|kelly|suggest/i.test(k)), false, keys.join(','));
+}
+
+console.log('\n— reading a button label —');
+{
+  // Matched on words, never on a class: a generated class name is a hash that changes
+  // every deploy (CLAUDE.md), and this has to still work in a month.
+  check('the four actions read straight',
+    ['Hit', 'STAND', 'Double', 'Split'].map(E.actionOf), ['hit', 'stand', 'double', 'split']);
+  check('...through whatever padding a button puts round them',
+    ['  hit  ', 'Stand.', 'DOUBLE DOWN', 'Split Hand'].map(E.actionOf),
+    ['hit', 'stand', 'double', 'split']);
+  check('...and a table that says STAY means stand', E.actionOf('Stay'), 'stand');
+
+  // A miss costs a highlight that never appears, which is visible and diagnosable — the
+  // panel prints how many it found. A false positive costs a highlight on the WRONG
+  // control, which is confidently wrong, so the matching is deliberately narrow.
+  check('a paragraph containing the word is not a button',
+    E.actionOf('You cannot hit on a blackjack, so this button is disabled'), null);
+  check('...nor is a near miss', ['hits', 'hitting', 'standing', 'doubles'].map(E.actionOf),
+    [null, null, null, null]);
+  check('...nor the words this table uses for other things',
+    ['Deal', 'Bet', 'Clear', 'All', 'Insurance', 'Surrender'].map(E.actionOf),
+    [null, null, null, null, null, null]);
+  check('nothing is not an action', [E.actionOf(''), E.actionOf(null), E.actionOf(undefined)],
+    [null, null, null]);
+
+  // The tool's own controls carry labels too, and marking one of those would point at the
+  // wrong thing with total confidence. The scanner skips our panel outright, but the
+  // matcher should not be the only thing standing between us and that.
+  check('this tool\'s own buttons name no action',
+    ['copy', 'copy+', 'save', 'clear', 'all', 'guide: on', 'HAND', 'COUNT', 'MONEY', 'PLAN', 'LOG']
+      .map(E.actionOf).filter(Boolean), []);
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
