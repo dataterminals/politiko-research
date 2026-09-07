@@ -84,5 +84,5 @@ const expect = (k, want) => {
 expect('stocks/instruments/RCRD', { id: 10, sure: true });   // bare id, but on the instruments list
 expect('stocks/holdings/RCRD', { id: 77, sure: false });     // bare id on a holding: not an instrument id
 expect('stocks/holdings/BRDL', { id: 42, sure: true });      // named instrument_id: unambiguous
-console.log(fail ? `\nFAIL (${fail})` : '\nOK');
+console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);

@@ -599,6 +599,5 @@ console.log('\n— samples: ring of 3, scrubbed before write —');
   ok('the username KEY survives (discovery)', samples['/actions/deal-drugs'][0].body.includes('"username"'));
 }
 
-console.log('');
-if (fail) { console.error(`${fail} failing`); process.exit(1); }
-console.log('all green');
+console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
+process.exit(fail ? 1 : 0);

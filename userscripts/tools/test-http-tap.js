@@ -333,6 +333,6 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
     check('and stopped reading the body too', p.stats.parses, 1);
   }
 
-  console.log(fail ? `\n${fail} failing\n` : '\nall good\n');
+  console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
   process.exit(fail ? 1 : 0);
 })();

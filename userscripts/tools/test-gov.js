@@ -347,5 +347,5 @@ console.log('\n── the tap reads only what it says it does ──────
   ok('every malformed payload survived', true);
 }
 
-console.log(`\n${fail ? `${fail} FAILED` : 'all passed'}\n`);
+console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);
