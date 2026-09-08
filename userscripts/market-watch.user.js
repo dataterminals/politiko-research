@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      1.7.0
+// @version      1.8.0
 // @description  Marks where your own trades sit on the game's stock chart, and records numeric series out of market/API responses the app already fetched. Fully passive — it places no orders and originates no requests; a buy/sell rule hands you a sized shortcut to the stocks screen instead.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -273,6 +273,9 @@
 
   // h:null means "take whatever vertical room there is" — that's what makes
   // `sidebar` and `tall` dock properly instead of floating at a fixed height.
+  // Width, height. A null height means "as tall as the room allows" — resolved
+  // against the viewport when the button is pressed, because PANEL KIT's
+  // resizable() takes real lengths and a preset that stays null cannot be one.
   const SIZE_PRESETS = [
     ['sidebar', 280, null],
     ['compact', 430, 380],
@@ -331,7 +334,7 @@
   let rules = readJSON(K.rules, []);
   const ui = Object.assign(
     { open: false, sound: true, deltaWin: 3_600_000, filter: '', expanded: {}, hidden: {},
-      fab: null, size: null, sizeBar: false,
+      fab: null, panel: null, size: null, sizeBar: false,
       // Chart marks. Both draw over the game's own chart and both default on —
       // they are the point of the tool now, and one click turns either off.
       mark: true, costLine: true },
@@ -1188,11 +1191,226 @@
     return svg;
   }
 
+  // PANEL KIT v3 — shared verbatim block, see userscripts/_template.user.js.
+  // Every panel this repo ships is draggable and resizable, and remembers both.
+  // ===========================================================================
+  const draggable = (node, handle, onMove) => {
+    const EDGE = 44; // px of the element that must stay reachable on screen
+    let sx = 0, sy = 0, ox = 0, oy = 0, live = false, moved = false;
+    let skew = null; // gap between the border box and what left/top actually set
+
+    const place = (x, y) => {
+      const w = node.offsetWidth, h = node.offsetHeight;
+      const p = w && h ? {
+        x: Math.min(Math.max(x, EDGE - w), window.innerWidth - EDGE),
+        y: Math.min(Math.max(y, 0), window.innerHeight - Math.min(EDGE, h)),
+      } : { x, y }; // hidden element: no geometry to clamp against, fix it on show
+      node.style.left = `${p.x}px`;
+      node.style.top = `${p.y}px`;
+      node.style.right = 'auto';
+      node.style.bottom = 'auto';
+      // `left` positions the MARGIN edge, but every measurement here is the
+      // border box. If the host page styles our element with a margin, each grab
+      // drifts by that much and compounds. Measure the gap once, then cancel it.
+      if (skew === null && w && h) {
+        const seen = node.getBoundingClientRect();
+        skew = { x: seen.left - p.x, y: seen.top - p.y };
+      }
+      if (skew && (skew.x || skew.y)) {
+        node.style.left = `${p.x - skew.x}px`;
+        node.style.top = `${p.y - skew.y}px`;
+      }
+      return p;
+    };
+
+    const down = (ev) => {
+      if (ev.button != null && ev.button !== 0) return;
+      // a control inside the handle keeps its click; the handle itself still drags
+      if (ev.target !== handle && ev.target.closest?.('button,input,select,textarea,a,[data-nodrag]')) return;
+      const r = node.getBoundingClientRect();
+      place(r.left, r.top); // convert whatever CSS anchoring it had into left/top
+      sx = ev.clientX; sy = ev.clientY; ox = r.left; oy = r.top;
+      live = true; moved = false;
+      try { handle.setPointerCapture(ev.pointerId); } catch { /* capture is a nicety */ }
+      ev.preventDefault();
+    };
+
+    const move = (ev) => {
+      if (!live) return;
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (!moved && Math.hypot(dx, dy) < 4) return; // tremor isn't a drag
+      moved = true;
+      place(ox + dx, oy + dy);
+    };
+
+    const up = (ev) => {
+      if (!live) return;
+      live = false;
+      try { handle.releasePointerCapture(ev.pointerId); } catch { /* already gone */ }
+      if (!moved) return;
+      const r = node.getBoundingClientRect();
+      onMove({ x: r.left, y: r.top });
+    };
+
+    handle.style.touchAction = 'none'; // don't scroll the game while dragging
+    handle.style.cursor = 'grab';
+    handle.addEventListener('pointerdown', down);
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+
+    // Never strand the panel: a short window, a rotation, or a panel that grew
+    // taller than the space its CSS corner left it can all put the drag handle
+    // off-screen, and then there is no way to get it back.
+    // A hidden tab and a minimised window both report a ~zero viewport. Clamping
+    // against that pins the element into the top-left corner — and then onMove()
+    // SAVES it, so the stored position is (-44, -38) forever after and the element
+    // has permanently left wherever it belonged. Five of sixteen buttons landed
+    // there the first time tools/harness/row.html ran. Treat a viewport that small
+    // as no information, the same as the placement layer already does.
+    const usable = () => window.innerWidth > 120 && window.innerHeight > 120;
+
+    const fit = () => {
+      if (!usable()) return false;
+      const r = node.getBoundingClientRect();
+      if (!r.width || !r.height) return false;
+      const x = Math.min(Math.max(r.left, EDGE - r.width), window.innerWidth - EDGE);
+      const y = Math.min(Math.max(r.top, 0), window.innerHeight - Math.min(EDGE, r.height));
+      if (Math.abs(x - r.left) < 0.5 && Math.abs(y - r.top) < 0.5) return false;
+      onMove(place(x, y));
+      return true;
+    };
+    window.addEventListener('resize', fit);
+
+    return {
+      apply: (pos) => {
+        if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return false;
+        place(pos.x, pos.y);
+        return true;
+      },
+      reset: () => {
+        node.style.left = node.style.top = node.style.right = node.style.bottom = '';
+        onMove(null);
+      },
+      dragged: () => moved,
+      fit, // call after mounting and after any render that changes the size
+
+      // Convert whatever CSS corner the element is anchored to into explicit
+      // left/top, without moving it. The browser's own resize grabber only grows a
+      // box right and down, so a panel still hanging off `right`/`bottom` grows
+      // away from the pointer; resizable() pins it the moment the grab starts.
+      pin: () => {
+        const r = node.getBoundingClientRect();
+        if (!r.width || !r.height) return false; // hidden: nothing to measure
+        place(r.left, r.top);
+        return true;
+      },
+    };
+  };
+
+  // ---------------------------------------------------------------------------
+  //    resizable(node, onSize, opts) -> { apply(size), reset(), sized() }
+  //      node    the element that resizes (the same one draggable() moves)
+  //      onSize  called with {w, h} as CSS lengths, or null when reset
+  //      opts    { minW, minH, drag } — pass the draggable() for this same node so
+  //              a resize can re-pin and re-clamp it
+  //
+  //    The browser's own grabber does the dragging. There is deliberately no second
+  //    drag implementation here to keep in step with the one above: all this block
+  //    does is arm the grabber, keep it pointing the right way, and remember the
+  //    result. The grabber writes inline width/height, so inline values that differ
+  //    from what we last wrote can only have come from the user — content re-renders
+  //    never write them, which is what keeps auto-sizing intact until the first
+  //    deliberate resize.
+  // ---------------------------------------------------------------------------
+  const resizable = (node, onSize, opts = {}) => {
+    const GRAB = 18;                  // the corner the UA's grabber occupies
+    const drag = opts.drag || null;
+    let mine = null;                  // the last size WE wrote
+
+    // A viewport this small is a hidden tab or a minimised window rather than a
+    // real layout — the same trap the placement layers guard against. Capping
+    // against it would shrink the panel to nothing and the next report would make
+    // that permanent, so treat it as no information.
+    const usable = () => window.innerWidth > 120 && window.innerHeight > 120;
+
+    const floor = () => ({
+      w: Math.min(opts.minW || 220, Math.max(80, window.innerWidth - 16)),
+      h: Math.min(opts.minH || 140, Math.max(80, window.innerHeight - 16)),
+    });
+
+    // Cap growth at the viewport rather than at whatever vh the panel's own CSS
+    // picked: a `max-height: 74vh` silently fights a chosen height, so the panel
+    // stops growing while the pointer keeps going and then jumps on the way back.
+    // Only ever applied once a size has actually been chosen, so an untouched
+    // panel keeps its stylesheet's sizing exactly as written.
+    const cap = () => {
+      if (!usable()) return;
+      const f = floor();
+      node.style.minWidth = `${f.w}px`;
+      node.style.minHeight = `${f.h}px`;
+      node.style.maxWidth = `${Math.max(f.w, window.innerWidth - 16)}px`;
+      node.style.maxHeight = `${Math.max(f.h, window.innerHeight - 16)}px`;
+    };
+
+    node.style.resize = 'both';
+    node.style.overflow = 'hidden'; // `resize` is inert while overflow is visible
+
+    const report = () => {
+      const w = node.style.width, h = node.style.height;
+      if (!w && !h) return;                             // never resized: still auto
+      if (mine && mine.w === w && mine.h === h) return; // our own restore, not a gesture
+      mine = { w, h };
+      onSize(mine);
+      if (drag) drag.fit(); // a taller panel can push its own handle off-screen
+    };
+
+    // Capture phase: the panel's own handlers must not be able to swallow the grab.
+    // Nothing is preventDefault()ed — the UA still runs the resize itself.
+    node.addEventListener('pointerdown', (ev) => {
+      const r = node.getBoundingClientRect();
+      if (ev.clientX < r.right - GRAB || ev.clientY < r.bottom - GRAB) return;
+      cap();
+      if (drag) drag.pin();
+    }, true);
+
+    // Two ways in, because neither alone is sufficient. ResizeObserver is the
+    // precise one but it is delivered on the rendering lifecycle, so a page that is
+    // not compositing never gets the callback. pointerup is the backstop: the
+    // grabber is a pointer gesture, so releasing it always lands here. report() is
+    // idempotent, so both firing costs nothing.
+    if (typeof ResizeObserver === 'function') new ResizeObserver(report).observe(node);
+    node.addEventListener('pointerup', report);
+    window.addEventListener('resize', () => { if (mine) cap(); });
+
+    return {
+      apply: (size) => {
+        if (!size || !size.w || !size.h) return false;
+        mine = { w: String(size.w), h: String(size.h) };
+        node.style.width = mine.w;
+        node.style.height = mine.h;
+        cap();
+        if (drag) drag.pin(); // a restored size wants the same anchoring a grab does
+        return true;
+      },
+      reset: () => {
+        mine = null;
+        node.style.width = node.style.height = '';
+        node.style.minWidth = node.style.minHeight = '';
+        node.style.maxWidth = node.style.maxHeight = '';
+        onSize(null);
+      },
+      sized: () => !!mine,
+    };
+  };
+  // ===================== end PANEL KIT v3 ====================================
+
   // ===========================================================================
   // UI — shadow DOM so the app's stylesheet (and its hashed classes) can't
   // reach us and we can't reach it.
   // ===========================================================================
-  let root = null, $panel = null, $toasts = null, $fab = null, $grip = null;
+  let root = null, $panel = null, $toasts = null, $fab = null;
+  let panelDrag = null, panelResize = null;
   let sk = null;          // skeleton refs, built exactly once
   let dirty = false;      // a refresh was suppressed while the user was busy
 
@@ -1392,21 +1610,6 @@
     .fab.live { border-color: #ef4444; color: #ef4444; box-shadow: 0 0 0 1px #ef4444, 0 4px 14px rgba(0,0,0,.45); }
     section.live .warnbox { background: #1a0f0f; border-color: #7f1d1d; color: #fca5a5; }
 
-    /* Resize grip. It lives on whichever corner is free — the panel is pinned to
-       the button, so the grip sits opposite the pinned edges and the panel grows
-       away from the button rather than out from under the pointer. */
-    .grip { position: absolute; width: 16px; height: 16px; z-index: 3; touch-action: none; }
-    .grip::after { content: ''; position: absolute; inset: 4px; border: 0 solid #52525b; }
-    .grip:hover::after { border-color: #a1a1aa; }
-    .grip.br { right: 0; bottom: 0; cursor: nwse-resize; }
-    .grip.bl { left: 0;  bottom: 0; cursor: nesw-resize; }
-    .grip.tr { right: 0; top: 0;    cursor: nesw-resize; }
-    .grip.tl { left: 0;  top: 0;    cursor: nwse-resize; }
-    .grip.br::after { border-right-width: 2px; border-bottom-width: 2px; }
-    .grip.bl::after { border-left-width: 2px;  border-bottom-width: 2px; }
-    .grip.tr::after { border-right-width: 2px; border-top-width: 2px; }
-    .grip.tl::after { border-left-width: 2px;  border-top-width: 2px; }
-
     .armbar { flex: 0 0 auto; display: flex; gap: 6px; align-items: center;
               padding: 6px 12px; border-bottom: 1px solid #18181b; }
     .armbar .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: #52525b; }
@@ -1417,19 +1620,30 @@
     .seg button.on.live-on { background: #7f1d1d; color: #fecaca; }
     .seg button.pending { background: #7c2d12; color: #fdba74; }
 
-    .sizes { flex: 0 0 auto; display: flex; gap: 4px; align-items: center;
+    /* Wraps, because five buttons and a readout do not fit across a panel parked in
+       a margin — and un-wrapped the last of them went under the edge rather than
+       under the one before it. */
+    .sizes { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
              padding: 6px 12px; border-bottom: 1px solid #18181b; }
     .sizes button.on { border-color: #52525b; color: #e4e4e7; }
     .sizes .dim { margin-left: auto; color: #3f3f46; font-size: 10px;
                   font-variant-numeric: tabular-nums; }
 
-    .panel { pointer-events: auto; position: absolute; bottom: 66px; right: 16px; width: ${CFG.PANEL_W}px;
+    /* position: fixed, not absolute. It is inside .wrap, which is itself fixed at
+       inset 0 and sets no containing block, so the two resolve to the same box —
+       but PANEL KIT's draggable() measures against the viewport and writes
+       left/top, so the element it moves has to be anchored to the viewport in its
+       own right rather than by coincidence of its parent. */
+    .panel { pointer-events: auto; position: fixed; bottom: 66px; right: 16px;
+             width: min(${CFG.PANEL_W}px, calc(100vw - ${CFG.EDGE * 2}px));
              max-height: 74vh; display: flex; flex-direction: column; background: #09090b;
              color: #e4e4e7; border: 1px solid #27272a; font-size: 12px;
              box-shadow: 0 16px 48px rgba(0,0,0,.6); }
     .panel > .scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+    /* The drag handle. cursor comes from the kit; this is the affordance that says
+       the strip is grabbable before the pointer is over it. */
     header { flex: 0 0 auto; border-bottom: 1px solid #27272a; padding: 9px 12px;
-             display: flex; align-items: center; gap: 8px; }
+             display: flex; align-items: center; gap: 8px; user-select: none; }
     header b { font-size: 12px; font-weight: 600; }
     header .sp { flex: 1; }
     header .cnt { color: #52525b; font-size: 11px; }
@@ -1478,11 +1692,18 @@
     .row { display: flex; align-items: center; gap: 7px; padding: 4px 0;
            border-top: 1px solid #131316; cursor: pointer; }
     .row:hover { background: #0d0d10; }
-    .row .sym { flex: 0 0 78px; color: #e4e4e7; font-weight: 500;
+    /* Every column here shrinks except the two that carry the numbers. Parked in a
+       margin the panel is ~280px, and with all five basis widths frozen the row
+       added up to more than that — so the `+` on the end was pushed past the edge
+       and clipped away by .scroll, on every row, with nothing to say it was there.
+       The symbol truncates (it already has the ellipsis for it) and the sparkline
+       squeezes; the price and the delta keep their width, because a number that
+       has been trimmed is worse than no number. */
+    .row .sym { flex: 0 1 78px; min-width: 32px; color: #e4e4e7; font-weight: 500;
                 overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .row .px  { flex: 1; text-align: right; font-variant-numeric: tabular-nums; }
+    .row .px  { flex: 1 1 auto; min-width: 0; text-align: right; font-variant-numeric: tabular-nums; }
     .row .dt  { flex: 0 0 50px; text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; }
-    .row .sk  { flex: 0 0 50px; height: 15px; display: block; }
+    .row .sk  { flex: 0 1 50px; min-width: 0; height: 15px; display: block; }
     .row .chev { flex: 0 0 9px; color: #3f3f46; font-size: 9px; }
     .sub { padding: 2px 0 6px 8px; border-top: 1px solid #131316; }
     .sub .f { display: flex; gap: 8px; padding: 2px 0; align-items: center; }
@@ -1859,6 +2080,7 @@
   // ---------------------------------------------------------------------------
   function buildSkeleton() {
     const hdr = el('header');
+    hdr.title = 'Drag to move · drag the bottom-right corner to resize · double-click to snap back';
     const cnt = el('span', 'cnt');
     const szBtn = el('button', 'mini', '⤢');
     szBtn.title = 'panel size';
@@ -1875,14 +2097,35 @@
       sizes.style.display = ui.sizeBar ? 'flex' : 'none';
       paintSizes();
     };
+    // The presets go through PANEL KIT's resizable() rather than round a second
+    // sizing path of their own: one owner for width and height, whether the number
+    // came from a button or from dragging the corner.
+    //
+    // They do have to finish the job themselves, though. apply() is the kit's
+    // RESTORE path — it cannot tell being handed back a stored size from being
+    // handed a new one, so it deliberately reports nothing, and a preset that
+    // stopped there looked right and was forgotten on reload. So this does what
+    // the corner-drag callback does: store the size, and park the panel, because a
+    // sized panel still tethered gets shoved by the next response to land.
     for (const [name, w, h] of SIZE_PRESETS) {
       const b = el('button', 'mini', name);
-      b.onclick = () => { ui.size = { w, h }; saveUI(); placePanel(); paintSizes(); };
+      b.title = h === null ? `${w}px wide, filling the height below it` : `${w}×${h}`;
+      b.onclick = () => {
+        const size = { w: `${presetW(w)}px`, h: `${h === null ? fillH() : h}px` };
+        panelResize?.apply(size);
+        ui.size = size;
+        if (!ui.panel) {
+          const r = $panel.getBoundingClientRect();
+          ui.panel = { x: r.left, y: r.top };
+        }
+        saveUI();
+        paintSizes();
+      };
       sizes.append(b);
     }
     const auto = el('button', 'mini', 'auto');
-    auto.title = 'let the panel size itself to the space available';
-    auto.onclick = () => { ui.size = null; saveUI(); placePanel(); paintSizes(); };
+    auto.title = 'hand the size back — the panel sizes itself to its content again';
+    auto.onclick = () => { panelResize?.reset(); placePanel(); paintSizes(); };
     const dim = el('span', 'dim');
     sizes.append(auto, dim);
 
@@ -1942,7 +2185,7 @@
     scroll.append(warnSec, chartSec.sec, obs, ruleSec, formSec, ft);
     $panel.append(hdr, sizes, bar, scroll);
 
-    sk = { cnt, warnSec, warn, obs, ruleBody, formHost, filter, sizes, dim, chart: chartSec };
+    sk = { cnt, hdr, warnSec, warn, obs, ruleBody, formHost, filter, sizes, dim, chart: chartSec };
     buildForm();
 
     // If a tick arrived while the user held a control open, apply it on release.
@@ -2149,6 +2392,11 @@
       paintRules();
       syncFormOptions();
       updateQtyPreview();   // holdings may have just arrived — resize the preview
+      paintSizes();
+      // The content just decided the height, so only now can we be sure the header
+      // is still on screen. A panel whose drag handle is off the edge is the one
+      // unrecoverable state, and every render is a chance to create it.
+      panelDrag?.fit();
     });
   }
 
@@ -2635,9 +2883,25 @@
   }
 
   const panelW = () => Math.max(CFG.PANEL_MIN_W,
-    Math.min((ui.size && ui.size.w) || CFG.PANEL_W, window.innerWidth - CFG.EDGE * 2));
+    Math.min(CFG.PANEL_W, window.innerWidth - CFG.EDGE * 2));
 
-  // Which edges the panel is currently pinned by — the grip goes on the others.
+  /** A preset's width, clamped to a window it may not fit in. */
+  const presetW = (w) => Math.max(CFG.PANEL_MIN_W, Math.min(w, window.innerWidth - CFG.EDGE * 2));
+
+  /**
+   * What a null-height preset resolves to: everything from the panel's current top
+   * edge down to the bottom margin. Measured rather than assumed, because where the
+   * panel's top edge IS depends on whether it is parked or still tethered to a
+   * button that could be anywhere.
+   */
+  const fillH = () => {
+    const top = $panel ? $panel.getBoundingClientRect().top : CFG.EDGE;
+    return Math.max(CFG.PANEL_MIN_H, window.innerHeight - Math.max(0, top) - CFG.EDGE);
+  };
+
+  // Which edges the TETHERED panel hangs off its button by. Only meaningful while
+  // ui.panel is empty; once the panel has been parked it is anchored by left/top
+  // like every other panel in the repo, and neither of these is read again.
   let panelAlign = 'right', panelAnchor = 'bottom';
 
   function placePanel() {
@@ -2645,14 +2909,38 @@
     const { x, y } = fabAt();
     const gap = 10;
     const vw = window.innerWidth, vh = window.innerHeight;
-    const w = panelW();
-    $panel.style.width = `${w}px`;
+
+    // The tether MEASURES the width; it never writes one. PANEL KIT's resizable()
+    // treats an inline width or height as proof the user dragged the corner — it
+    // has no other way to tell a gesture from a re-render — so a tether that set
+    // `style.width` on every paint reported a resize it had invented, and the
+    // panel parked itself and stopped following the button without anyone touching
+    // it. The default width is the stylesheet's, clamped there against the
+    // viewport, which is also the only place it belongs.
+    const sized = !!(panelResize && panelResize.sized());
+    const w = $panel.getBoundingClientRect().width || panelW();
+
+    // Parked by hand: the panel keeps its own spot and stops following the button.
+    // Height is capped to what is left below it so the body scrolls rather than
+    // running off the bottom. Double-click the header hands both back.
+    if (ui.panel) {
+      $panel.style.left = `${ui.panel.x}px`;
+      $panel.style.top = `${ui.panel.y}px`;
+      $panel.style.right = 'auto';
+      $panel.style.bottom = 'auto';
+      if (!sized) {
+        $panel.style.maxHeight = `${Math.max(CFG.PANEL_MIN_H, vh - ui.panel.y - CFG.EDGE)}px`;
+        $panel.style.height = '';
+      }
+      panelDrag?.fit();
+      return;
+    }
 
     // Horizontal: hang the panel off whichever edge of the button leaves it
     // fully on screen, preferring right-aligned to match the default corner.
     // Sticky: keep the current side while it still fits, otherwise shrinking the
-    // panel makes right-alignment viable again and the resize grip — which lives
-    // on the free corner — hops across the panel mid-drag.
+    // panel makes right-alignment viable again and the panel hops across the
+    // button mid-gesture.
     const rightAligned = x + CFG.FAB_SIZE - w;
     const leftAligned = x;
     const fits = (l) => l >= CFG.EDGE && l + w <= vw - CFG.EDGE;
@@ -2679,60 +2967,31 @@
       $panel.style.bottom = 'auto';
     }
 
-    const room = Math.max(CFG.PANEL_MIN_H, Math.max(above, below));
-    const h = ui.size && ui.size.h
-      ? Math.max(CFG.PANEL_MIN_H, Math.min(ui.size.h, room))
-      : room;
-    $panel.style.maxHeight = `${h}px`;
-    // An explicit height holds the panel open at that size; without one it
-    // stays content-sized, which is what the fill-the-space presets want.
-    $panel.style.height = ui.size && ui.size.h ? `${h}px` : '';
-
-    if ($grip) {
-      $grip.className = `grip ${panelAnchor === 'top' ? 'b' : 't'}${panelAlign === 'right' ? 'l' : 'r'}`;
+    // Still tethered and never sized: cap the height at the room the button
+    // leaves, so the body scrolls instead of the panel running off an edge.
+    if (!sized) {
+      $panel.style.maxHeight = `${Math.max(CFG.PANEL_MIN_H, Math.max(above, below))}px`;
+      $panel.style.height = '';
     }
-  }
-
-  function makeResizable() {
-    let rz = null;
-    $grip.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      const r = $panel.getBoundingClientRect();
-      // Freeze which edges are pinned for the duration of the drag, so the
-      // grow direction can't flip mid-gesture.
-      rz = { x: e.clientX, y: e.clientY, w: r.width, h: r.height,
-        align: panelAlign, anchor: panelAnchor, id: e.pointerId };
-      try { $grip.setPointerCapture(e.pointerId); } catch { /* capture optional */ }
-      e.preventDefault(); e.stopPropagation();
-    });
-
-    $grip.addEventListener('pointermove', (e) => {
-      if (!rz || e.pointerId !== rz.id) return;
-      const dw = (rz.align === 'right' ? -1 : 1) * (e.clientX - rz.x);
-      const dh = (rz.anchor === 'top' ? 1 : -1) * (e.clientY - rz.y);
-      ui.size = { w: rz.w + dw, h: rz.h + dh };
-      placePanel(); paintSizes();
-    });
-
-    const end = (e) => {
-      if (!rz) return;
-      rz = null;
-      try { $grip.releasePointerCapture(e.pointerId); } catch { /* already gone */ }
-      saveUI(); paintSizes();
-    };
-    $grip.addEventListener('pointerup', end);
-    $grip.addEventListener('pointercancel', end);
+    // No fit() here on purpose. The tether has just placed the panel inside the
+    // viewport itself, and fit() would convert its bottom/top anchoring into
+    // left/top and report the move — which is how the panel would silently park
+    // itself without anyone dragging it.
   }
 
   function paintSizes() {
     if (!sk || !sk.sizes) return;
     const r = $panel.getBoundingClientRect();
     sk.dim.textContent = `${Math.round(r.width)}×${Math.round(r.height)}`;
+    // A preset is "on" when the panel is actually that size, measured, rather than
+    // when ui.size happens to hold the numbers it wrote. They come apart the moment
+    // you drag the corner: the kit stores the new size and the preset that put the
+    // panel there a second ago is no longer describing it.
     for (const b of sk.sizes.querySelectorAll('button')) {
       const p = SIZE_PRESETS.find(([n]) => n === b.textContent);
       b.classList.toggle('on', p
-        ? !!(ui.size && ui.size.w === p[1] && ui.size.h === p[2])
-        : b.textContent === 'auto' && !ui.size);
+        ? Math.abs(r.width - presetW(p[1])) < 1.5 && (p[2] === null || Math.abs(r.height - p[2]) < 1.5)
+        : b.textContent === 'auto' && !(panelResize && panelResize.sized()));
     }
   }
 
@@ -2798,8 +3057,6 @@
 
     $panel = el('div', 'panel');
     $panel.style.display = 'none';
-    $grip = el('div', 'grip');
-    $panel.append($grip);
 
     // The chart overlay. It sits in .wrap like everything else, so it inherits
     // pointer-events: none and cannot intercept a click meant for the game.
@@ -2811,10 +3068,37 @@
     document.documentElement.append(host);
 
     buildSkeleton();
+
+    // Park it where you like; until you do, it stays tethered to the button. This
+    // is the pair every other panel in the repo gets, and the one thing market-watch
+    // never had — it moved only by moving its button, and resized only through a
+    // grip that hopped corners as the tether flipped sides.
+    panelDrag = draggable($panel, sk.hdr, (pos) => {
+      ui.panel = pos; saveUI();
+      if (!pos) placePanel();   // reset() — hand it back to the tether
+    });
+    panelResize = resizable($panel, (size) => {
+      ui.size = size ?? undefined;
+      // Resizing is positioning. The tether re-derives the panel's box from the
+      // button on every paint, so a sized panel still following the button would be
+      // shoved around by the next response to land. Park it where it stands — the
+      // same state dragging it produces, and one double-click hands back both.
+      if (size && !ui.panel) {
+        const r = $panel.getBoundingClientRect();
+        ui.panel = { x: r.left, y: r.top };
+      }
+      saveUI();
+      paintSizes();
+    }, { drag: panelDrag, minW: CFG.PANEL_MIN_W, minH: CFG.PANEL_MIN_H });
+
+    // One gesture hands back everything the panel remembers about its own shape.
+    sk.hdr.addEventListener('dblclick', () => {
+      panelDrag.reset(); panelResize.reset(); placePanel(); paintSizes();
+    });
+
     placeFab();
     paintFabState();
     makeDraggable();
-    makeResizable();
     // An UNMOVED button needs none of this — it is on the kit's stylesheet and the
     // browser re-resolves it for free. These three are for a button the user has
     // dragged: a stored position has to be re-clamped when the window it was stored
@@ -2859,7 +3143,16 @@
     saveUI();
     $panel.style.display = ui.open ? 'flex' : 'none';
     $fab.classList.toggle('pk-open', ui.open);   // the button says which window is up
-    if (ui.open) { placePanel(); paintSizes(); lastStructSig = ''; refresh(); }
+    if (!ui.open) return;
+    // display:none has no geometry, so a stored position and size can only be
+    // restored once the panel is actually showing — the kit measures what it moves.
+    if (ui.panel) panelDrag?.apply(ui.panel);
+    panelResize?.apply(ui.size);
+    placePanel();
+    paintSizes();
+    lastStructSig = '';
+    refresh();
+    panelDrag?.fit();   // content decides the height, so only now is the header sure to be reachable
   }
 
   window.addEventListener('keydown', (e) => {

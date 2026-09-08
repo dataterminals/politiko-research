@@ -64,11 +64,17 @@ implementation, and does three things around it that the local version did not:
   Capping against it would shrink the panel to nothing and the next save would make it
   permanent — the same trap `viewportUsable()` guards in the placement layers.
 
-Two windows sit outside that: **Market Watch** keeps its own corner grips, because its panel
-is pinned to its button and has to grow from whichever corner is free; and **Comms Move**
-resizes nothing, because the window it moves is the game's Comms dock, and sizing that means
-overriding the game's own collapse behaviour — a larger claim than "this tool only
-repositions". `tools/test-placement.js` encodes both exceptions by name.
+One window sits outside that: **Comms Move** resizes nothing, because the window it moves is
+the game's Comms dock, and sizing that means overriding the game's own collapse behaviour — a
+larger claim than "this tool only repositions". `tools/test-placement.js` encodes it by name.
+
+**Market Watch** was the second exception until 1.8.0. Its panel hung off its button and grew
+from whichever corner was free, so it drew its own grips rather than using the browser's
+grabber — which only ever grows a box right and down. The grips worked; the problem was the
+other half. The panel could not be *moved*. You moved the button, and the panel followed. It
+is on the kit now, and the tether survives as the default only: the panel starts under its
+button, and the first drag of its header parks it, saves the spot, and stops it following.
+Double-click the header hands back both the position and the size.
 
 ## The buttons
 

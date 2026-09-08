@@ -84,10 +84,14 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   every copy so the copies can be diffed. Hand `resizable()` the panel's `draggable()`, and
   double-click the title bar must undo both. It also has to survive a short window: a panel
   whose drag handle ends up off-screen cannot be recovered, so `fit()` runs after every
-  render, and after every resize. Two windows are outside this on purpose and are named in
-  `tools/test-placement.js`: market-watch keeps its own corner grips (its panel is pinned to
-  its button, so it grows from whichever corner is free), and comms-move resizes nothing
-  (the window it moves is the game's Comms dock).
+  render, and after every resize. **One** window is outside this on purpose and is named in
+  `tools/test-placement.js`: comms-move resizes nothing (the window it moves is the game's
+  Comms dock). market-watch used to be the second, keeping its own corner grips because its
+  panel was pinned to its button — and the real cost of that was not the grips, it was that
+  the panel could not be moved at all, only followed a button you moved. It joined the kit
+  at 1.8.0. Where a panel is tethered to something by default, the tether is the *default*
+  and the first drag of the header ends it: park it, save `ui.panel`, and stop re-placing it
+  on every render — otherwise the next response to land shoves it back.
 - **Panels live in the margins. Design for narrow.** In practice these windows get parked in
   the empty strip between the game's sidebar and its content, or between the content and the
   right edge of the window — not over the play area, because a panel that covers the game is

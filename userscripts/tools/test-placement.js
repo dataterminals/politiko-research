@@ -389,11 +389,17 @@ console.log('\n— HTTP TAP v1 is byte-identical everywhere —');
 // somebody else's game, on a screen we do not control. A 340px column is fine until
 // the table in it has eleven columns, and a 74vh panel is a wall on a laptop.
 //
-// Two implementations satisfy this, and both are legitimate:
-//   - PANEL KIT v3's resizable(), which arms the browser's own grabber; and
-//   - market-watch's corner grips, which it needs because its panel is pinned to its
-//     button and therefore grows from whichever corner is free — the UA grabber only
-//     ever grows a box right and down.
+// There is now exactly one implementation: PANEL KIT v3's resizable(), which arms the
+// browser's own grabber.
+//
+// It used to be two. market-watch drew its own corner grips, because its panel was
+// pinned to its button and so had to grow from whichever corner was free, and the UA
+// grabber only ever grows a box right and down. The cost of that exception was not the
+// grips — it was that the panel could not be MOVED at all. You moved the button and the
+// panel followed it. As of 1.8.0 it is on the kit like everything else: the tether is
+// still the default, and the first drag of the header parks the panel and stops it
+// following. The `makeResizable()` escape hatch below is gone with it, so a tool cannot
+// quietly opt out of the kit by rolling its own again.
 //
 // Note the regexes below match `resizable(` — a CALL. The kit's own definition reads
 // `const resizable = (`, with a space, so carrying the block is not enough to pass.
@@ -417,9 +423,18 @@ console.log('\n— every panel this repo draws can be resized —');
 
   const missing = panels.filter((f) => {
     const src = fs.readFileSync(path.join(dir, f), 'utf8');
-    return !/\bresizable\(/.test(src) && !/makeResizable\(\)/.test(src);
+    return !/\bresizable\(/.test(src);
   });
   check('no panel ships without a way to resize it', missing, []);
+
+  // Every panel is also MOVABLE, and by its own header rather than by proxy. This is
+  // the half market-watch was missing: it had a resize and no drag at all, so the only
+  // way to move the window was to move the button it hung off.
+  const stuck = panels.filter((f) => {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    return !/\bdraggable\(/.test(src);
+  });
+  check('...or without a way to move it', stuck, []);
 
   // A stored size is the other half: a panel that forgets on reload is a panel you
   // resize every session.
@@ -434,7 +449,7 @@ console.log('\n— every panel this repo draws can be resized —');
   // drag handle off screen, which is the one unrecoverable state.
   const unfitted = panels.filter((f) => {
     const src = fs.readFileSync(path.join(dir, f), 'utf8');
-    if (!/\bresizable\(/.test(src)) return false;      // market-watch re-places itself
+    if (!/\bresizable\(/.test(src)) return false;      // already reported by `missing`
     return !/\{\s*drag(:\s*\w+)?,/.test(src);
   });
   check('...and hands the kit its drag, so a resize cannot strand the handle', unfitted, []);
