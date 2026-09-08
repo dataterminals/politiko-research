@@ -109,7 +109,7 @@ check('...and the repainting one is gated on the tab being visible',
 
 console.log('\n— it reads responses, never requests —');
 
-const WRAP = CODE.slice(CODE.indexOf('const origFetch = window.fetch;'), CODE.indexOf('PANEL KIT v2'));
+const WRAP = CODE.slice(CODE.indexOf('const origFetch = window.fetch;'), CODE.indexOf('PANEL KIT v3'));
 check('the wrapper never looks at the second argument',
   !/args\[1\]/.test(WRAP) && !/\binit\b/.test(WRAP),
   'the fetch wrapper reads args[1] — that is the request body and headers');

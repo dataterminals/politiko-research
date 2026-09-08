@@ -152,7 +152,7 @@ console.log('\n— it stays auditable —');
 
 check('@grant none', /@grant\s+none/.test(SRC), 'any other grant sandboxes window and blinds the tap');
 check('the disclosure block names Requests: ZERO', /Requests:\s*ZERO/.test(SRC), 'clause 6');
-check('PANEL KIT v2 is present', /PANEL KIT v2 — shared verbatim block/.test(SRC), 'panels must be movable');
+check('PANEL KIT v3 is present', /PANEL KIT v3 — shared verbatim block/.test(SRC), 'panels must be movable');
 check('the panel is resizable', SRC.includes('panelResize = resizable(panelEl,'),
   'CLAUDE.md: every window this repo draws is resizable, not just movable');
 // 0.2.0: a destination click no longer closes the panel, so walking a set costs one

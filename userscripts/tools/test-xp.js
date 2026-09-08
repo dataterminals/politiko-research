@@ -107,10 +107,10 @@ ok('no /home path anywhere', !SRC.includes("'/home'"));
 ok('render scheduler has a non-rAF backstop', /requestAnimationFrame\(run\);\s*\n\s*setTimeout\(run, \d+\);/.test(SRC));
 
 // PANEL KIT must be the shared block, not a local reimplementation.
-ok('carries PANEL KIT v2 verbatim marker', SRC.includes('PANEL KIT v2 — shared verbatim block'));
+ok('carries PANEL KIT v3 verbatim marker', SRC.includes('PANEL KIT v3 — shared verbatim block'));
 ok('calls fit() after render', /if \(drag\) drag\.fit\(\);/.test(SRC));
 
-// Resize used to be a local copy of this logic, living right here. PANEL KIT v2
+// Resize used to be a local copy of this logic, living right here. PANEL KIT v3
 // carries it now, so the kit's own guarantees — the pointerup backstop, the viewport
 // cap, pinning the panel to left/top before the grab so it grows toward the pointer —
 // are asserted once for every tool in tools/test-placement.js. What is left here is

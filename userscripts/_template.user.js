@@ -379,7 +379,7 @@
   window.addEventListener('popstate', checkRoute);
 
   // ===========================================================================
-  // 4. PANEL KIT v2 — shared verbatim block.
+  // 4. PANEL KIT v3 — shared verbatim block.
   //
   //    Repo convention: every panel we ship is draggable and resizable, and
   //    remembers both. Copy this block into a new tool exactly as it stands. If
@@ -465,7 +465,16 @@
     // Never strand the panel: a short window, a rotation, or a panel that grew
     // taller than the space its CSS corner left it can all put the drag handle
     // off-screen, and then there is no way to get it back.
+    // A hidden tab and a minimised window both report a ~zero viewport. Clamping
+    // against that pins the element into the top-left corner — and then onMove()
+    // SAVES it, so the stored position is (-44, -38) forever after and the element
+    // has permanently left wherever it belonged. Five of sixteen buttons landed
+    // there the first time tools/harness/row.html ran. Treat a viewport that small
+    // as no information, the same as the placement layer already does.
+    const usable = () => window.innerWidth > 120 && window.innerHeight > 120;
+
     const fit = () => {
+      if (!usable()) return false;
       const r = node.getBoundingClientRect();
       if (!r.width || !r.height) return false;
       const x = Math.min(Math.max(r.left, EDGE - r.width), window.innerWidth - EDGE);
@@ -599,7 +608,7 @@
   };
 
   // ===========================================================================
-  // 5. FAB KIT v7 — shared verbatim block.
+  // 5. FAB KIT v8 — shared verbatim block.
   //
   //    The toggle button, and the one piece of this repo a player sees before
   //    they open anything. Sixteen tools can be on screen at once, so the button
@@ -624,6 +633,20 @@
   //    than a tally of what is installed: a tool you do not have leaves its slot
   //    empty and the row stays where it is.
   //
+  //    v8 is the first one that is not about width. The row was not one row on a
+  //    real screen: it ran off the right-hand edge under ~1176px and got stacked
+  //    on a single pixel by the thing that clamps buttons back, and the two tools
+  //    that place their own button measured against window.innerWidth while the
+  //    kit measured against the containing block — half a scrollbar apart, which
+  //    is most of the 8px gap. It also re-deals the slots by what the tools are
+  //    FOR; the block carries the table and the reasoning. If you are adding a
+  //    tool, that re-deal is over: take slot 16 and bump the kit to v9.
+  //
+  //    The bench for all of this is tools/harness/row.html — every shipped tool on
+  //    one page, with a readout of where each button actually landed. Nothing in
+  //    test-placement.js can see a row that is wrong by 7.5px, because that number
+  //    is the browser's answer to a question no text check asks.
+  //
   //    The button also has to say whether ITS window is the one already open, so
   //    wire `pk-open` at the single place your tool writes the panel's display —
   //    `fab.classList.toggle('pk-open', ui.open)`, above any `if (!ui.open)
@@ -631,8 +654,8 @@
   //    never `className =`: rebuilding the className drops `pk-fab` and takes
   //    the whole box with it. test-placement.js checks for both.
   //
-  //    Pick the word the way you would pick a stock ticker: ALGN, MKT, RAID,
-  //    SLP, JUMP, SOCK, TIME, WRLD, XP, POLL, SHOP, BARS, SLOT, JACK. No emoji —
+  //    Pick the word the way you would pick a stock ticker: ALGN, XP, BARS,
+  //    JUMP, JACK, SLOT, MKT, SHOP, RAID, SLP, WRLD, GOV, POLL, TIME, SOCK. No emoji —
   //    a 15px glyph is a coin toss across fonts and platforms, and four of them
   //    tell you nothing about which is which. people-watch is the single
   //    exception, and it is grandfathered: the eye of providence is its mark,
@@ -652,7 +675,7 @@
   //    left/top inline. test-placement.js checks the two against each other.
   // ===========================================================================
   const FAB_CSS = `
-    /* FAB KIT v7 — shared verbatim block.
+    /* FAB KIT v8 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
        bump the version here and in every tool carrying a copy, so the copies can
        be diffed. Several of these tools are on screen at once, and buttons that
@@ -682,37 +705,81 @@
        gains costs a version bump and a pass over every copy — the price of the row
        being one row rather than each tool's guess at one.
 
+       v8 is the first version that changes what the row DOES rather than how wide
+       it is, because on a real screen the row was not one row. Two faults, both
+       found by tools/harness/row.html, which loads every shipped tool at once and
+       measures the buttons instead of reading them as text:
+
+         1. The row ran off the right-hand edge below about 1200px. The floor at
+            440 held it clear of the game's nav, nothing held it clear of the
+            window, and PANEL KIT's fit() then clamped every button past the edge
+            to the SAME pixel and saved it. Four buttons on one square, and the
+            save made it permanent. So the row now yields: it prefers to be
+            centred, it will not sit left of the nav, but it gives up the nav floor
+            before it gives up the edge. Overlapping the game's chrome is a thing
+            you can see and click around; a stack of buttons is not.
+         2. In the centred half, 50% here and window.innerWidth / 2 in the two
+            tools that place their own button are not the same number. A fixed
+            element's percentages resolve against the initial containing block,
+            which EXCLUDES the classic scrollbar; innerWidth includes it. Half a
+            scrollbar — 7.5px on this box — is most of the 8px gap, so the eye and
+            MKT each sat all but touching the button to their right. The JS half of
+            the row now reads document.documentElement.clientWidth, which is that
+            same containing block. test-placement.js fails a copy that reaches for
+            innerWidth instead.
+
        The kit owns the row. A tool owns its SLOT and nothing else about position:
 
          .pkxx-fab { --pk-slot: 16; z-index: 2147482000; }
 
        Slots are fixed rather than packed, and that is the whole point — installing
        a sixteenth tool does not shuffle the fifteen buttons you already know by
-       position, and a tool you do not have simply leaves its slot empty. The eye
-       leads because it is the mark of the set; the words are alphabetical after it:
+       position, and a tool you do not have simply leaves its slot empty. v8 is the
+       one deliberate exception to that: the operator asked for the row to be dealt
+       again by what the tools are FOR, rather than by the alphabet that recorded
+       the order they were written in. It is a re-deal, not a sort to be re-run —
+       from here the fixed-slot rule resumes, and a seventeenth tool takes slot 16.
 
-         0  the eye  people-watch     8  TIME  time-watch
-         1  ALGN     align-watch      9  WRLD  world-watch
-         2  GOV      gov-watch       10  XP    xp-watch
-         3  JUMP     quick-jump      11  POLL  poll-watch
-         4  MKT      market-watch    12  SHOP  shop-watch
-         5  RAID     raid-watch      13  BARS  bar-watch
-         6  SLP      sleeper-watch   14  SLOT  slot-watch
-         7  SOCK     ws-watch        15  JACK  jack-watch
+         0  the eye  people-watch     yours: the ledger, and your own numbers
+         1  ALGN     align-watch
+         2  XP       xp-watch
+         3  BARS     bar-watch
+         4  JUMP     quick-jump       where you go, and what you do when you get there
+         5  JACK     jack-watch
+         6  SLOT     slot-watch
+         7  MKT      market-watch
+         8  SHOP     shop-watch
+         9  RAID     raid-watch       your faction
+        10  SLP      sleeper-watch
+        11  WRLD     world-watch      the world
+        12  GOV      gov-watch
+        13  POLL     poll-watch
+        14  TIME     time-watch       instruments
+        15  SOCK     ws-watch
 
-       POLL, SHOP, BARS, SLOT and JACK are on the end rather than sorted in among
-       the others, and that is deliberate: the alphabet describes how the first
-       eleven were handed out, not a sort to be re-run. Slots are fixed, so a tool
-       that arrives later takes the next free number and nothing already on screen
+       The eye still leads, because it is the mark of the set. ALGN and XP sit
+       together because they are both your own character read back to you; JUMP is
+       the launcher that reaches the casinos, so JACK and SLOT follow it; SOCK is
+       last because it is the one tool that is meant to be uninstalled.
 
        Sixteen 38px buttons 8px apart is a 728px row, so it runs 364px either side
        of the middle of the viewport. The floor at 440px is where the game's own
        chrome ends — 24px of padding, a 62px wordmark, 24px of gap and five nav
        links, measured off the bundle — so above about 1608px the row is centred,
-       and below that it stops sliding left rather than climb onto the nav.
+       and below that it stops sliding left rather than climb onto the nav. Below
+       about 1174px it starts sliding left again, because from there the far end of
+       the row would be off the edge, and that outranks the nav.
 
-       Three numbers, if that header ever changes shape: 7 (where the band is), 440
-       (where the nav ends), 364 (half the row). Nothing else in here is placement.
+       Four numbers, if that header ever changes shape: 7 (where the band is), 440
+       (where the nav ends), 364 (half the row), 736 (the whole row plus the 8px it
+       keeps off the right edge). Nothing else in here is placement.
+
+       The floor of the whole arrangement is 744px of viewport: sixteen buttons at a
+       46px pitch simply are 728px wide, and under that the row cannot be a row. It
+       runs off the edge there and fit() stacks it, exactly as it used to do at
+       1200. That width is a phone, the game is in its mobile layout, and a row of
+       sixteen desktop buttons has no meaning on it — so it is a stated limit rather
+       than a third regime for the two tools that mirror this in JS to get wrong.
 
        (No backticks anywhere in here, incidentally. This block is pasted INSIDE a
        template literal in every tool that carries it, and one backtick in a comment
@@ -749,9 +816,13 @@
        that inside the same square as everyone else's letters. */
     .pk-fab {
       box-sizing: border-box; width: 38px; height: 38px; padding: 0;
-      /* The home row. --pk-slot is the tool's; the three numbers are the kit's. */
+      /* The home row. --pk-slot is the tool's; the four numbers are the kit's.
+         Read the insides out: centre the row, but not left of the nav (440), and
+         not so far right that its far end leaves the window (736 = 728 + 8) —
+         that inner min is what stops fit() from stacking the tail. */
       position: fixed; top: 7px;
-      left: calc(max(440px, 50% - 364px) + var(--pk-slot, 0) * 46px);
+      left: calc(max(8px, min(max(440px, 50% - 364px), 100% - 736px))
+                 + var(--pk-slot, 0) * 46px);
       display: grid; place-items: center;
       background: #18181b; color: #e4e4e7;
       border: 1px solid #3f3f46; border-radius: 3px;

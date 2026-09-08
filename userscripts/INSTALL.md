@@ -19,78 +19,34 @@ update check — no reinstall.
 
 > [!WARNING]
 > Held out of the paste blocks below — these links do not serve current code yet:
-> - **Market Watch 1.6.0** — local file differs from `origin/main`; the raw link serves the older version.
+> - **People Watch 1.12.0** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Align Watch 0.7.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **XP Watch 0.7.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Bar Watch 0.2.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Quick Jump 0.7.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Jack Watch 0.10.3** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Slot Watch 0.2.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Market Watch 1.7.0** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Shop Watch 0.4.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Raid Watch 0.7.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Sleeper Watch 0.7.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **World Watch 0.5.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Gov Watch 0.4.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Poll Watch 0.5.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Time Watch 0.10.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **WS Watch 0.8.1** — local file differs from `origin/main`; the raw link serves the older version.
+> - **Comms Move 0.1.2** — local file differs from `origin/main`; the raw link serves the older version.
 >
 > Push, re-run the generator, then post.
 
 ## Discord paste
 
-Discord's message limit is 2000 characters, so this is split into 3 messages. Copy each block and post them in order.
+Discord's message limit is 2000 characters, so this is split into one message. Copy each block and post it.
 
-**Message 1 of 3** — 1541 characters
-
-```
-## Politiko userscripts — install links (1/3)
-
-**People Watch** · who you've seen: last-online, city, rank, least-active first
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js>
-
-**ALGN — Align Watch** · your political compass on the home page, with a change log
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js>
-
-**GOV — Gov Watch** · change ledger for the government: what moved between readings
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js>
-
-**JUMP — Quick Jump** · launcher for the 64 screens the sidebar can't reach
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js>
-
-**RAID — Raid Watch** · records faction raids, their event log and post-mortems
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js>
-
-**SLP — Sleeper Watch** · keeps sleeper-recruitment timers running after you leave
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js>
-
-**SOCK — WS Watch** · read-only observer for the three sockets the game opens
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js>
-
-**TIME — Time Watch** · real to game clock, month schedule, next-registration countdown
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js>
-```
-
-**Message 2 of 3** — 1558 characters
+**Message 1 of 1** — 509 characters
 
 ```
-## Politiko userscripts — install links (2/3)
-
-**WRLD — World Watch** · plots law, opinion, street, media and citizens on one compass
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js>
-
-**XP — XP Watch** · ledger of your own stat and skill changes, action by action
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js>
-
-**POLL — Poll Watch** · keeps every opinion-poll memo, with bloc spread and trends
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js>
-
-**SHOP — Shop Watch** · shop fields the UI never shows, and brackets every restock
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js>
-
-**BARS — Bar Watch** · time to full for Energy, Juice and HP, with alerts you set
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js>
-
-**SLOT — Slot Watch** · slots bankroll against the house edge, and what a run really costs
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js>
-
-**JACK — Jack Watch** · blackjack solved: the right play, the chances, the count, the money
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js>
-
-**Comms Move** · adds a drag bar to the game's Comms dock so you can move it
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js>
-```
-
-**Message 3 of 3** — 515 characters
-
-```
-## Politiko userscripts — install links (3/3)
+## Politiko userscripts — install links
 
 **Time Bridge** · hands Time Watch's clock anchor to the Time Wire planner
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js>
@@ -102,23 +58,23 @@ Install Tampermonkey first, then click a link and confirm the prompt. Every one 
 
 | slot | button | tool | version | what it does | raw link |
 |---|---|---|---|---|---|
-| 0 | (eye) | People Watch | 1.11.0 | who you've seen: last-online, city, rank, least-active first | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
-| 1 | `ALGN` | Align Watch | 0.7.0 | your political compass on the home page, with a change log | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
-| 2 | `GOV` | Gov Watch | 0.4.0 | change ledger for the government: what moved between readings | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
-| 3 | `JUMP` | Quick Jump | 0.7.0 | launcher for the 64 screens the sidebar can't reach | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
-| 4 | `MKT` | Market Watch | 1.6.0 | marks where you bought on the stock chart; charts market series locally | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
-| 5 | `RAID` | Raid Watch | 0.7.0 | records faction raids, their event log and post-mortems | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
-| 6 | `SLP` | Sleeper Watch | 0.7.0 | keeps sleeper-recruitment timers running after you leave | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
-| 7 | `SOCK` | WS Watch | 0.8.0 | read-only observer for the three sockets the game opens | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| 8 | `TIME` | Time Watch | 0.10.0 | real to game clock, month schedule, next-registration countdown | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
-| 9 | `WRLD` | World Watch | 0.5.0 | plots law, opinion, street, media and citizens on one compass | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
-| 10 | `XP` | XP Watch | 0.7.0 | ledger of your own stat and skill changes, action by action | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
-| 11 | `POLL` | Poll Watch | 0.5.0 | keeps every opinion-poll memo, with bloc spread and trends | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
-| 12 | `SHOP` | Shop Watch | 0.4.0 | shop fields the UI never shows, and brackets every restock | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
-| 13 | `BARS` | Bar Watch | 0.2.0 | time to full for Energy, Juice and HP, with alerts you set | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
-| 14 | `SLOT` | Slot Watch | 0.2.0 | slots bankroll against the house edge, and what a run really costs | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
-| 15 | `JACK` | Jack Watch | 0.10.2 | blackjack solved: the right play, the chances, the count, the money | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
-| — | — | Comms Move | 0.1.1 | adds a drag bar to the game's Comms dock so you can move it | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
+| 0 | (eye) | People Watch | 1.12.0 | who you've seen: last-online, city, rank, least-active first | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| 1 | `ALGN` | Align Watch | 0.7.1 | your political compass on the home page, with a change log | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
+| 2 | `XP` | XP Watch | 0.7.1 | ledger of your own stat and skill changes, action by action | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| 3 | `BARS` | Bar Watch | 0.2.1 | time to full for Energy, Juice and HP, with alerts you set | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
+| 4 | `JUMP` | Quick Jump | 0.7.1 | launcher for the 64 screens the sidebar can't reach | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
+| 5 | `JACK` | Jack Watch | 0.10.3 | blackjack solved: the right play, the chances, the count, the money | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
+| 6 | `SLOT` | Slot Watch | 0.2.1 | slots bankroll against the house edge, and what a run really costs | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
+| 7 | `MKT` | Market Watch | 1.7.0 | marks where you bought on the stock chart; charts market series locally | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
+| 8 | `SHOP` | Shop Watch | 0.4.1 | shop fields the UI never shows, and brackets every restock | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
+| 9 | `RAID` | Raid Watch | 0.7.1 | records faction raids, their event log and post-mortems | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
+| 10 | `SLP` | Sleeper Watch | 0.7.1 | keeps sleeper-recruitment timers running after you leave | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
+| 11 | `WRLD` | World Watch | 0.5.1 | plots law, opinion, street, media and citizens on one compass | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
+| 12 | `GOV` | Gov Watch | 0.4.1 | change ledger for the government: what moved between readings | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
+| 13 | `POLL` | Poll Watch | 0.5.1 | keeps every opinion-poll memo, with bloc spread and trends | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
+| 14 | `TIME` | Time Watch | 0.10.1 | real to game clock, month schedule, next-registration countdown | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
+| 15 | `SOCK` | WS Watch | 0.8.1 | read-only observer for the three sockets the game opens | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
+| — | — | Comms Move | 0.1.2 | adds a drag bar to the game's Comms dock so you can move it | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | — | — | Time Bridge | 0.1.0 | hands Time Watch's clock anchor to the Time Wire planner | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 
 `_template.user.js` is not installable — it is the skeleton the others were built

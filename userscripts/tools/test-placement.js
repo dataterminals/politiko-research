@@ -19,16 +19,39 @@ const CFG = { PANEL_W: 560, PANEL_MIN_H: 160, FAB_SIZE: 38, EDGE: 8 };
 
 // Just enough DOM for the layer to write into: a style bag per element, and a
 // root whose querySelector hands back the panel.
-const mkStage = (vw, vh, storedFab = null) => {
+//
+// `bar` is the classic scrollbar, and it is here because it is the whole of one
+// bug. The kit lays the row out in CSS, where a fixed element's percentages
+// resolve against the initial containing block — documentElement.clientWidth,
+// which EXCLUDES the scrollbar. The two tools that place their own button used
+// window.innerWidth, which includes it. The default of 15 is what Chrome on
+// Windows reports, so every stage below is asking the question the shipped page
+// asks; pass 0 for a page with no bar.
+const mkStage = (vw, vh, storedFab = null, bar = 15) => {
   const window = { innerWidth: vw, innerHeight: vh };
-  const fab = { style: {} };
+  const document = { documentElement: { clientWidth: Math.max(0, vw - bar) } };
+  // The button reports where it actually IS, which is the whole point since v8: with
+  // nothing stored, this layer hands the button back to FAB KIT's rule and then reads
+  // the result instead of recomputing the row. `rect` stands in for the stylesheet —
+  // set it to say "this is where the CSS put it" — and an inline left/top wins over
+  // it, exactly as it does in a browser.
+  const fab = {
+    style: {},
+    rect: { left: 0, top: 0, width: 38, height: 38 },
+    getBoundingClientRect() {
+      const l = px(this.style.left), t = px(this.style.top);
+      return Number.isFinite(l) && Number.isFinite(t)
+        ? { left: l, top: t, width: 38, height: 38 }
+        : { ...this.rect };
+    },
+  };
   const panel = { style: {} };
   const root = { querySelector: () => panel };
   const ui = { fab: storedFab };
-  const api = new Function('window', 'fab', 'root', 'ui', 'CFG',
-    `${P_SLICE}\nreturn { defaultFabPos, clampFab, viewportUsable, placeFab, placePanel };`
-  )(window, fab, root, ui, CFG);
-  return { window, fab, panel, ui, ...api };
+  const api = new Function('window', 'document', 'fab', 'root', 'ui', 'CFG',
+    `${P_SLICE}\nreturn { defaultFabPos, clampFab, viewportUsable, placeFab, placePanel, fabAt, HOME };`
+  )(window, document, fab, root, ui, CFG);
+  return { window, document, fab, panel, ui, ...api };
 };
 
 const px = (v) => (typeof v === 'string' && v.endsWith('px') ? Number(v.slice(0, -2)) : NaN);
@@ -42,7 +65,7 @@ const check = (label, got, want) => {
 
 console.log('\n— the home row —');
 {
-  // FAB KIT v7: every button in this repo defaults to one slot of one row across the
+  // FAB KIT v8: every button in this repo defaults to one slot of one row across the
   // band above the game's header rule. people-watch holds slot 0 and places its own
   // button, so this is the JS half of that row — the CSS half is checked at the bottom
   // of this file, against these same numbers.
@@ -50,30 +73,69 @@ console.log('\n— the home row —');
   const d = s.defaultFabPos();
   check('sits in the header band, not in a corner', d.y, 7);
   check('the whole button clears the 52px band', d.y + CFG.FAB_SIZE <= 52, true);
-  check('centred on a wide window', d.x, 850 - 364);
 
-  // Below ~1470px the row would start climbing onto the game's own nav links, so it
-  // stops sliding left instead. That floor is why the maths is a max() rather than a
-  // subtraction, and it is the half most likely to get simplified away later.
-  //
-  // Every slot the row gains moves that threshold: the row gets 46px wider, so it meets
-  // the floor 46px sooner. v4's two slots moved it from ~1378 to ~1470, v5's one moved
-  // it to ~1516, v6's to ~1562 and v7's to ~1608 — which is why the probe above had to
-  // move too: a 1600px window used to be a wide one and is now a floored one. The two
-  // probes below straddle the threshold deliberately, because a test that only ever
-  // asked about 1200px would have passed the whole way through every bump and told you
-  // nothing about the number that actually changed.
-  check('floored clear of the nav on a 1200px window', mkStage(1200, 800).defaultFabPos().x, 440);
-  check('...and centred again when there is room', mkStage(2560, 1440).defaultFabPos().x, 1280 - 364);
-  check('the floor engages below ~1608px', mkStage(1602, 900).defaultFabPos().x, 440);
-  check('...and not above it', mkStage(1614, 900).defaultFabPos().x, 443);
-
-  // Sixteen slots at a 46px pitch. Slot 15 is the far end of the row and has to stay
-  // on screen on the narrowest window where the row is still centred-or-floored.
+  // Sixteen slots at a 46px pitch, and the three widths the row has to be right at.
   const ROW = 16 * CFG.FAB_SIZE + 15 * 8;
   check('sixteen slots make a 728px row', ROW, 728);
   check('...which is what 364 is half of', ROW, 364 * 2);
-  check('the far slot fits a 1200px window', 440 + 15 * 46 + CFG.FAB_SIZE <= 1200 - CFG.EDGE, true);
+
+  // 1. THE ICB, NOT THE WINDOW. This is the whole of the v8 fix and the one probe
+  //    that cannot be written by restating the arithmetic: the same viewport with
+  //    and without a scrollbar must give two answers that differ by half the bar.
+  //    Before v8 this layer read window.innerWidth and gave one answer for both,
+  //    which is 7.5px right of where the kit's CSS puts everybody else — most of
+  //    the 8px gap, so the eye sat all but touching ALGN and MKT touching SHOP.
+  check('the row is laid out against the containing block, not the window',
+    [mkStage(1920, 900, null, 15).defaultFabPos().x, mkStage(1920, 900, null, 0).defaultFabPos().x],
+    [1905 / 2 - 364, 960 - 364]);
+  check('...which is what the browser actually measured on the bench', mkStage(1920, 900).defaultFabPos().x, 588.5);
+
+  // 2. THE NAV FLOOR. Below ~1623px the row would start climbing onto the game's own
+  //    nav links, so it stops sliding left instead. That floor is why the maths is a
+  //    max() rather than a subtraction, and it is the half most likely to get
+  //    simplified away later.
+  //
+  //    Every slot the row gains moves that threshold: the row gets 46px wider, so it
+  //    meets the floor 46px sooner. v4's two slots moved it from ~1378 to ~1470, v5's
+  //    one moved it to ~1516, v6's to ~1562 and v7's to ~1608 — and v8 moved it 15
+  //    more, because the number is now measured against the containing block. The two
+  //    probes below straddle it deliberately: a test that only ever asked about
+  //    1200px would have passed the whole way through every bump and told you nothing
+  //    about the number that actually changed.
+  check('centred when there is room', mkStage(2560, 1440).defaultFabPos().x, 2545 / 2 - 364);
+  check('the floor engages below ~1623px', mkStage(1617, 900).defaultFabPos().x, 440);
+  check('...and not above it', mkStage(1629, 900).defaultFabPos().x, 1614 / 2 - 364);
+  check('floored clear of the nav on a 1200px window', mkStage(1200, 800).defaultFabPos().x, 440);
+
+  // 3. THE EDGE YIELD, new in v8, and the reason the row is now a min() inside a max().
+  //    The floor held the row clear of the nav; nothing held it clear of the WINDOW, so
+  //    below ~1191px the far end of the row was off the screen — and then PANEL KIT's
+  //    fit() dragged every stray button back to the same pixel and saved it there. Four
+  //    buttons on one square, permanently. The edge now outranks the nav.
+  check('below ~1191px the row gives up the nav floor rather than the edge',
+    mkStage(1100, 800).defaultFabPos().x, 1085 - 736);
+  check('...and the yield starts exactly where the row stops fitting',
+    [mkStage(1197, 800).defaultFabPos().x, mkStage(1185, 800).defaultFabPos().x], [440, 1170 - 736]);
+
+  // 4. THE FENCE. The two above are arithmetic; this is the property they exist for.
+  //    Sweep the widths a desktop actually takes and assert the far slot is on screen
+  //    at every one of them — that is the thing whose absence shipped, and the thing a
+  //    seventeenth tool will break.
+  const far = (vw) => {
+    const st = mkStage(vw, 900);
+    return st.defaultFabPos().x + (16 - 1) * st.HOME.pitch + CFG.FAB_SIZE;
+  };
+  const spills = [];
+  for (let vw = 744 + 15; vw <= 2560; vw += 1) if (far(vw) > vw - 15) spills.push(vw);
+  check('the far slot is on screen at every width from 759px up', spills.slice(0, 8), []);
+  check('...and the left end never leaves either',
+    [...Array(200)].map((_, i) => mkStage(760 + i * 9, 900).defaultFabPos().x).filter((x) => x < CFG.EDGE), []);
+
+  // Under 744px of containing block the row simply IS wider than the window — sixteen
+  // 38px buttons 8px apart are 728px — and it runs off the edge again. That is a
+  // stated limit, not an oversight: the game is in its mobile layout there and the
+  // alternative is a second regime for both JS copies of this row to get wrong.
+  check('...and 744px is where that stops being possible', 15 * 46 + CFG.FAB_SIZE + CFG.EDGE * 2, 744);
 }
 
 console.log('\n— clamping —');
@@ -82,26 +144,65 @@ console.log('\n— clamping —');
   check('far off the right/bottom is pulled back in',
     s.clampFab({ x: 99999, y: 99999 }),
     { x: 1600 - CFG.FAB_SIZE - CFG.EDGE, y: 900 - CFG.FAB_SIZE - CFG.EDGE });
-  check('negative coordinates are pulled back in', s.clampFab({ x: -500, y: -500 }), { x: CFG.EDGE, y: CFG.EDGE });
+  // The top floor is the ROW's 7px, not CFG.EDGE's 8. It has to be, or the clamp
+  // moves a button that is sitting exactly where the kit put it: this layer runs on
+  // every mount and every resize, so a one-pixel disagreement between the clamp and
+  // the row is a permanent one-pixel step in a row of sixteen — which is what
+  // shipped, on the only two buttons that use this code.
+  check('negative coordinates are pulled back in', s.clampFab({ x: -500, y: -500 }), { x: CFG.EDGE, y: 7 });
+  check('...and the home row survives its own clamp', s.clampFab(s.defaultFabPos()), s.defaultFabPos());
 }
 {
   // A viewport narrower than the button itself must not produce a negative edge.
   const s = mkStage(200, 160);
   const c = s.clampFab({ x: 9999, y: 9999 });
-  check('a cramped viewport still clamps to >= EDGE', c.x >= CFG.EDGE && c.y >= CFG.EDGE, true);
+  check('a cramped viewport still clamps to >= EDGE', c.x >= CFG.EDGE && c.y >= 7, true);
 }
 
 console.log('\n— placeFab —');
 {
+  // AN UNTOUCHED BUTTON BELONGS TO THE STYLESHEET. This is v8's fix, and it is a
+  // deletion rather than an addition: placeFab used to write the row out as an
+  // inline left/top, which is a SECOND copy of a number the kit's CSS already
+  // knows — and an inline value outranks the rule, so the copy always won.
+  //
+  // A copy is only ever as fresh as the last thing that recomputed it, and the
+  // event that mattered does not exist: a scrollbar appearing narrows the
+  // containing block without firing resize. On the bench that left the eye 7.5px
+  // right of the row — half a scrollbar, most of an 8px gap — until something
+  // unrelated happened to fire one. Clearing the anchoring has no such failure
+  // mode, because there is nothing left to keep in step.
   const s = mkStage(1600, 900);
   s.placeFab();
-  check('writes left/top', [px(s.fab.style.left), px(s.fab.style.top)], [s.ui.fab.x, s.ui.fab.y]);
-  check('clears the old right/bottom anchoring', [s.fab.style.right, s.fab.style.bottom], ['auto', 'auto']);
+  check('hands an unmoved button back to the kit, rather than writing the row out',
+    [s.fab.style.left, s.fab.style.top, s.fab.style.right, s.fab.style.bottom], ['', '', '', '']);
+
+  // ui.fab is the position the USER chose, and an untouched button has not chosen
+  // one. Filling it in on mount reads as harmless and is the same bug from the
+  // other side: a value derived from the viewport, frozen into storage.
+  check('...and stores nothing, because nobody moved it', s.ui.fab, null);
+
+  // And what the panel hangs off is then the MEASURED button, not a recomputation.
+  s.fab.rect = { left: 588.5, top: 7, width: 38, height: 38 };
+  check('...so the panel follows where the button actually is', s.fabAt(), { x: 588.5, y: 7 });
+}
+{
+  // THE FREEZE, from the storage side. Before v8 the first mount stored the row, so
+  // every later resize found a stored position and only clamped it — the fourteen
+  // CSS-placed buttons moved and this one did not. Same shape as a browser zoom.
+  const s = mkStage(2560, 1440);
+  s.placeFab();
+  s.window.innerWidth = 1400; s.document.documentElement.clientWidth = 1385;
+  s.placeFab();
+  check('a resize leaves it on the stylesheet, not on the first viewport it saw',
+    [s.ui.fab, s.fab.style.left], [null, '']);
 }
 {
   const s = mkStage(1600, 900, { x: 40, y: 40 });
   s.placeFab();
-  check('a stored position is honoured', s.ui.fab, { x: 40, y: 40 });
+  check('a stored position is honoured', [px(s.fab.style.left), s.ui.fab], [40, { x: 40, y: 40 }]);
+  check('...and anchors explicitly, so a CSS corner cannot fight it',
+    [s.fab.style.right, s.fab.style.bottom], ['auto', 'auto']);
 }
 {
   // A hidden tab reports a ~zero viewport; clamping against it would pin the
@@ -115,9 +216,11 @@ console.log('\n— placeFab —');
   // Shrinking the window must pull a now-offscreen button back into view.
   const s = mkStage(1600, 900, { x: 1550, y: 850 });
   s.window.innerWidth = 800; s.window.innerHeight = 600;
+  s.document.documentElement.clientWidth = 785;
   s.placeFab();
   check('a resize drags the button back on screen',
-    s.ui.fab, { x: 800 - CFG.FAB_SIZE - CFG.EDGE, y: 600 - CFG.FAB_SIZE - CFG.EDGE });
+    { x: px(s.fab.style.left), y: px(s.fab.style.top) },
+    { x: 800 - CFG.FAB_SIZE - CFG.EDGE, y: 600 - CFG.FAB_SIZE - CFG.EDGE });
 }
 
 console.log('\n— panel follows the button —');
@@ -192,14 +295,14 @@ console.log('\n— every shipped userscript parses —');
 }
 
 // ---------------------------------------------------------------------------
-// PANEL KIT v2 is copied verbatim into every tool that draws a panel, with no build
+// PANEL KIT v3 is copied verbatim into every tool that draws a panel, with no build
 // step and no @require, so each script stays one auditable file. CLAUDE.md states the
 // copies must stay byte-identical and that changing the kit means bumping its version
 // in all of them — but until now nothing checked, and a silent divergence between
 // seven copies is exactly the kind of drift you only find when one panel behaves
 // differently from the rest.
 // ---------------------------------------------------------------------------
-console.log('\n— PANEL KIT v2 is byte-identical everywhere —');
+console.log('\n— PANEL KIT v3 is byte-identical everywhere —');
 {
   const dir = path.join(__dirname, '..');
   const carriers = fs.readdirSync(dir)
@@ -287,7 +390,7 @@ console.log('\n— HTTP TAP v1 is byte-identical everywhere —');
 // the table in it has eleven columns, and a 74vh panel is a wall on a laptop.
 //
 // Two implementations satisfy this, and both are legitimate:
-//   - PANEL KIT v2's resizable(), which arms the browser's own grabber; and
+//   - PANEL KIT v3's resizable(), which arms the browser's own grabber; and
 //   - market-watch's corner grips, which it needs because its panel is pinned to its
 //     button and therefore grows from whichever corner is free — the UA grabber only
 //     ever grows a box right and down.
@@ -338,7 +441,66 @@ console.log('\n— every panel this repo draws can be resized —');
 }
 
 // ---------------------------------------------------------------------------
-// PANEL KIT v2's resizable(), driven.
+// PANEL KIT v3's draggable().fit(), driven — the zero-viewport guard.
+//
+// fit() is the safety net: it exists so a short window or a rotation can never leave
+// a drag handle off screen with no way back. It runs on every resize, and when it
+// moves something it calls onMove(), which every tool in this repo writes to storage.
+//
+// A hidden tab and a minimised window both report innerWidth/innerHeight of ~0, and
+// a resize fires on the way there. Clamping against zero puts the element at
+// (EDGE - width, -height) — (-44, -38) for a 38px button — and then SAVES it. Every
+// button that took that resize ends up on the same pixel, off the top-left corner,
+// and the stored position outlives the window. tools/harness/row.html found five of
+// sixteen sitting there the first time it ran, and none of the text checks above can
+// see it: every copy of the kit was byte-identical and correct, and the bug was that
+// correct code ran against a viewport that was not information.
+//
+// The placement layer at the top of this file has guarded against exactly this since
+// it was written (viewportUsable). The kit had not.
+// ---------------------------------------------------------------------------
+console.log('\n— fit() ignores a viewport that is not information —');
+{
+  const tpl = fs.readFileSync(path.join(__dirname, '..', '_template.user.js'), 'utf8');
+  const a = tpl.indexOf('  const draggable = (node, handle, onMove) => {');
+  const b = tpl.indexOf('  const resizable = (node, onSize, opts = {}) => {');
+  if (a < 0 || b < a) throw new Error('draggable() markers not found in _template.user.js');
+  const SLICE = tpl.slice(a, b);
+
+  const stage = (vw, vh, rect) => {
+    const win = { innerWidth: vw, innerHeight: vh, addEventListener: () => {} };
+    const node = { style: {}, getBoundingClientRect: () => rect, offsetWidth: rect.width, offsetHeight: rect.height };
+    const handle = { style: {}, addEventListener: () => {}, setPointerCapture: () => {}, releasePointerCapture: () => {} };
+    const moves = [];
+    const make = new Function('window', SLICE + '\nreturn draggable;')(win);
+    return { node, moves, api: make(node, handle, (p) => moves.push(p)), win };
+  };
+
+  const BTN = { left: 486, top: 7, right: 524, bottom: 45, width: 38, height: 38 };
+
+  {
+    const s = stage(0, 0, BTN);
+    check('a minimised window moves nothing', s.api.fit(), false);
+    check('...and writes no position', [s.moves, s.node.style.left], [[], undefined]);
+  }
+  {
+    // The same button, the same call, a viewport that IS information: still nothing
+    // to do, because it is on screen. The guard must not be doing the work.
+    const s = stage(1512, 900, BTN);
+    check('a real viewport with the button in the row also moves nothing', s.api.fit(), false);
+  }
+  {
+    // ...and when there genuinely is something to do, it still does it. A guard that
+    // swallowed the real case would be worse than the bug.
+    const s = stage(600, 400, { left: 1400, top: 7, right: 1438, bottom: 45, width: 38, height: 38 });
+    check('a button left off the right edge is pulled back', s.api.fit(), true);
+    check('...to somewhere reachable, and reported once',
+      [s.moves.length, s.moves[0].x <= 600 - 44, s.moves[0].x > 0], [1, true, true]);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PANEL KIT v3's resizable(), driven.
 //
 // The static checks above prove every tool CARRIES the block and WIRES it. This
 // drives the block itself, because the parts that matter are the ones that only
@@ -523,7 +685,7 @@ console.log('\n— the drag handle survives a repaint —');
 }
 
 // ---------------------------------------------------------------------------
-// FAB KIT v7 — one button, sixteen copies.
+// FAB KIT v8 — one button, sixteen copies.
 //
 // The toggle button is the only part of this repo a player sees before they open
 // anything, and several of these tools sit on the same screen at once. Before the
@@ -536,10 +698,10 @@ console.log('\n— the drag handle survives a repaint —');
 // the element actually wears the class, that the word is a word, and that a tool
 // doing its own placement maths agrees with the kit about how big the box is.
 // ---------------------------------------------------------------------------
-console.log('\n— FAB KIT v7 is one button everywhere —');
+console.log('\n— FAB KIT v8 is one button everywhere —');
 {
   const dir = path.join(__dirname, '..');
-  const A = '    /* FAB KIT v7 — shared verbatim block.';
+  const A = '    /* FAB KIT v8 — shared verbatim block.';
   const B = '    .pk-fab svg { width: 24px; height: 24px; display: block; }';
   const BOX = 38; // .pk-fab's width/height, and what CFG.FAB_SIZE has to agree with
 
@@ -704,7 +866,7 @@ console.log('\n— FAB KIT v7 is one button everywhere —');
 
 
 // ---------------------------------------------------------------------------
-// FAB KIT v7 — one row, sixteen slots.
+// FAB KIT v8 — one row, sixteen slots.
 //
 // v3 took the last thing a tool still chose about its button: where it starts.
 // Eleven tools picking their own corner meant eleven buttons down both edges of
@@ -725,7 +887,7 @@ console.log('\n— FAB KIT v7 is one button everywhere —');
 // tools that place their own button — let the JS drift from the CSS. All three fail
 // silently and only on someone else's screen, so all three are checked here.
 // ---------------------------------------------------------------------------
-console.log('\n— FAB KIT v7 puts every button in one row —');
+console.log('\n— FAB KIT v8 puts every button in one row —');
 {
   const dir = path.join(__dirname, '..');
   const NO_FAB = new Set(['time-bridge.user.js', 'comms-move.user.js']);
@@ -736,12 +898,14 @@ console.log('\n— FAB KIT v7 puts every button in one row —');
   // The row itself, read back out of the kit rather than restated here — restating
   // it is how a test ends up agreeing with itself instead of with the shipped file.
   const kit = src('_template.user.js');
-  const row = kit.match(/position: fixed; top: (\d+)px;\s*\n\s*left: calc\(max\((\d+)px, 50% - (\d+)px\) \+ var\(--pk-slot, 0\) \* (\d+)px\);/);
+  const row = kit.match(
+    /position: fixed; top: (\d+)px;\s*\n\s*left: calc\(max\((\d+)px, min\(max\((\d+)px, 50% - (\d+)px\), 100% - (\d+)px\)\)\s*\n\s*\+ var\(--pk-slot, 0\) \* (\d+)px\);/);
   check('the kit places the row itself', !!row, true);
-  const [TOP, FLOOR, HALF, PITCH] = row ? row.slice(1).map(Number) : [];
+  const [TOP, EDGE, FLOOR, HALF, SPAN, PITCH] = row ? row.slice(1).map(Number) : [];
   check('...7px down, inside the 52px header band', [TOP, TOP + 38 <= 52], [7, true]);
   check('...floored where the game nav ends, centred above that', [FLOOR, HALF], [440, 364]);
   check('...at a 46px pitch, which is the 38px box and an 8px gap', PITCH, 38 + 8);
+  check('...and kept off the window edge by the same 8px the buttons use', EDGE, 8);
   // Half the row, derived from what is actually installed rather than restated. The
   // row is only centred if the width the kit declares matches the number of buttons
   // standing in it, so jack-watch is what forced v7 and a seventeenth tool will fail
@@ -750,6 +914,13 @@ console.log('\n— FAB KIT v7 puts every button in one row —');
   const SLOTS = mounted.length;
   check(`...and half the row is what ${SLOTS} slots need`,
     HALF, Math.round((SLOTS * 38 + (SLOTS - 1) * 8) / 2));
+  // v8's number, and the one that stops the row being stacked on one pixel: the whole
+  // row plus the margin it keeps off the right edge. It is derived the same way and
+  // for the same reason — a seventeenth tool widens the row, and a `100% - 736px`
+  // left behind while HALF moved would let the far slot back off the screen without
+  // changing anything a reader would look at twice.
+  check(`...and the span it must not overhang is the row plus that edge`,
+    SPAN, SLOTS * 38 + (SLOTS - 1) * 8 + EDGE);
 
   // Every tool declares a slot, and the sixteen of them are exactly 0..15 — no
   // duplicates (two buttons stacked on one square, and the one underneath is
@@ -830,13 +1001,28 @@ console.log('\n— FAB KIT v7 puts every button in one row —');
   const SELF_PLACED = ['market-watch.user.js', 'people-watch.user.js'];
   for (const f of SELF_PLACED) {
     const s = src(f);
-    const m = s.match(/const HOME = \{ slot: (\d+), top: (\d+), floor: (\d+), half: (\d+), pitch: (\d+) \};/);
+    const m = s.match(
+      /const HOME = \{ slot: (\d+), top: (\d+), floor: (\d+), half: (\d+), pitch: (\d+), edge: (\d+), row: (\d+) \};/);
     check(`${f} carries the row in JS`, !!m, true);
     if (!m) continue;
-    const [slot, top, floor, half, pitch] = m.slice(1).map(Number);
-    check(`${f}: the JS row matches the CSS`, [top, floor, half, pitch], [TOP, FLOOR, HALF, PITCH]);
+    const [slot, top, floor, half, pitch, edge, span] = m.slice(1).map(Number);
+    check(`${f}: the JS row matches the CSS`,
+      [top, floor, half, pitch, edge, span + edge], [TOP, FLOOR, HALF, PITCH, EDGE, SPAN]);
     const css = slotOf(s);
     check(`${f}: the JS slot matches its own --pk-slot`, slot, css);
+
+    // And the width it measures against. This is the fault v8 was opened for: CSS
+    // resolves 50% for a fixed element against the initial containing block, which
+    // excludes the classic scrollbar, and window.innerWidth includes it. Both copies
+    // read innerWidth, so both sat half a scrollbar right of the row they were
+    // supposed to be joining. A text check is enough because there are exactly two
+    // ways to spell the width and only one of them is the containing block.
+    const rowExpr = s.slice(s.indexOf('const rowWidth = ()'), s.indexOf('const defaultFabPos'));
+    check(`${f}: lays the row out against the containing block`,
+      /document\.documentElement\.clientWidth/.test(rowExpr), true);
+    const place = s.slice(s.indexOf('const defaultFabPos'), s.indexOf('const clampFab'));
+    check(`${f}: ...and defaultFabPos reaches for that, never innerWidth`,
+      /window\.innerWidth/.test(place) ? 'reads innerWidth' : 'clean', 'clean');
   }
 
   // Double-click is the ONLY way back into the row. Drag a button somewhere awkward
@@ -844,17 +1030,25 @@ console.log('\n— FAB KIT v7 puts every button in one row —');
   // ever true on a profile that has never touched it. Six of these were missing it
   // when the row was introduced, which is how it stopped being a recovery path and
   // started being a thing you happened to know about market-watch.
-  const stranded = [];
+  //
+  // What it has to do is FORGET, not re-place. Storing defaultFabPos() looks like the
+  // same gesture and is not: the row is a function of the viewport, so writing it
+  // down pins the button to the window it was reset in, and the next resize or zoom
+  // moves the fourteen CSS-placed buttons out from under it. Both self-placing tools
+  // did exactly that, which is why the shape is checked and not just the presence.
+  const stranded = [], sticky = [];
   for (const f of mounted) {
     const s = src(f);
     let ok = false;
     for (const m of s.matchAll(/[\w$]*[Ff]ab\.(?:addEventListener\('dblclick'|ondblclick\s*=)/g)) {
       const body = s.slice(m.index, m.index + 220);
-      if (/\.reset\(\)|defaultFabPos\(\)/.test(body)) ok = true;
+      if (/\.reset\(\)|ui\.fab = (?:null|undefined)/.test(body)) ok = true;
+      if (/ui\.fab = defaultFabPos\(\)/.test(body)) sticky.push(f);
     }
     if (!ok) stranded.push(f);
   }
   check('every button can be double-clicked back into its slot', stranded, []);
+  check('...by forgetting where it was put, not by storing the row', sticky, []);
 }
 
 // ---------------------------------------------------------------------------

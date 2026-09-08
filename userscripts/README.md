@@ -17,22 +17,24 @@ bump; the table below is hand-kept and can drift.
 
 | tool | version | raw link |
 |---|---|---|
-| People Watch | 1.10.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
-| Market Watch | 1.6.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
-| Time Watch | 0.10.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
-| Align Watch | 0.6.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
-| Comms Move | 0.1.1 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
+| People Watch | 1.12.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| Market Watch | 1.7.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
+| Time Watch | 0.10.1 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
+| Align Watch | 0.7.1 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
+| Comms Move | 0.1.2 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
-| WS Watch | 0.7.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.6.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
-| Raid Watch | 0.6.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
-| Sleeper Watch | 0.6.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
-| Quick Jump | 0.6.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
-| World Watch | 0.4.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
-| Gov Watch | 0.3.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
-| Poll Watch | 0.5.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
-| Shop Watch | 0.4.0 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
-| Bar Watch | 0.1.0 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
+| WS Watch | 0.8.1 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
+| XP Watch | 0.7.1 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| Raid Watch | 0.7.1 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
+| Sleeper Watch | 0.7.1 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
+| Quick Jump | 0.7.1 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
+| World Watch | 0.5.1 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
+| Gov Watch | 0.4.1 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
+| Poll Watch | 0.5.1 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
+| Shop Watch | 0.4.1 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
+| Bar Watch | 0.2.1 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
+| Slot Watch | 0.2.1 | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
+| Jack Watch | 0.10.3 | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, and the shared `PANEL KIT` and `FAB KIT` blocks).
@@ -44,7 +46,7 @@ Panels drawn over the game are draggable **and resizable**, and remember both. `
 is copied verbatim into each tool rather than pulled from anywhere at runtime, so every
 script stays one auditable file.
 
-Resize was XP Watch's local addition for six versions; `PANEL KIT v2` is that idea promoted
+Resize was XP Watch's local addition for six versions; `PANEL KIT v3` is that idea promoted
 into the shared block, so every window in this directory now has it. Grab a panel's
 **bottom-right corner**; **double-click its title bar** to put position *and* size back to
 default, which is the recovery path for a panel dragged or resized into uselessness.
@@ -110,39 +112,66 @@ which on any desktop layout is empty screen between the nav links and the accoun
 **v4 widened that row from eleven slots to thirteen**, for `poll-watch` — the last tool
 still drawing its own button in a corner of its own choosing — and for `shop-watch`.
 **v5 widened it to fourteen** for `bar-watch`, **v6 to fifteen** for `slot-watch`, and
-**v7 to sixteen** for `jack-watch`:
+**v7 to sixteen** for `jack-watch`.
+
+**v8 is the first version that changed what the row does rather than how wide it is**, and
+it also re-deals the slots by what the tools are *for*:
 
 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 👁 | `ALGN` | `GOV` | `JUMP` | `MKT` | `RAID` | `SLP` | `SOCK` | `TIME` | `WRLD` | `XP` | `POLL` | `SHOP` | `BARS` | `SLOT` | `JACK` |
+| 👁 | `ALGN` | `XP` | `BARS` | `JUMP` | `JACK` | `SLOT` | `MKT` | `SHOP` | `RAID` | `SLP` | `WRLD` | `GOV` | `POLL` | `TIME` | `SOCK` |
 
-The eye leads because it is the mark of the set; the words are alphabetical after it — and
-then they stop being alphabetical, which is deliberate. `POLL` and `SHOP` arrived after the
-first eleven slots were handed out, and slots are **fixed rather than packed**: a tool that
-turns up later takes the next free number rather than sorting itself in. `BARS`, `SLOT` and
-`JACK` are the next three. That is the point — installing a sixteenth tool does not shuffle
-the fifteen buttons you already know by position, and a tool you do not have simply leaves
-its slot empty.
+The eye leads because it is the mark of the set. After it the row reads left to right as
+**you** (your compass, your stats, your bars), then **where you go and what you do there**
+(the launcher, the two casino solvers, the market, the shops), then **your faction**, then
+**the world**, then the two **instruments** — `SOCK` last, because it is the one tool meant
+to be uninstalled once it has nothing left to learn.
+
+Up to v7 the order was alphabetical-then-arrival, which recorded the sequence the tools were
+written in and nothing else. Slots are still **fixed rather than packed** — a tool that turns
+up later takes the next free number rather than sorting itself in, so installing a
+seventeenth does not shuffle the sixteen you already know by position. v8 is a one-time
+re-deal, not a sort to be re-run.
 
 The row is 728px wide (sixteen 38px buttons, 8px apart) and centred on the window, with a
 floor at 440px so it stops sliding left rather than climb onto the game's own nav links.
-Above about 1608px it is centred; between roughly 1180 and 1608 it sits at the floor; below
-about 1180 the last few buttons run under the account menu, and below 768 the game swaps in
-a different header entirely. Drag them out of the row on a window that small — that is what
-dragging is for.
+Above about 1608px it is centred; between roughly 1176 and 1608 it sits at that floor; and
+**below about 1176 it gives the floor up and slides left**, so that its far end stays on
+screen. That last part is v8. Before it, the row simply ran off the right-hand edge on a
+narrow window — and the safety net that drags a stray button back into view pulled every one
+of them to the *same pixel* and then saved it there. Four buttons on one square, permanently,
+and a double-click each to undo. Overlapping the game's own chrome is legible; that was not.
 
-Those three numbers move every time the row gains a slot, which is why adding one is a kit
-version bump rather than a one-line edit: half the row is a literal in the CSS, because CSS
-cannot count the tools you happen to have installed. `tools/test-placement.js` derives the
-half it expects from the number of tools on disk, so the build fails rather than letting the
-row quietly stop being centred.
+Below 744px the row is wider than the window and there is nothing to be done: sixteen
+buttons at that size simply are 728px. The game is in its mobile layout there anyway.
+
+Those numbers move every time the row gains a slot, which is why adding one is a kit version
+bump rather than a one-line edit: half the row is a literal in the CSS, because CSS cannot
+count the tools you happen to have installed. `tools/test-placement.js` derives what it
+expects from the number of tools on disk, so the build fails rather than letting the row
+quietly stop being centred — or, since v8, quietly stop fitting.
+
+**v8 also fixed a 7.5px lean.** Fourteen of the sixteen buttons are placed by the kit's
+stylesheet; People Watch and Market Watch compute the same row in JavaScript, because they
+write their own position and an inline value outranks a rule. The two disagreed about what
+the window is: CSS resolves a percentage against the containing block, which excludes the
+scrollbar, and `window.innerWidth` includes it. Half a scrollbar is most of an 8px gap, so
+those two sat all but touching their right-hand neighbour — and on a wider scrollbar, over
+it. They now hand an *unmoved* button back to the stylesheet entirely, which is also what
+makes the row follow a resize, a zoom, or a scrollbar appearing without being told to.
 
 **Every one of them still drags anywhere and remembers, and a stored position always wins.**
 Which is also the one thing to know when this update lands: a button you have already
 dragged somewhere stays there. **Double-click a button to send it back to its slot** — that
-is the only way in, and it is worth doing once per tool to line the set up. (Double-clicking
-a *panel's* title bar is the separate, older gesture that resets that panel's position and
+is the only way in, and it is worth doing once per tool to line the set up. Since v8 the
+double-click *forgets* the stored position rather than writing the current row into it, so a
+button you have reset goes back to following the window like the rest. (Double-clicking a
+*panel's* title bar is the separate, older gesture that resets that panel's position and
 size.) Six of the eleven had no double-click at all before v3; they do now.
+
+`tools/harness/row.html` is the bench for all of it: every shipped tool on one page, with a
+readout of where each button actually landed and what overlaps what. Both of the v8 faults
+were found there and neither was visible to a test that reads the files as text.
 
 ---
 
@@ -2329,7 +2358,7 @@ only until someone adds it back:
 They have nothing else in common; market-watch's was named `test-passive.js` when it
 lived in its own repository and was renamed on the way in.
 
-`test-placement` also checks that **`PANEL KIT v2` is byte-identical across all eleven
+`test-placement` also checks that **`PANEL KIT v3` is byte-identical across all eleven
 copies**. The convention was written down in CLAUDE.md from the start and enforced by
 nobody, which is how eleven hand-maintained copies of a drag implementation quietly
 diverge. Now a mismatch fails the build and prints which files disagree. It slices the block

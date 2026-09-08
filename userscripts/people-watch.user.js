@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — People Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      1.11.0
+// @version      1.12.0
 // @description  Builds a local ledger of players' last-online times, cities, ranks and combat records from the profiles you open, and sorts it least-active-first. Fully passive: it reads responses the game already made and originates nothing. Includes a next/back walk so filling the ledger by hand is one keypress per player — along the roster, or along the panel's own sorted and filtered list.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -799,7 +799,7 @@
   let grip = null, gripCov = null, panelDrag = null, panelResize = null;
 
   // ===========================================================================
-  // PANEL KIT v2 — shared verbatim block.
+  // PANEL KIT v3 — shared verbatim block.
   //
   //    Repo convention: every panel we ship is draggable and resizable, and
   //    remembers both. Copy this block into a new tool exactly as it stands. If
@@ -885,7 +885,16 @@
     // Never strand the panel: a short window, a rotation, or a panel that grew
     // taller than the space its CSS corner left it can all put the drag handle
     // off-screen, and then there is no way to get it back.
+    // A hidden tab and a minimised window both report a ~zero viewport. Clamping
+    // against that pins the element into the top-left corner — and then onMove()
+    // SAVES it, so the stored position is (-44, -38) forever after and the element
+    // has permanently left wherever it belonged. Five of sixteen buttons landed
+    // there the first time tools/harness/row.html ran. Treat a viewport that small
+    // as no information, the same as the placement layer already does.
+    const usable = () => window.innerWidth > 120 && window.innerHeight > 120;
+
     const fit = () => {
+      if (!usable()) return false;
       const r = node.getBoundingClientRect();
       if (!r.width || !r.height) return false;
       const x = Math.min(Math.max(r.left, EDGE - r.width), window.innerWidth - EDGE);
@@ -1087,7 +1096,7 @@
     .dim { color: #71717a; }
     .transit { color: #60a5fa; font-style: italic; }
     .note { padding: 6px 8px; color: #a1a1aa; border-top: 1px solid #27272a; font-size: 11px; }
-    /* FAB KIT v7 — shared verbatim block.
+    /* FAB KIT v8 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
        bump the version here and in every tool carrying a copy, so the copies can
        be diffed. Several of these tools are on screen at once, and buttons that
@@ -1117,37 +1126,81 @@
        gains costs a version bump and a pass over every copy — the price of the row
        being one row rather than each tool's guess at one.
 
+       v8 is the first version that changes what the row DOES rather than how wide
+       it is, because on a real screen the row was not one row. Two faults, both
+       found by tools/harness/row.html, which loads every shipped tool at once and
+       measures the buttons instead of reading them as text:
+
+         1. The row ran off the right-hand edge below about 1200px. The floor at
+            440 held it clear of the game's nav, nothing held it clear of the
+            window, and PANEL KIT's fit() then clamped every button past the edge
+            to the SAME pixel and saved it. Four buttons on one square, and the
+            save made it permanent. So the row now yields: it prefers to be
+            centred, it will not sit left of the nav, but it gives up the nav floor
+            before it gives up the edge. Overlapping the game's chrome is a thing
+            you can see and click around; a stack of buttons is not.
+         2. In the centred half, 50% here and window.innerWidth / 2 in the two
+            tools that place their own button are not the same number. A fixed
+            element's percentages resolve against the initial containing block,
+            which EXCLUDES the classic scrollbar; innerWidth includes it. Half a
+            scrollbar — 7.5px on this box — is most of the 8px gap, so the eye and
+            MKT each sat all but touching the button to their right. The JS half of
+            the row now reads document.documentElement.clientWidth, which is that
+            same containing block. test-placement.js fails a copy that reaches for
+            innerWidth instead.
+
        The kit owns the row. A tool owns its SLOT and nothing else about position:
 
          .pkxx-fab { --pk-slot: 16; z-index: 2147482000; }
 
        Slots are fixed rather than packed, and that is the whole point — installing
        a sixteenth tool does not shuffle the fifteen buttons you already know by
-       position, and a tool you do not have simply leaves its slot empty. The eye
-       leads because it is the mark of the set; the words are alphabetical after it:
+       position, and a tool you do not have simply leaves its slot empty. v8 is the
+       one deliberate exception to that: the operator asked for the row to be dealt
+       again by what the tools are FOR, rather than by the alphabet that recorded
+       the order they were written in. It is a re-deal, not a sort to be re-run —
+       from here the fixed-slot rule resumes, and a seventeenth tool takes slot 16.
 
-         0  the eye  people-watch     8  TIME  time-watch
-         1  ALGN     align-watch      9  WRLD  world-watch
-         2  GOV      gov-watch       10  XP    xp-watch
-         3  JUMP     quick-jump      11  POLL  poll-watch
-         4  MKT      market-watch    12  SHOP  shop-watch
-         5  RAID     raid-watch      13  BARS  bar-watch
-         6  SLP      sleeper-watch   14  SLOT  slot-watch
-         7  SOCK     ws-watch        15  JACK  jack-watch
+         0  the eye  people-watch     yours: the ledger, and your own numbers
+         1  ALGN     align-watch
+         2  XP       xp-watch
+         3  BARS     bar-watch
+         4  JUMP     quick-jump       where you go, and what you do when you get there
+         5  JACK     jack-watch
+         6  SLOT     slot-watch
+         7  MKT      market-watch
+         8  SHOP     shop-watch
+         9  RAID     raid-watch       your faction
+        10  SLP      sleeper-watch
+        11  WRLD     world-watch      the world
+        12  GOV      gov-watch
+        13  POLL     poll-watch
+        14  TIME     time-watch       instruments
+        15  SOCK     ws-watch
 
-       POLL, SHOP, BARS, SLOT and JACK are on the end rather than sorted in among
-       the others, and that is deliberate: the alphabet describes how the first
-       eleven were handed out, not a sort to be re-run. Slots are fixed, so a tool
-       that arrives later takes the next free number and nothing already on screen
+       The eye still leads, because it is the mark of the set. ALGN and XP sit
+       together because they are both your own character read back to you; JUMP is
+       the launcher that reaches the casinos, so JACK and SLOT follow it; SOCK is
+       last because it is the one tool that is meant to be uninstalled.
 
        Sixteen 38px buttons 8px apart is a 728px row, so it runs 364px either side
        of the middle of the viewport. The floor at 440px is where the game's own
        chrome ends — 24px of padding, a 62px wordmark, 24px of gap and five nav
        links, measured off the bundle — so above about 1608px the row is centred,
-       and below that it stops sliding left rather than climb onto the nav.
+       and below that it stops sliding left rather than climb onto the nav. Below
+       about 1174px it starts sliding left again, because from there the far end of
+       the row would be off the edge, and that outranks the nav.
 
-       Three numbers, if that header ever changes shape: 7 (where the band is), 440
-       (where the nav ends), 364 (half the row). Nothing else in here is placement.
+       Four numbers, if that header ever changes shape: 7 (where the band is), 440
+       (where the nav ends), 364 (half the row), 736 (the whole row plus the 8px it
+       keeps off the right edge). Nothing else in here is placement.
+
+       The floor of the whole arrangement is 744px of viewport: sixteen buttons at a
+       46px pitch simply are 728px wide, and under that the row cannot be a row. It
+       runs off the edge there and fit() stacks it, exactly as it used to do at
+       1200. That width is a phone, the game is in its mobile layout, and a row of
+       sixteen desktop buttons has no meaning on it — so it is a stated limit rather
+       than a third regime for the two tools that mirror this in JS to get wrong.
 
        (No backticks anywhere in here, incidentally. This block is pasted INSIDE a
        template literal in every tool that carries it, and one backtick in a comment
@@ -1184,9 +1237,13 @@
        that inside the same square as everyone else's letters. */
     .pk-fab {
       box-sizing: border-box; width: 38px; height: 38px; padding: 0;
-      /* The home row. --pk-slot is the tool's; the three numbers are the kit's. */
+      /* The home row. --pk-slot is the tool's; the four numbers are the kit's.
+         Read the insides out: centre the row, but not left of the nav (440), and
+         not so far right that its far end leaves the window (736 = 728 + 8) —
+         that inner min is what stops fit() from stacking the tail. */
       position: fixed; top: 7px;
-      left: calc(max(440px, 50% - 364px) + var(--pk-slot, 0) * 46px);
+      left: calc(max(8px, min(max(440px, 50% - 364px), 100% - 736px))
+                 + var(--pk-slot, 0) * 46px);
       display: grid; place-items: center;
       background: #18181b; color: #e4e4e7;
       border: 1px solid #3f3f46; border-radius: 3px;
@@ -1281,7 +1338,21 @@
 
     placeFab();
     makeDraggable();
+    // An UNMOVED button needs none of this — it is on the kit's stylesheet and the
+    // browser re-resolves it for free. These three are for a button the user has
+    // dragged: a stored position has to be re-clamped when the window it was stored
+    // against changes shape, or a corner you dropped it in is off screen.
+    //
+    //   resize          the window itself, and browser zoom, which changes the CSS
+    //                   viewport and so fires this too
+    //   visualViewport  a pinch, which moves the visual viewport over the layout one
+    //                   without firing the above
+    //   ResizeObserver  the layout viewport changing width with no event at all,
+    //                   which is what a scrollbar appearing or going does
     window.addEventListener('resize', placeFab);
+    window.visualViewport?.addEventListener('resize', placeFab);
+    try { new ResizeObserver(() => placeFab()).observe(document.documentElement); }
+    catch { /* no ResizeObserver: the two listeners above still cover resize and zoom */ }
     paint();
   }
 
@@ -1297,16 +1368,48 @@
   // is a 590px row, centred on the viewport and floored at where the game's own
   // nav ends, sitting 7px down inside the header band. tools/test-placement.js reads both
   // the CSS and this literal and fails the build if they ever drift apart.
-  const HOME = { slot: 0, top: 7, floor: 440, half: 364, pitch: 46 };
+  // The home row, mirrored out of FAB KIT v8's CSS. This tool writes an inline
+  // left/top, and an inline value outranks any rule, so the kit never gets the last
+  // word here — the two copies have to say the same thing instead. `row` is the
+  // whole row (sixteen slots at a 46px pitch, less the gap the last one does not
+  // need) and `edge` is what it keeps clear of the window.
+  const HOME = { slot: 0, top: 7, floor: 440, half: 364, pitch: 46, edge: 8, row: 728 };
 
-  const defaultFabPos = () => ({
-    x: Math.max(HOME.floor, Math.round(window.innerWidth / 2) - HOME.half) + HOME.slot * HOME.pitch,
-    y: HOME.top,
-  });
+  /**
+   * The width the row is laid out against, and the one place the difference
+   * matters. CSS resolves a percentage for a fixed element against the initial
+   * containing block, which EXCLUDES the classic scrollbar; window.innerWidth
+   * includes it. Reading innerWidth here put this button half a scrollbar — 7.5px
+   * on a 15px bar — to the right of where the kit puts the other fourteen, which
+   * is most of the 8px gap: it sat all but touching its neighbour, and on a wider
+   * scrollbar it overlapped. documentElement.clientWidth IS that containing block.
+   */
+  const rowWidth = () => document.documentElement.clientWidth || window.innerWidth;
+
+  /**
+   * Centred, but never left of the game's nav, and never so far right that the far
+   * end of the row leaves the window. The edge outranks the nav on purpose: a row
+   * sitting over the game's chrome is legible and clickable, whereas a row past the
+   * edge gets clamped back by fit() — every stray button onto the SAME pixel, and
+   * saved there.
+   */
+  const defaultFabPos = () => {
+    const w = rowWidth();
+    return {
+      x: Math.max(HOME.edge,
+                  Math.min(Math.max(HOME.floor, w / 2 - HOME.half), w - HOME.edge - HOME.row))
+         + HOME.slot * HOME.pitch,
+      y: HOME.top,
+    };
+  };
 
   const clampFab = ({ x, y }) => ({
     x: Math.min(Math.max(x, CFG.EDGE), Math.max(CFG.EDGE, window.innerWidth - CFG.FAB_SIZE - CFG.EDGE)),
-    y: Math.min(Math.max(y, CFG.EDGE), Math.max(CFG.EDGE, window.innerHeight - CFG.FAB_SIZE - CFG.EDGE)),
+    // The top floor is the row's own 7px, not CFG.EDGE. Clamping to 8 put this
+    // button one pixel below the fourteen the kit places — every mount, every
+    // reset, for as long as the row has existed.
+    y: Math.min(Math.max(y, Math.min(CFG.EDGE, HOME.top)),
+                Math.max(CFG.EDGE, window.innerHeight - CFG.FAB_SIZE - CFG.EDGE)),
   });
 
   /**
@@ -1317,12 +1420,47 @@
    */
   const viewportUsable = () => window.innerWidth > 120 && window.innerHeight > 120;
 
+  /**
+   * Where the button is right now: what the user dragged it to, or the home row.
+   *
+   * ui.fab holds a position the USER chose, and stays empty until they drag one.
+   * placeFab() used to fill it in with the row instead — ui.fab = ui.fab ||
+   * defaultFabPos() — which quietly turned a position derived from the viewport
+   * into a stored constant on the first mount. The row is a function of the
+   * window: resize it, zoom the page, drag it to a display with different
+   * scaling, and the fourteen buttons the kit places in CSS all move, because
+   * CSS re-resolves. This one did not, because there was nothing left to
+   * re-resolve — the resize handler found a stored position and clamped that.
+   * Derive it every time; store only what was actually chosen.
+   */
+  const fabAt = () => {
+    if (ui.fab) return clampFab(ui.fab);
+    // Not moved: ask the browser where the kit's rule actually put it, rather than
+    // recomputing the row and hoping the two agree. They did not — see rowWidth().
+    const r = fab && fab.getBoundingClientRect();
+    return r && r.width ? { x: r.left, y: r.top } : clampFab(defaultFabPos());
+  };
+
   function placeFab() {
     if (!fab || !viewportUsable()) return;
-    ui.fab = clampFab(ui.fab || defaultFabPos());
-    Object.assign(fab.style, {
-      left: `${ui.fab.x}px`, top: `${ui.fab.y}px`, right: 'auto', bottom: 'auto',
-    });
+    if (ui.fab) {
+      const p = clampFab(ui.fab);
+      Object.assign(fab.style, {
+        left: `${p.x}px`, top: `${p.y}px`, right: 'auto', bottom: 'auto',
+      });
+    } else {
+      // Nobody has moved this button, so it belongs to FAB KIT's rule exactly like
+      // the other fourteen — clear the inline anchoring and let the CSS place it.
+      //
+      // Writing the row out here instead is what put this button 7.5px right of it:
+      // an inline left/top is a SECOND copy of the row, and a copy is only ever as
+      // fresh as the last event that recomputed it. There was no event for the one
+      // that mattered — a scrollbar appearing narrows the containing block without
+      // firing resize, and the button stayed where the pre-scrollbar viewport had
+      // put it. defaultFabPos() is still the arithmetic of record for the panel and
+      // for the start of a drag; it just no longer competes with the stylesheet.
+      Object.assign(fab.style, { left: '', top: '', right: '', bottom: '' });
+    }
     placePanel();
   }
 
@@ -1332,8 +1470,8 @@
 
   function placePanel() {
     const panel = root && root.querySelector('.panel');
-    if (!panel || !ui.fab || !viewportUsable()) return;
-    const { x, y } = ui.fab;
+    if (!panel || !viewportUsable()) return;
+    const { x, y } = fabAt();
     const gap = 8;
     const vw = window.innerWidth, vh = window.innerHeight;
 
@@ -1393,7 +1531,7 @@
 
     fab.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      const p = ui.fab || (ui.fab = clampFab(defaultFabPos()));
+      const p = fabAt();
       drag = { dx: e.clientX - p.x, dy: e.clientY - p.y, id: e.pointerId, moved: false };
       try { fab.setPointerCapture(e.pointerId); } catch { /* capture is optional */ }
       e.preventDefault();
@@ -1403,7 +1541,8 @@
       if (!drag || e.pointerId !== drag.id) return;
       const nx = e.clientX - drag.dx, ny = e.clientY - drag.dy;
       // A few px of slop, so a slightly shaky click still counts as a click.
-      if (!drag.moved && Math.hypot(nx - ui.fab.x, ny - ui.fab.y) < 4) return;
+      const at = fabAt();
+      if (!drag.moved && Math.hypot(nx - at.x, ny - at.y) < 4) return;
       if (!drag.moved) { drag.moved = true; fab.classList.add('dragging'); }
       ui.fab = clampFab({ x: nx, y: ny });
       placeFab();
@@ -1428,7 +1567,10 @@
     };
 
     // Double-click returns it to the default spot if it ever gets lost.
-    fab.ondblclick = () => { ui.fab = defaultFabPos(); save(); placeFab(); };
+    // Double-click FORGETS the chosen position rather than storing the row in its
+    // place, so the button goes back to following the viewport as well as to the
+    // right pixel — the same state it was in before it was ever dragged.
+    fab.ondblclick = () => { ui.fab = null; save(); placeFab(); };
   }
 
   /**
@@ -1946,7 +2088,7 @@
     walkOrder,
     resync: () => { resyncWalk(); paint(); return walkOrder(); },
     unseen: () => roster.usernames.filter((u) => !people[u]?.observedAt),
-    resetFab: () => { ui.fab = defaultFabPos(); saveNow(); placeFab(); return ui.fab; },
+    resetFab: () => { ui.fab = null; saveNow(); placeFab(); return fabAt(); },
     clear: () => { people = {}; roster = { total: null, totalPages: null, usernames: [], seenAt: 0, pages: {} }; saveNow(); paint(); return 'cleared'; },
     export: () => JSON.stringify({ people, roster }, null, 2),
   };

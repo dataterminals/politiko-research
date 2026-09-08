@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>home row bench — politiko-research</title>
+<!--
+  The other bench loads ONE tool and drives its panel. This one loads them ALL and
+  looks at nothing but the buttons.
+
+  WHY A SECOND BENCH
+  FAB KIT's home row is the one piece of this repo that only exists when several
+  tools are installed at once, which is exactly the state neither the unit tests nor
+  index.html can reach. tools/test-placement.js reads the row as text — it checks
+  that every slot is declared, that the numbers agree between the CSS and the two
+  tools that compute the row in JS, and that nobody takes an inset back. All of that
+  can pass while the row still lands wrong on a real screen, because the thing text
+  cannot check is the browser's own arithmetic against a viewport of a given width.
+
+  So: every shipped tool, one page, and a readout of where each button actually IS.
+  The cage below is index.html's, verbatim in intent — fetch, WebSocket and XHR are
+  inert before the first tool loads, so sixteen scripts booting at once still cannot
+  reach politiko.io.
+
+  HOW TO USE IT
+  Open it and resize the window. An untouched button belongs to the kit's CSS, so it
+  should follow the window without anything being pressed; "reset every button" is
+  the gesture for one that was dragged, and it drops the stored position rather than
+  writing the row down in its place. A row that is wrong after a reset is wrong, full
+  stop.
+
+  The three widths worth walking through, measured against the CONTAINING BLOCK the
+  readout prints rather than the window — they differ by the scrollbar, which is the
+  whole of one of the bugs this bench found:
+    above ~1608   the row is centred
+    ~1176-1608    it is floored at 440, clear of the game's nav
+    below ~1176   it gives up that floor and slides left, so its far end stays on
+                  screen; under 744 it cannot fit at all and says so
+-->
+<style>
+  :root { color-scheme: dark; }
+  body { background:#0a0a0c; color:#a1a1aa; font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+         margin:0; padding:64px 22px 60px; }
+  h1 { font-size:13px; color:#e4e4e7; letter-spacing:.14em; text-transform:uppercase; margin:0 0 2px; }
+  h2 { font-size:10px; color:#52525b; letter-spacing:.14em; text-transform:uppercase;
+       margin:22px 0 6px; font-weight:500; }
+  p { max-width:78ch; margin:6px 0; }
+  .dim { color:#52525b; } .bad { color:#f87171; } .ok { color:#4ade80; } .warn2 { color:#fbbf24; }
+  .warn { border:1px solid #78350f; background:#1c1207; color:#fbbf24; padding:8px 11px;
+          border-radius:3px; max-width:78ch; font-size:11.5px; }
+  button { background:#18181b; color:#d4d4d8; border:1px solid #3f3f46; border-radius:3px;
+           padding:5px 10px; font:11px ui-monospace,monospace; cursor:pointer; margin:0 3px 4px 0; }
+  button:hover { border-color:#71717a; color:#f4f4f5; }
+  button.primary { border-color:#166534; color:#4ade80; }
+  pre { background:#101013; border:1px solid #27272a; border-radius:3px; padding:9px 11px;
+        font-size:11px; max-height:340px; overflow:auto; margin:0; }
+  table { border-collapse:collapse; font-size:11px; }
+  td, th { padding:2px 10px 2px 0; text-align:left; vertical-align:top; }
+  th { color:#52525b; font-weight:500; }
+  /* The band the row lives in, drawn so a misplaced button is visible as well as
+     printed. 52px is the game's header; 7px down is where the kit puts the box. */
+  .band { position:fixed; left:0; right:0; top:0; height:52px; pointer-events:none;
+          border-bottom:1px dashed #27272a; z-index:1; }
+</style>
+</head>
+<body>
+
+<div class="band"></div>
+
+<h1>home row bench</h1>
+<p class="dim">every shipped tool at once — <strong>this is not the game</strong></p>
+
+<div class="warn">
+  Nothing on this page can reach politiko.io. <code>fetch</code>, <code>WebSocket</code> and
+  <code>XMLHttpRequest</code> are replaced with inert stubs before the first tool loads.
+</div>
+
+<h2>the row</h2>
+<div>
+  <button class="primary" id="reset">⟲ reset every button</button>
+  <button id="measure">measure</button>
+  <button id="wipe">wipe stored positions + reload</button>
+</div>
+<p class="dim" id="verdict">—</p>
+<div id="out"></div>
+
+<h2>log</h2>
+<pre id="log"></pre>
+
+<script>
+const STAMP = Date.now();
+const logEl = document.getElementById('log');
+const say = (msg, cls) => {
+  const d = document.createElement('div');
+  d.className = 'ln ' + (cls || '');
+  d.textContent = msg;
+  logEl.append(d);
+  logEl.scrollTop = logEl.scrollHeight;
+};
+
+// ---------------------------------------------------------------------------
+// the cage — installed BEFORE any tool script is injected
+// ---------------------------------------------------------------------------
+window.fetch = async (input) => {
+  const url = String(typeof input === 'string' ? input : (input && input.url) || '');
+  say('fetch  ' + url.replace('https://politiko.io', '') + '  → {}', 'dim');
+  return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+};
+window.WebSocket = class HarnessSocket extends EventTarget {
+  static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
+  constructor(url) {
+    super();
+    this.url = String(url); this.readyState = 1;
+    this.onopen = this.onmessage = this.onclose = this.onerror = null;
+    queueMicrotask(() => { this.onopen && this.onopen({ type: 'open' }); });
+  }
+  send(data) { say('SOCKET SEND ATTEMPTED — ' + String(data).slice(0, 120), 'bad'); }
+  close() { this.readyState = 3; this.onclose && this.onclose({ type: 'close', code: 1000, wasClean: true }); }
+};
+Object.assign(window.WebSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 });
+XMLHttpRequest.prototype.open = function (m, u) { this.__u = String(u); this.__m = m; };
+XMLHttpRequest.prototype.send = function () { say('XHR ATTEMPTED — ' + this.__m + ' ' + this.__u, 'bad'); };
+
+// align-watch hides its whole root off the game's home page unless its "everywhere"
+// pin is set, so on this bench it would mount a button and then draw nothing —
+// fifteen of sixteen, silently, with the sixteenth reported at (0, 0) because that
+// is the rect a display:none element has. Seed the pin instead: a row bench that
+// quietly measures fifteen buttons is a row bench that cannot see a collision
+// involving the one it dropped.
+try { localStorage.setItem('pkaw:ui', JSON.stringify({ everywhere: true })); } catch { /* private mode */ }
+
+// ---------------------------------------------------------------------------
+// every tool that draws a button. time-bridge and comms-move draw none.
+// ---------------------------------------------------------------------------
+const TOOLS = [
+  'people-watch', 'align-watch', 'gov-watch', 'quick-jump', 'market-watch',
+  'raid-watch', 'sleeper-watch', 'ws-watch', 'time-watch', 'world-watch',
+  'xp-watch', 'poll-watch', 'shop-watch', 'bar-watch', 'slot-watch', 'jack-watch',
+];
+
+// ---------------------------------------------------------------------------
+// finding the buttons. Five tools mount inside a shadow root, so a plain
+// querySelectorAll over the document finds eleven of sixteen and quietly reports a
+// clean row — walk the roots.
+// ---------------------------------------------------------------------------
+const fabs = () => {
+  const found = [];
+  const walk = (root) => {
+    for (const el of root.querySelectorAll('*')) {
+      if (el.classList && el.classList.contains('pk-fab')) found.push(el);
+      if (el.shadowRoot) walk(el.shadowRoot);
+    }
+  };
+  walk(document);
+  return found;
+};
+
+const nameOf = (el) => {
+  const txt = (el.textContent || '').trim();
+  if (txt) return txt;
+  if (el.querySelector('svg')) return '(eye)';
+  return '?';
+};
+
+const measure = () => {
+  const all = fabs().map((el) => {
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    return {
+      el, name: nameOf(el),
+      slot: cs.getPropertyValue('--pk-slot').trim() || '—',
+      x: r.left, y: Math.round(r.top),
+      w: r.width, h: r.height,
+      inline: !!(el.style.left || el.style.top),
+    };
+  });
+  // A button whose tool has hidden its root reports a zero rect at (0, 0). Left in,
+  // it reads as a button parked in the top-left corner overlapping everything that
+  // is also not drawn — so it is counted separately rather than measured.
+  const rows = all.filter((r) => r.w > 0).sort((a, b) => a.x - b.x || a.y - b.y);
+
+  // Two buttons overlap when their boxes intersect at all — not only when they land
+  // on the identical pixel. A 6px overhang is still one button hiding another.
+  const clash = new Set();
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = i + 1; j < rows.length; j++) {
+      const a = rows[i], b = rows[j];
+      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) {
+        clash.add(a); clash.add(b);
+      }
+    }
+  }
+  const off = rows.filter((r) => r.x + r.w > window.innerWidth || r.x < 0);
+  const strays = rows.filter((r) => r.y !== 7);
+
+  const t = document.createElement('table');
+  t.innerHTML = '<tr><th>slot<th>word<th>x<th>y<th>gap<th>note</tr>';
+  rows.forEach((r, i) => {
+    const gap = i ? Math.round((r.x - (rows[i - 1].x + rows[i - 1].w)) * 10) / 10 : '';
+    const notes = [];
+    if (clash.has(r)) notes.push('OVERLAPS');
+    if (r.x + r.w > window.innerWidth) notes.push('off the right edge');
+    if (r.x < 0) notes.push('off the left edge');
+    if (r.y !== 7) notes.push('not in the band');
+    if (r.inline) notes.push('inline left/top');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.slot}<td>${r.name}<td>${Math.round(r.x * 10) / 10}<td>${r.y}` +
+      `<td class="${gap !== '' && gap < 0 ? 'bad' : 'dim'}">${gap}` +
+      `<td class="${notes.some((n) => n === 'OVERLAPS' || n.startsWith('off')) ? 'bad' : 'dim'}">${notes.join(', ')}`;
+    t.append(tr);
+  });
+  const out = document.getElementById('out');
+  out.replaceChildren(t);
+
+  // A button that is mounted but not laid out reports a zero rect at (0, 0), which
+  // reads as "in the top-left corner" and is really "not on screen at all". Say
+  // which, or a tool that has quietly stopped drawing looks like a placement bug.
+  const dark = all.length - rows.length;
+
+  const v = document.getElementById('verdict');
+  const bits = [`${rows.length}/16 buttons`, `viewport ${window.innerWidth}px`,
+    `containing block ${document.documentElement.clientWidth}px`];
+  if (dark) bits.push(`${dark} mounted but not drawn`);
+  if (clash.size) bits.push(`${clash.size} OVERLAPPING`);
+  if (off.length) bits.push(`${off.length} off screen`);
+  if (strays.length) bits.push(`${strays.length} outside the band`);
+  if (!clash.size && !off.length && !strays.length && rows.length === 16) bits.push('clean row');
+  v.textContent = bits.join('  ·  ');
+  v.className = clash.size || off.length ? 'bad' : (rows.length === 16 ? 'ok' : 'warn2');
+};
+
+// The gesture the row is actually defined by. Every tool wires dblclick on its own
+// button to "forget where you were put, then let the kit place you", so firing it on
+// all sixteen is the honest way to ask where the row is.
+const resetAll = () => {
+  const list = fabs();
+  for (const el of list) el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  say(`double-clicked ${list.length} buttons`, 'dim');
+  requestAnimationFrame(() => requestAnimationFrame(measure));
+};
+
+document.getElementById('reset').onclick = resetAll;
+document.getElementById('measure').onclick = measure;
+document.getElementById('wipe').onclick = () => { localStorage.clear(); location.reload(); };
+window.addEventListener('resize', () => requestAnimationFrame(measure));
+
+// ---------------------------------------------------------------------------
+// finally, the tools — in slot order, one after the next
+// ---------------------------------------------------------------------------
+(async () => {
+  for (const t of TOOLS) {
+    await new Promise((done) => {
+      const s = document.createElement('script');
+      // Cache-busted, because the whole point of this bench is to look at files that
+      // were edited a moment ago. A plain relative src gets a 304 from the static
+      // server and you spend twenty minutes measuring the version you already fixed.
+      s.src = `../../${t}.user.js?t=${STAMP}`;
+      s.onload = () => { say(`loaded ${t}`, 'dim'); done(); };
+      s.onerror = () => { say(`could not load ${t}.user.js`, 'bad'); done(); };
+      document.head.append(s);
+    });
+  }
+  say('all tools loaded', 'ok');
+  setTimeout(measure, 400);
+})();
+</script>
+</body>
+</html>

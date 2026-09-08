@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Comms Move
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.1.1
+// @version      0.1.2
 // @description  Adds a drag bar to the game's Comms dock so you can put it somewhere other than the bottom-right corner, and remembers where. Touches the DOM of the page you are on and nothing else — no network, no data, no storage beyond the position.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -63,7 +63,7 @@
   };
 
   // ===========================================================================
-  // PANEL KIT v2 — shared verbatim block, see userscripts/_template.user.js.
+  // PANEL KIT v3 — shared verbatim block, see userscripts/_template.user.js.
   // Every panel this repo ships is draggable and resizable, and remembers both.
   // ===========================================================================
   const draggable = (node, handle, onMove) => {
@@ -134,7 +134,16 @@
     // Never strand the panel: a short window, a rotation, or a panel that grew
     // taller than the space its CSS corner left it can all put the drag handle
     // off-screen, and then there is no way to get it back.
+    // A hidden tab and a minimised window both report a ~zero viewport. Clamping
+    // against that pins the element into the top-left corner — and then onMove()
+    // SAVES it, so the stored position is (-44, -38) forever after and the element
+    // has permanently left wherever it belonged. Five of sixteen buttons landed
+    // there the first time tools/harness/row.html ran. Treat a viewport that small
+    // as no information, the same as the placement layer already does.
+    const usable = () => window.innerWidth > 120 && window.innerHeight > 120;
+
     const fit = () => {
+      if (!usable()) return false;
       const r = node.getBoundingClientRect();
       if (!r.width || !r.height) return false;
       const x = Math.min(Math.max(r.left, EDGE - r.width), window.innerWidth - EDGE);
@@ -266,7 +275,7 @@
       sized: () => !!mine,
     };
   };
-  // ===================== end PANEL KIT v2 ====================================
+  // ===================== end PANEL KIT v3 ====================================
 
   const CSS = `
     .pkcm-grip {
