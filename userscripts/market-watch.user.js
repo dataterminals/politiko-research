@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — Market Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      1.5.0
-// @description  Records numeric series out of market/API responses the app already fetched, charts them locally, and fires threshold / %-move / rate-of-change alerts. Fully passive — it places no orders and originates no requests; a buy/sell rule hands you a sized shortcut to the stocks screen instead.
+// @version      1.6.0
+// @description  Marks where your own trades sit on the game's stock chart, and records numeric series out of market/API responses the app already fetched. Fully passive — it places no orders and originates no requests; a buy/sell rule hands you a sized shortcut to the stocks screen instead.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -17,13 +17,30 @@
  * DISCLOSURE (Politiko rules, Scripting Abuse clause)
  *
  *   Reads:    JSON bodies of GET /api/* responses the app requested on its own, via a
- *             passive fetch/XHR tap. No DOM scraping, no polling, no prefetch.
- *             Request bodies are not read at all.
+ *             passive fetch/XHR tap. No polling, no prefetch. Request bodies are not
+ *             read at all.
+ *
+ *             ALSO, and this is new in 1.6.0: the stock chart on the page you are
+ *             looking at. To draw a mark on that chart the script has to know where
+ *             the chart puts things, so it reads the page's own chart object — the
+ *             TradingView Lightweight Charts instance StocksPage creates — by walking
+ *             React's fiber tree down from the chart's container element, and it
+ *             measures that container's canvas with getBoundingClientRect(). It calls
+ *             only read methods on what it finds: timeToCoordinate, priceToCoordinate,
+ *             data(), and the two subscribe/unsubscribe pairs it needs to redraw when
+ *             you pan or zoom. It never calls setData, applyOptions, remove, or
+ *             anything else that would change the chart you are looking at.
  *   Requests: ZERO. This script does not originate network calls to politiko.io, and
  *             has no code path that could.
  *   Sends:    nothing, to anyone, ever. No telemetry, no remote config.
+ *   Draws:    an overlay layer pinned over the game's chart, inside this script's own
+ *             shadow root — not injected into the app's DOM. Pointer events are off on
+ *             every node in it, so the chart underneath still pans, zooms and shows its
+ *             crosshair exactly as it did. Both marks are switchable and the switches
+ *             persist. Nothing is drawn while their switches are off.
  *   Storage:  localStorage keys prefixed `pkmw:` — observed price history, watch rules,
- *             and panel settings. All local. Clearable from the panel.
+ *             your own trade history as the game reported it, and panel settings. All
+ *             local. Clearable from the panel.
  *   Alerts:   in-page only, and only while the tab is visible. Alerts raised while
  *             hidden are queued and shown on return. No Notification API, no title
  *             flashing, no sound while backgrounded.
@@ -240,6 +257,9 @@
   const CFG = {
     MAX_POINTS_PER_SERIES: 300,   // ring buffer depth
     MAX_SERIES: 400,              // total tracked series::field pairs
+    MAX_TRADES: 600,              // your own fills, kept newest-first
+    MAX_CANDLE_SETS: 24,          // symbol×timeframe candle sets held in memory
+    REBIND_MS: 1_000,             // how often to look for a chart that has remounted
     MIN_SAMPLE_GAP_MS: 60_000,    // re-record an unchanged value at most this often
     SAVE_DEBOUNCE_MS: 2_000,
     DEFAULT_COOLDOWN_MS: 15 * 60_000,
@@ -260,7 +280,8 @@
     ['wide', 640, 520],
   ];
 
-  const K = { hist: 'pkmw:hist', rules: 'pkmw:rules', ui: 'pkmw:ui', ids: 'pkmw:ids' };
+  const K = { hist: 'pkmw:hist', rules: 'pkmw:rules', ui: 'pkmw:ui', ids: 'pkmw:ids',
+    trades: 'pkmw:trades' };
 
   // ===========================================================================
   // Utils
@@ -310,7 +331,10 @@
   let rules = readJSON(K.rules, []);
   const ui = Object.assign(
     { open: false, sound: true, deltaWin: 3_600_000, filter: '', expanded: {}, hidden: {},
-      fab: null, size: null, sizeBar: false },
+      fab: null, size: null, sizeBar: false,
+      // Chart marks. Both draw over the game's own chart and both default on —
+      // they are the point of the tool now, and one click turns either off.
+      mark: true, costLine: true },
     readJSON(K.ui, {}),
   );
 
@@ -496,7 +520,263 @@
   // path a response arrived on and harvests any numbers in it, so narrowing the
   // subscription would silently stop it charting endpoints it charts today. It still
   // costs one clone and one parse for everyone rather than one each.
-  onApi('*', ({ url, data }) => ingest(url, data));
+  // Two paths are read by the ledger below and deliberately NOT charted:
+  //
+  //   /stocks/trades      the sampler turns your own fills into a "price" series —
+  //                       stocks/trades/PNRG :: price_per_share, wandering between
+  //                       whatever you last paid — which looks exactly like a quote
+  //                       and is not one. Charting your fills as a market price is
+  //                       worse than not charting them.
+  //   .../candles         a 150-bar OHLCV array collapses to one row per response,
+  //                       so the series is whichever bar the walk happened to end
+  //                       on. It has no meaning at all.
+  //
+  // Everything else still goes through the '*' harvest untouched. `holdings` and
+  // `instruments` in particular stay charted: those ARE series, and position
+  // sizing reads holdings out of the same store.
+  const NOT_A_SERIES = (path) => path === '/api/stocks/trades' || CANDLES_RE.test(path);
+
+  onApi('*', ({ url, path, method, data }) => {
+    if (!NOT_A_SERIES(path)) ingest(url, data);
+    if (method !== 'GET' || !data) return;
+    let touched = false;
+    if (path === '/api/stocks/trades') touched = absorbTrades(data);
+    else if (path === '/api/stocks/holdings') touched = absorbHoldings(data);
+    else if (CANDLES_RE.test(path)) touched = absorbCandles(url, path, data);
+    if (touched) { drawSoon(); refresh(); }
+  });
+
+  // ===========================================================================
+  // Stock ledger — the three stock responses this tool reads for their SHAPE
+  // rather than for the numbers in them.
+  //
+  // The sampler above already harvests every number here into a time series, and
+  // that is the wrong representation for this job: a mark on a chart needs a
+  // trade's game day and a candle's bucket boundary, which are facts about single
+  // records, not about how a value moved. So these three keep the record.
+  //
+  // Nothing here originates a request. Each response arrives only when the player
+  // is looking at the screen that asks for it, and `trades` in particular sits
+  // behind the stocks page's `history` tab — so until that tab has been opened
+  // once, this tool holds no trades and says so rather than guessing at one.
+  // ===========================================================================
+  // >>> ENGINE START
+  // Lifted verbatim by userscripts/tools/test-market-chart.js. Everything between
+  // these two markers is pure: no DOM, no storage, no clock, nothing it was not
+  // handed. Keep it that way — this is the arithmetic that decides where a mark
+  // lands, and it is the part that has to be checkable without the game.
+  //
+  // The one thing it borrows from outside is `isNum`, from Utils; the test declares
+  // its own copy in the preamble.
+  const GAME_DAY_SECS = 86_400;
+  const GAME_YEAR_SECS = 31_536_000;
+  const GAME_MONTH_SECS = 2_592_000;
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  /**
+   * Game-seconds -> the calendar the game renders. Same three constants the app
+   * uses; see docs/06-time-surface.md.
+   *
+   * One deliberate difference: the month index is clamped at 11, so the five
+   * overflow days (a game year is 365 days but twelve 30-day months is 360) read
+   * as December 31-35. The game's own chart formatter skips that clamp and prints
+   * `undefined` for them. We are not copying the bug — and the number we lead with
+   * is the raw game day anyway, which is exactly what the game's history table
+   * shows, so the two can always be checked against each other.
+   */
+  function gameDate(sec) {
+    const year = Math.floor(sec / GAME_YEAR_SECS) + 1;
+    const inYear = sec % GAME_YEAR_SECS;
+    const month = Math.min(Math.floor(inYear / GAME_MONTH_SECS), 11);
+    const day = Math.floor((inYear - month * GAME_MONTH_SECS) / GAME_DAY_SECS) + 1;
+    return `Yr${year} ${MONTHS[month]} ${day}`;
+  }
+
+  /**
+   * Bucket width in game-seconds, taken from the bars themselves. The response
+   * carries `bucket_secs`, but bars read back off a live chart do not, and the
+   * median gap survives a hole in the series where a mean would not.
+   */
+  function bucketOf(bars) {
+    if (!bars || bars.length < 2) return GAME_DAY_SECS;
+    const gaps = [];
+    for (let i = 1; i < bars.length; i++) {
+      const g = bars[i].time - bars[i - 1].time;
+      if (g > 0) gaps.push(g);
+    }
+    if (!gaps.length) return GAME_DAY_SECS;
+    gaps.sort((a, b) => a - b);
+    return gaps[gaps.length >> 1];
+  }
+
+  // `margin_open` is a purchase that happens to be financed, so it counts. Opening
+  // a short does not: that is a sale, and marking it as a buy would misstate which
+  // way you are facing on the position.
+  const BUY_TYPES = new Set(['buy', 'margin_open']);
+
+  /** Newest purchase out of an already-sorted list. */
+  const pickLastBuy = (list) => list.find((t) => BUY_TYPES.has(t.trade_type)) || null;
+
+  /**
+   * Where a fill sits among a chart's bars.
+   *
+   * A trade carries `game_day` and nothing finer, so it covers the whole span
+   * [day*86400, (day+1)*86400). Which bars that touches depends on the timeframe:
+   *
+   *   1w   a bar is seven days  -> one bar, and the day is finer than the bar
+   *   1d   a bar is the day     -> exactly one bar
+   *   4h   six bars per day     -> six bars, and the mark has to be a band
+   *
+   * Returns bar indexes, or one of the three "not on this chart" shapes. The
+   * `impossible` case is the one that matters: a fill later than the newest bar
+   * cannot be a fill we placed badly, it means `game_day` is not the absolute day
+   * we read it as — so it refuses to draw rather than put a mark somewhere it
+   * cannot defend.
+   */
+  function placeTrade(trade, bars, bucketSecs) {
+    if (!bars || bars.length < 2 || !isNum(trade.game_day)) return null;
+    const start = trade.game_day * GAME_DAY_SECS;
+    const end = start + GAME_DAY_SECS;
+    const first = bars[0].time;
+    const last = bars[bars.length - 1].time + bucketSecs;
+
+    if (start >= last + GAME_DAY_SECS) return { impossible: true };
+    if (end <= first) return { before: true, days: Math.round((first - end) / GAME_DAY_SECS) };
+    if (start >= last) return { after: true, days: Math.round((start - last) / GAME_DAY_SECS) };
+
+    const idxAt = (sec) => {
+      let lo = 0, hi = bars.length - 1, best = 0;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (bars[mid].time <= sec) { best = mid; lo = mid + 1; } else hi = mid - 1;
+      }
+      return best;
+    };
+    const from = idxAt(Math.max(start, first));
+    const to = idxAt(Math.min(end - 1, last - 1));
+    return { from, to, exact: from === to, span: to - from + 1 };
+  }
+
+  /**
+   * Is the chart on screen showing the symbol we think it is?
+   *
+   * Bar TIMES cannot answer this — every instrument on one timeframe shares the
+   * same bucket boundaries, so PNRG and RCRD look identical by time. Closes can:
+   * find a settled bar (never the last one, which the socket is still updating)
+   * that both the chart and our own candle set hold, and compare it.
+   *
+   * Returns true / false / null for "no shared bar to compare yet". Only true
+   * draws a trade mark, because the failure this guards against — a PNRG fill
+   * marked on an RCRD chart — is worse than drawing nothing at all.
+   */
+  function sameSymbol(chartBars, setBars) {
+    if (!setBars || !chartBars || chartBars.length < 2) return null;
+    const byTime = new Map(setBars.map((b) => [b.time, b]));
+    for (let i = chartBars.length - 2; i >= 0 && i >= chartBars.length - 8; i--) {
+      const mine = byTime.get(chartBars[i].time);
+      if (!mine) continue;
+      return Math.abs(mine.close - chartBars[i].close) < 1e-6;
+    }
+    return null;
+  }
+  // <<< ENGINE END
+
+  const trades = readJSON(K.trades, {});          // id -> record
+  const saveTrades = () => writeJSON(K.trades, trades);
+
+  // Candles are deliberately NOT persisted. They are large, they are stale within
+  // minutes, and the only thing that wants them is a chart that is on screen now.
+  const candleSets = new Map();   // `${SYMBOL}:${tf}` -> { symbol, tf, bars, bucketSecs, at }
+  const positions = new Map();    // SYMBOL -> { shares, avgCost, price, pnl, at }
+  let chartView = null;           // { symbol, tf } — the last candle set the app asked for
+
+  const CANDLES_RE = /^\/api\/stocks\/instruments\/[^/]+\/candles$/;
+
+  // The fields a trade record carries, read off the bundle 2026-09-07. `game_day`
+  // is the one this tool is really after: it is a whole absolute game day, the
+  // same count `bucket_start / 86400` gives, which is what lets a fill be placed
+  // against a candle at all.
+  const TRADE_FIELDS = ['id', 'game_day', 'symbol', 'trade_type', 'shares',
+    'price_per_share', 'total_cash', 'realized_pnl'];
+
+  function absorbTrades(data) {
+    const list = Array.isArray(data.trades) ? data.trades : Array.isArray(data) ? data : null;
+    if (!list) return false;
+    let added = 0;
+    for (const t of list) {
+      if (!t || t.id == null || !isNum(t.game_day)) continue;
+      const key = String(t.id);
+      if (trades[key]) continue;
+      const rec = { seenAt: now() };
+      for (const f of TRADE_FIELDS) if (t[f] !== undefined) rec[f] = t[f];
+      trades[key] = rec;
+      added++;
+    }
+    if (!added) return false;
+    const keys = Object.keys(trades);
+    if (keys.length > CFG.MAX_TRADES) {
+      keys.sort((a, b) => (trades[b].game_day - trades[a].game_day) || (Number(b) - Number(a)));
+      for (const k of keys.slice(CFG.MAX_TRADES)) delete trades[k];
+    }
+    saveTrades();
+    return true;
+  }
+
+  function absorbHoldings(data) {
+    const list = Array.isArray(data.holdings) ? data.holdings : Array.isArray(data) ? data : null;
+    if (!list) return false;
+    for (const h of list) {
+      if (!h || typeof h.symbol !== 'string') continue;
+      positions.set(h.symbol.toUpperCase(), {
+        shares: isNum(h.shares) ? h.shares : null,
+        avgCost: isNum(h.avg_cost) ? h.avg_cost : null,
+        price: isNum(h.current_price) ? h.current_price : null,
+        pnl: isNum(h.unrealized_pnl) ? h.unrealized_pnl : null,
+        at: now(),
+      });
+    }
+    return true;
+  }
+
+  function absorbCandles(url, path, data) {
+    if (!Array.isArray(data.candles)) return false;
+    // The path segment is the TICKER, not a numeric id — StocksPage builds this
+    // URL from the symbol and looks the id up separately. That is what makes the
+    // response self-identifying, and why nothing here needs a symbol→id map.
+    const symbol = decodeURIComponent(path.split('/')[4] || '').toUpperCase();
+    let tf = '';
+    try { tf = new URL(url, location.origin).searchParams.get('tf') || ''; } catch { /* keep '' */ }
+
+    const bars = data.candles
+      .filter((c) => c && isNum(c.bucket_start) && isNum(c.close))
+      .map((c) => ({ time: c.bucket_start, open: c.open, high: c.high, low: c.low, close: c.close }))
+      .sort((a, b) => a.time - b.time);
+    if (bars.length < 2) return false;
+
+    candleSets.set(`${symbol}:${tf}`, {
+      symbol, tf, bars, at: now(),
+      bucketSecs: isNum(data.bucket_secs) ? data.bucket_secs : bucketOf(bars),
+    });
+    // A candles fetch is the app announcing which stock and timeframe the chart is
+    // about to show: the chart component is keyed on exactly that pair, so it
+    // remounts with it. Steadier than reading the header text, and it costs nothing.
+    chartView = { symbol, tf };
+    while (candleSets.size > CFG.MAX_CANDLE_SETS) {
+      candleSets.delete(candleSets.keys().next().value);
+    }
+    return true;
+  }
+
+  /** Your fills for one symbol, newest game day first. */
+  function tradesFor(symbol) {
+    const sym = String(symbol || '').toUpperCase();
+    if (!sym) return [];
+    return Object.values(trades)
+      .filter((t) => String(t.symbol || '').toUpperCase() === sym)
+      .sort((a, b) => (b.game_day - a.game_day) || (Number(b.id) - Number(a.id)));
+  }
+
+  const lastBuyFor = (symbol) => pickLastBuy(tradesFor(symbol));
 
   // ===========================================================================
   // Rules
@@ -1179,7 +1459,327 @@
     .qty .prev { grid-column: 1 / -1; color: #71717a; line-height: 1.4; }
     .qty .prev.ok { color: #22c55e; }
     .qty .prev.no { color: #f59e0b; }
+
+    /* ---- chart overlay ---------------------------------------------------
+       A layer pinned over the game's own candle chart, living in THIS shadow
+       root rather than inside the app's DOM — React never sees it, so React
+       can never reconcile it away, and we never have to guess whether a node
+       we appended to somebody else's subtree survived a re-render.
+
+       pointer-events is off on the layer and inherited by everything in it.
+       That is load-bearing: the chart underneath still pans, zooms and tracks
+       its crosshair, and a mark can never eat a click meant for the game.
+
+       Each mark carries a colour class and every part of it paints in
+       currentColor, so a mark is one class away from being a different mark.
+       #09090b behind the labels is the chart's own background, read off the
+       bundle — a label reads as part of the chart rather than on top of it.
+
+       No z-index. .wrap already lifts this whole shadow root above the game, and
+       inside it the overlay must be the BOTTOM layer — it is appended before the
+       panel, the toasts and the button, so DOM order alone puts all three above
+       it. Give it a positive z-index instead and it wins against those siblings,
+       and a dashed price line ends up drawn straight across the panel's own text. */
+    .ovl { position: fixed; pointer-events: none; overflow: hidden; contain: strict; }
+    .ovl > div { position: absolute; }
+    .ovl .vl { top: 0; bottom: 0; width: 1px;
+               background: repeating-linear-gradient(to bottom, currentColor 0 3px, transparent 3px 6px); }
+    .ovl .hl { left: 0; right: 0; height: 1px;
+               background: repeating-linear-gradient(to right, currentColor 0 3px, transparent 3px 6px); }
+    .ovl .bd { top: 0; bottom: 0; background: currentColor; opacity: .12; }
+    .ovl .dot { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; background: currentColor;
+                transform: rotate(45deg); }
+    .ovl .tag { padding: 2px 5px; background: #09090b; border: 1px solid currentColor;
+                font: 600 10px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                letter-spacing: .04em; white-space: nowrap; }
+    .ovl .buy  { color: #10b981; }   /* the game's own up colour */
+    .ovl .sell { color: #f43f5e; }   /* ...and its down colour */
+    .ovl .cost { color: #f59e0b; }
+
+    /* ---- "on the chart" section ------------------------------------------
+       Built for the narrow case first: this panel is parked in the strip
+       beside the game, so every row wraps rather than scrolls sideways and
+       nothing is pinned to the right edge. */
+    .cw { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline;
+          padding: 3px 0; border-top: 1px solid #131316; line-height: 1.45; }
+    .cw:first-of-type { border-top: 0; }
+    .cw .k { flex: 0 0 auto; min-width: 56px; color: #52525b; font-size: 10px;
+             text-transform: uppercase; letter-spacing: .06em; }
+    .cw .v { flex: 1 1 auto; min-width: 0; color: #d4d4d8;
+             font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .cw .v .q { color: #71717a; }
+    .cw.head .v { color: #e4e4e7; font-weight: 600; }
+    .pill { flex: 0 0 auto; font-size: 9px; text-transform: uppercase; letter-spacing: .06em;
+            padding: 1px 5px; border: 1px solid currentColor; }
+    .pill.on   { color: #22c55e; }
+    .pill.off  { color: #52525b; }
+    .pill.warn { color: #f59e0b; }
+    .marks { display: flex; gap: 6px; flex-wrap: wrap; padding-top: 7px; }
+    .marks button.on { border-color: #52525b; color: #e4e4e7; }
+    .marks button .sw { color: #52525b; }
+    .marks button.on .sw { color: #22c55e; }
+    /* The fallback chart. Rects only, no strokes that a non-uniform scale would
+       smear — the one line that needs to stay 1px asks for it by name. */
+    .fb { width: 100%; height: 96px; display: block; margin-top: 7px;
+          background: #09090b; border: 1px solid #18181b; }
   `;
+
+  // ===========================================================================
+  // Chart bridge — borrow the page's own chart, read-only
+  //
+  // StocksPage renders its candles with TradingView Lightweight Charts v5 into a
+  // canvas. A canvas cannot be annotated by adding elements to it, and v5 dropped
+  // series markers (the bundle has been tree-shaken, so `createSeriesMarkers` is
+  // not even present) — so the mark is our own layer, positioned with the chart's
+  // own coordinate functions. That means holding the chart object.
+  //
+  // The chart object lives in a React ref inside the chart component and is not
+  // exposed anywhere, so it is reached by walking the fiber tree up from the
+  // container element. Two things keep that from being as brittle as it sounds:
+  //
+  //   a) Nothing is matched by NAME. Minified builds rename every binding and
+  //      reorder hooks freely, so what is matched is behaviour — a ref whose
+  //      current value answers to timeScale() is the chart, one that answers to
+  //      priceToCoordinate() is the series. Renaming cannot break that; removing
+  //      the methods would, and that is a library change, not a build change.
+  //   b) Every step is optional. No chart found, no overlay, and the panel says so
+  //      and draws the same thing itself. Nothing else in the tool depends on it.
+  //
+  // What we call on it: timeScale(), timeToCoordinate(), priceToCoordinate(),
+  // data(), and two subscribe/unsubscribe pairs. Every one of those is a read.
+  // setData, applyOptions, update and remove are never called and must never be —
+  // this tool is a spectator at somebody else's chart.
+  // ===========================================================================
+  const CHART_SEL = '.tv-lightweight-charts';   // the class the library puts on its own container
+
+  let $ovl = null;        // the overlay layer, in our shadow root
+  let bound = null;       // { chart, series, host, off: [] }
+  let testChart = null;   // set only by the bench, via the disclosed debug handle
+
+  const fiberOf = (node) => {
+    for (const k of Object.keys(node)) if (k.startsWith('__reactFiber$')) return node[k];
+    return null;
+  };
+
+  /** Every ref object hanging off one fiber's hook chain. */
+  function refsOn(fiber) {
+    const out = [];
+    let h = fiber.memoizedState;
+    for (let i = 0; h && i < 40; i++, h = h.next) {
+      const m = h.memoizedState;
+      if (m && typeof m === 'object' && 'current' in m) out.push(m.current);
+    }
+    return out;
+  }
+
+  const isChart = (o) => !!o && typeof o.timeScale === 'function' && typeof o.applyOptions === 'function';
+  const isSeries = (o) => !!o && typeof o.priceToCoordinate === 'function' && typeof o.data === 'function';
+
+  function findChart() {
+    // Only StocksPage carries this class — checked against the 2026-08-10 and
+    // 2026-08-26 bundle sets, where it appears in StocksPage and nowhere else.
+    // If that ever stops being true, sameSymbol() below is what catches it.
+    const host = document.querySelector(CHART_SEL);
+    const anchor = host && host.parentElement;   // the library's div is not React's; its parent is
+    if (!anchor) return null;
+    let chart = null, series = null, fiber = fiberOf(anchor);
+    for (let hop = 0; fiber && hop < 12 && !(chart && series); hop++, fiber = fiber.return) {
+      for (const c of refsOn(fiber)) {
+        if (!chart && isChart(c)) chart = c;
+        if (!series && isSeries(c)) series = c;
+      }
+    }
+    return chart && series ? { chart, series, host } : null;
+  }
+
+  function unbind() {
+    if (!bound) return;
+    for (const off of bound.off) { try { off(); } catch { /* the chart may already be gone */ } }
+    bound = null;
+  }
+
+  /**
+   * The chart component is keyed `${symbol}-${timeframe}`, so changing either
+   * REMOUNTS it and the old object is disposed. Every handle is therefore checked
+   * before use and re-taken when it goes stale.
+   */
+  function bindChart() {
+    if (testChart) return (bound = testChart);
+    if (bound && bound.host.isConnected && document.querySelector(CHART_SEL) === bound.host) return bound;
+    unbind();
+    const found = findChart();
+    if (!found) return null;
+
+    const off = [];
+    // Each subscription is taken on its own: a build that has dropped one should
+    // cost us that one redraw trigger, not the whole overlay. The rebind poll is
+    // the floor under all of them.
+    try {
+      const ts = found.chart.timeScale();
+      ts.subscribeVisibleLogicalRangeChange(drawSoon);
+      off.push(() => ts.unsubscribeVisibleLogicalRangeChange(drawSoon));
+    } catch (e) { log('no range subscription', e); }
+    try {
+      found.series.subscribeDataChanged(drawSoon);
+      off.push(() => found.series.unsubscribeDataChanged(drawSoon));
+    } catch (e) { log('no data subscription', e); }
+    try {
+      const ro = new ResizeObserver(drawSoon);
+      ro.observe(found.host);
+      off.push(() => ro.disconnect());
+    } catch (e) { log('no resize observer', e); }
+
+    bound = Object.assign(found, { off });
+    log('chart bound');
+    return bound;
+  }
+
+  /**
+   * The main pane's box, in viewport coordinates. timeToCoordinate and
+   * priceToCoordinate both answer in this box's space. It is found by area rather
+   * than by class — the price scale and the time axis get their own, smaller
+   * canvases, and the class names in there belong to a library we do not control.
+   */
+  function paneBox(host) {
+    let best = null;
+    for (const c of host.querySelectorAll('canvas')) {
+      const r = c.getBoundingClientRect();
+      if (r.width < 40 || r.height < 40) continue;
+      if (!best || r.width * r.height > best.width * best.height) best = r;
+    }
+    return best;
+  }
+
+  /**
+   * One description of what should be marked, read by BOTH the overlay and the
+   * panel so the two can never tell different stories about the same fill.
+   */
+  function chartModel() {
+    const b = bindChart();
+    const view = chartView || {};
+    const set = candleSets.get(`${view.symbol}:${view.tf}`) || null;
+
+    let bars = null, verified = null;
+    if (b) {
+      try { bars = b.series.data(); } catch (e) { log('series.data() refused', e); }
+      if (bars && bars.length >= 2) verified = sameSymbol(bars, set && set.bars);
+    }
+    // No chart, or a chart that would not hand its bars over: fall back to the
+    // last candles response, which is the same data one fetch earlier.
+    if ((!bars || bars.length < 2) && set) { bars = set.bars; verified = true; }
+    if (!bars || bars.length < 2) {
+      return { symbol: view.symbol || null, tf: view.tf || null, bound: !!b, bars: null };
+    }
+
+    const bucketSecs = set ? set.bucketSecs : bucketOf(bars);
+    const trade = view.symbol ? lastBuyFor(view.symbol) : null;
+    return {
+      symbol: view.symbol || null, tf: view.tf || null,
+      bound: !!b, live: !!(b && verified !== null), verified,
+      bars, bucketSecs, trade,
+      pos: view.symbol ? positions.get(view.symbol) || null : null,
+      at: trade ? placeTrade(trade, bars, bucketSecs) : null,
+      covers: [
+        Math.floor(bars[0].time / GAME_DAY_SECS),
+        Math.floor((bars[bars.length - 1].time + bucketSecs - 1) / GAME_DAY_SECS),
+      ],
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Drawing
+  // ---------------------------------------------------------------------------
+  let drawRaf = false;
+  const drawSoon = () => {
+    if (drawRaf) return;
+    drawRaf = true;
+    requestAnimationFrame(() => { drawRaf = false; drawOverlay(); });
+  };
+
+  const mk = (cls, style) => { const d = el('div', cls); Object.assign(d.style, style); return d; };
+
+  function drawOverlay() {
+    if (!$ovl) return;
+    const hide = () => { $ovl.style.display = 'none'; };
+    if (!ui.mark && !ui.costLine) return hide();
+
+    const m = chartModel();
+    if (!m.bound || !m.bars || !bound) return hide();
+    const box = paneBox(bound.host);
+    if (!box || box.width < 40 || box.height < 40) return hide();
+
+    const ts = bound.chart.timeScale();
+    const num = (v) => (isNum(v) ? v : null);
+    const xOf = (t) => { try { return num(ts.timeToCoordinate(t)); } catch { return null; } };
+    const yOf = (p) => { try { return num(bound.series.priceToCoordinate(p)); } catch { return null; } };
+
+    const parts = [];
+    const W = box.width;
+
+    // Off the left or right of what is on screen, the coordinate still comes back
+    // (the scale extrapolates) and would simply be clipped away — leaving the
+    // operator to wonder where their mark went. An edge chip says which way.
+    const edgeTag = (x, cls, text) => {
+      const t = mk(`tag ${cls}`, x < 0 ? { left: '4px', top: '6px' } : { right: '4px', top: '6px' });
+      t.textContent = x < 0 ? `◀ ${text}` : `${text} ▶`;
+      return t;
+    };
+
+    if (ui.costLine && m.pos && isNum(m.pos.avgCost) && m.pos.shares) {
+      const y = yOf(m.pos.avgCost);
+      if (y !== null && y > -2 && y < box.height + 2) {
+        parts.push(mk('hl cost', { top: `${y}px` }));
+        const t = mk('tag cost', { left: '4px', top: `${Math.max(2, Math.min(box.height - 18, y + 4))}px` });
+        t.textContent = `avg ${fmtNum(m.pos.avgCost)}`;
+        parts.push(t);
+      }
+    }
+
+    if (ui.mark && m.trade && m.at && m.verified === true) {
+      const cls = BUY_TYPES.has(m.trade.trade_type) ? 'buy' : 'sell';
+      const label = `${(m.trade.trade_type || '').toUpperCase()} ${fmtNum(m.trade.shares)} @ ${fmtNum(m.trade.price_per_share)}`;
+
+      if (m.at.from != null) {
+        const x1 = xOf(m.bars[m.at.from].time);
+        const x2 = xOf(m.bars[m.at.to].time);
+        if (x1 !== null && x2 !== null) {
+          const mid = (x1 + x2) / 2;
+          if (mid < 0 || mid > W) {
+            parts.push(edgeTag(mid, cls, `${label} · D${m.trade.game_day}`));
+          } else {
+            // A day wider than one bar is a band, not a line — the fill happened
+            // somewhere in there and the chart cannot say where. Half a bar is
+            // added either side because a coordinate is a bar's centre.
+            if (!m.at.exact) {
+              const half = Math.max(2, Math.abs(xOf(m.bars[1].time) - xOf(m.bars[0].time)) / 2 || 3);
+              parts.push(mk(`bd ${cls}`, { left: `${x1 - half}px`, width: `${(x2 - x1) + half * 2}px` }));
+            }
+            parts.push(mk(`vl ${cls}`, { left: `${mid}px` }));
+
+            const y = yOf(m.trade.price_per_share);
+            if (y !== null) {
+              parts.push(mk(`hl ${cls}`, { top: `${y}px` }));
+              parts.push(mk(`dot ${cls}`, { left: `${mid}px`, top: `${y}px` }));
+            }
+            // Flip the label to whichever side of the mark has room for it.
+            const t = mk(`tag ${cls}`, mid > W - 130
+              ? { right: `${Math.max(4, W - mid + 7)}px` } : { left: `${mid + 7}px` });
+            t.style.top = `${y === null ? 6 : Math.max(2, Math.min(box.height - 18, y - 20))}px`;
+            t.textContent = label;
+            parts.push(t);
+          }
+        }
+      }
+    }
+
+    if (!parts.length) return hide();
+    Object.assign($ovl.style, {
+      display: 'block',
+      left: `${box.left}px`, top: `${box.top}px`,
+      width: `${box.width}px`, height: `${box.height}px`,
+    });
+    $ovl.replaceChildren(...parts);
+  }
 
   function paintToast(kind, head, body, actions) {
     if (!$toasts) return;
@@ -1263,6 +1863,8 @@
     const warn = el('div', 'warnbox');
     warnSec.append(warn);
 
+    const chartSec = buildChartSection();
+
     const obs = el('div');
 
     const ruleSec = el('section');
@@ -1289,14 +1891,190 @@
     note.style.cssText = 'margin-top:7px;line-height:1.5';
     ft.append(wipe, exp, note);
 
-    scroll.append(warnSec, obs, ruleSec, formSec, ft);
+    scroll.append(warnSec, chartSec.sec, obs, ruleSec, formSec, ft);
     $panel.append(hdr, sizes, bar, scroll);
 
-    sk = { cnt, warnSec, warn, obs, ruleBody, formHost, filter, sizes, dim };
+    sk = { cnt, warnSec, warn, obs, ruleBody, formHost, filter, sizes, dim, chart: chartSec };
     buildForm();
 
     // If a tick arrived while the user held a control open, apply it on release.
     $panel.addEventListener('focusout', () => { if (dirty) setTimeout(refresh, 0); });
+  }
+
+  // ---------------------------------------------------------------------------
+  // "On the chart" — the same model the overlay draws, written out in words.
+  //
+  // It is not a duplicate of the overlay, it is the part the overlay cannot say:
+  // which days the chart covers, what we assumed about a fill's game day, and why
+  // a mark is missing when one is. Every one of those is a number the operator can
+  // check against the game's own history table, which is the point — this tool
+  // decodes `game_day` and nothing verifies that decode except a human comparing it.
+  // ---------------------------------------------------------------------------
+  function buildChartSection() {
+    const sec = el('section');
+    const rows = el('div');
+    const marks = el('div', 'marks');
+
+    const sw = (key, label) => {
+      const b = el('button', 'mini');
+      const tick = el('span', 'sw');
+      b.append(tick, document.createTextNode(` ${label}`));
+      const paint = () => {
+        b.classList.toggle('on', !!ui[key]);
+        tick.textContent = ui[key] ? '●' : '○';
+      };
+      b.onclick = () => { ui[key] = !ui[key]; saveUI(); paint(); drawSoon(); paintChart(); };
+      paint();
+      return b;
+    };
+    marks.append(sw('mark', 'last buy'), sw('costLine', 'avg cost'));
+
+    sec.append(el('h5', null, 'On the chart'), rows, marks);
+    return { sec, rows, marks };
+  }
+
+  const row = (k, v, cls) => {
+    const r = el('div', `cw${cls ? ` ${cls}` : ''}`);
+    r.append(el('span', 'k', k));
+    const val = el('span', 'v');
+    if (typeof v === 'string') val.textContent = v; else val.append(...[].concat(v));
+    r.append(val);
+    return r;
+  };
+  const quiet = (t) => el('span', 'q', t);
+  const pill = (kind, t) => el('span', `pill ${kind}`, t);
+
+  function paintChart() {
+    const { rows } = sk.chart;
+    const m = chartModel();
+    const out = [];
+
+    if (!m.symbol) {
+      out.push(row('chart', 'no stock chart seen yet — open the stocks screen'));
+      rows.replaceChildren(...out);
+      return;
+    }
+
+    // Only one of these is a problem. Not reaching the game's chart is the
+    // designed fallback and gets the quiet pill; being on the wrong stock's chart
+    // is the one thing that would mislead, and it is the only amber.
+    const state = !m.bound ? pill('off', 'drawing here')
+      : m.verified === false ? pill('warn', 'wrong stock')
+        : m.verified === null ? pill('off', 'lining up')
+          : pill('on', 'marked');
+    out.push(row('stock', [document.createTextNode(`${m.symbol} · ${m.tf || '?'}`), ' ', state], 'head'));
+
+    if (!m.bars) {
+      out.push(row('bars', 'waiting for candles'));
+      rows.replaceChildren(...out);
+      return;
+    }
+
+    const [d0, d1] = m.covers;
+    out.push(row('covers', [
+      document.createTextNode(`D${d0} – D${d1}`), ' ',
+      quiet(`${m.bars.length} bars · ${gameDate(d0 * GAME_DAY_SECS)} → ${gameDate(d1 * GAME_DAY_SECS)}`),
+    ]));
+
+    if (!m.trade) {
+      out.push(row('last buy', Object.keys(trades).length
+        ? 'none recorded for this stock'
+        : 'no trades yet — open the stocks page’s History tab once and this fills in'));
+    } else {
+      const t = m.trade;
+      out.push(row('last buy', [
+        document.createTextNode(`${fmtNum(t.shares)} @ ${fmtNum(t.price_per_share)}`), ' ',
+        quiet(`D${t.game_day} · ${gameDate(t.game_day * GAME_DAY_SECS)}`),
+      ]));
+
+      const at = m.at;
+      const where = !at ? 'cannot be placed'
+        : at.impossible ? 'later than the newest bar — game_day is not the absolute day we read it as, so nothing is drawn'
+          : at.before ? `${at.days} game day${at.days === 1 ? '' : 's'} before this window — widen the timeframe`
+            : at.after ? `${at.days} game day${at.days === 1 ? '' : 's'} after this window`
+              : at.exact ? `bar ${at.from + 1} of ${m.bars.length}`
+                : `bars ${at.from + 1}–${at.to + 1} of ${m.bars.length} — a game day is ${at.span} bars at this timeframe, so the mark is a band`;
+      out.push(row('placed', where));
+    }
+
+    if (m.pos && isNum(m.pos.avgCost)) {
+      const p = m.pos;
+      const bits = [document.createTextNode(`${fmtNum(p.avgCost)}`)];
+      if (isNum(p.price) && p.avgCost > 0) {
+        const pct = ((p.price - p.avgCost) / p.avgCost) * 100;
+        const span = el('span', pct >= 0 ? 'up' : 'dn', `  ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`);
+        bits.push(span, ' ', quiet(`now ${fmtNum(p.price)}`));
+      }
+      out.push(row('avg cost', bits));
+    }
+
+    rows.replaceChildren(...out);
+    if (!m.bound && m.bars) rows.append(fallbackChart(m));
+  }
+
+  /**
+   * The same picture, drawn here, for when the game's chart cannot be reached.
+   *
+   * Rects only — no strokes to smear under the non-uniform scale that lets one
+   * viewBox fill any panel width — except the marker lines, which ask for
+   * non-scaling-stroke by name so they stay 1px however wide the panel is.
+   */
+  function fallbackChart(m) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const W = 300, H = 96, PAD = 3;
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'fb');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+
+    const bars = m.bars.slice(-120);
+    const lows = bars.map((b) => b.low), highs = bars.map((b) => b.high);
+    let lo = Math.min(...lows), hi = Math.max(...highs);
+    if (m.trade && isNum(m.trade.price_per_share)) {
+      lo = Math.min(lo, m.trade.price_per_share); hi = Math.max(hi, m.trade.price_per_share);
+    }
+    const span = (hi - lo) || 1;
+    const y = (v) => PAD + (1 - (v - lo) / span) * (H - PAD * 2);
+    const step = W / bars.length;
+    const bw = Math.max(1, step * 0.62);
+
+    const rect = (x, yy, w, h, fill, extra) => {
+      const r = document.createElementNS(NS, 'rect');
+      r.setAttribute('x', x.toFixed(2)); r.setAttribute('y', yy.toFixed(2));
+      r.setAttribute('width', Math.max(0.3, w).toFixed(2));
+      r.setAttribute('height', Math.max(0.5, h).toFixed(2));
+      r.setAttribute('fill', fill);
+      if (extra) for (const [k, v] of Object.entries(extra)) r.setAttribute(k, v);
+      svg.append(r);
+      return r;
+    };
+
+    bars.forEach((b, i) => {
+      const cx = i * step + step / 2;
+      const up = b.close >= b.open;
+      const fill = up ? '#10b981' : '#f43f5e';
+      rect(cx - 0.35, y(b.high), 0.7, y(b.low) - y(b.high), fill, { opacity: '.55' });
+      const top = Math.min(y(b.open), y(b.close));
+      rect(cx - bw / 2, top, bw, Math.abs(y(b.open) - y(b.close)), fill);
+    });
+
+    // The mark, on the same arithmetic the overlay uses.
+    const first = m.bars.length - bars.length;
+    if (ui.mark && m.trade && m.at && m.at.from != null && m.at.to >= first) {
+      const a = Math.max(0, m.at.from - first), b = Math.max(0, m.at.to - first);
+      const x1 = a * step, x2 = (b + 1) * step;
+      const cls = BUY_TYPES.has(m.trade.trade_type) ? '#10b981' : '#f43f5e';
+      if (!m.at.exact) rect(x1, 0, x2 - x1, H, cls, { opacity: '.14' });
+      rect((x1 + x2) / 2 - 0.5, 0, 1, H, cls, { opacity: '.9' });
+      const ty = y(m.trade.price_per_share);
+      rect(0, ty - 0.5, W, 1, cls, { opacity: '.7' });
+      rect((x1 + x2) / 2 - 2.5, ty - 2.5, 5, 5, cls);
+    }
+    if (ui.costLine && m.pos && isNum(m.pos.avgCost) && m.pos.shares) {
+      const cy = y(m.pos.avgCost);
+      if (cy >= 0 && cy <= H) rect(0, cy - 0.5, W, 1, '#f59e0b', { opacity: '.8' });
+    }
+    return svg;
   }
 
   const userBusy = () => {
@@ -1318,6 +2096,7 @@
       paintHeader();
       paintWarn();
       paintFabState();
+      paintChart();
       paintObserved();
       paintRules();
       syncFormOptions();
@@ -1704,12 +2483,13 @@
   // Placement — the button is draggable and the panel follows it, flipping to
   // whichever side has room so it can't end up hanging off the viewport.
   // ---------------------------------------------------------------------------
-  // FAB KIT v4's home row, in JS. This tool places its own button, so an inline
+  // FAB KIT v7's home row, in JS. This tool places its own button, so an inline
   // left/top always outranks the kit's CSS rule and the row has to be computed here
-  // instead. The numbers are the block's, verbatim: thirteen 38px buttons 8px apart
-  // is a 590px row, centred on the viewport and floored at where the game's own
-  // nav ends, sitting 7px down inside the header band. tools/test-placement.js reads both
-  // the CSS and this literal and fails the build if they ever drift apart.
+  // instead. The numbers are the block's, verbatim: sixteen 38px buttons 8px apart
+  // is a 728px row, so half of it is 364 — centred on the viewport and floored at
+  // where the game's own nav ends, sitting 7px down inside the header band.
+  // tools/test-placement.js reads both the CSS and this literal and fails the build
+  // if they ever drift apart, which is what caught this comment still saying v4.
   const HOME = { slot: 4, top: 7, floor: 440, half: 364, pitch: 46 };
 
   const defaultFabPos = () => ({
@@ -1901,7 +2681,12 @@
     $grip = el('div', 'grip');
     $panel.append($grip);
 
-    wrap.append($toasts, $panel, $fab);
+    // The chart overlay. It sits in .wrap like everything else, so it inherits
+    // pointer-events: none and cannot intercept a click meant for the game.
+    $ovl = el('div', 'ovl');
+    $ovl.style.display = 'none';
+
+    wrap.append($ovl, $toasts, $panel, $fab);
     root.append(style, wrap);
     document.documentElement.append(host);
 
@@ -1911,7 +2696,28 @@
     makeDraggable();
     makeResizable();
     window.addEventListener('resize', placeFab);
+
+    // The overlay is pinned to a box in viewport coordinates, so anything that
+    // moves that box has to move it too. Scroll is captured because the chart sits
+    // in a scroll container of the app's, not on the document.
+    window.addEventListener('resize', drawSoon);
+    window.addEventListener('scroll', drawSoon, { capture: true, passive: true });
+
+    // Floor under every subscription: the chart component is keyed on symbol and
+    // timeframe, so switching either disposes the object we hold and mounts a new
+    // one that has told nobody it exists. A querySelector once a second finds it.
+    // Idle when the tab is hidden — there is nothing to draw on a page nobody is
+    // looking at, and this repo does not run timers behind your back.
+    setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (!ui.mark && !ui.costLine) return;
+      const host = document.querySelector(CHART_SEL);
+      if (!host) { if (bound) { unbind(); drawSoon(); refresh(); } return; }
+      if (!bound || bound.host !== host) { drawSoon(); refresh(); }
+    }, CFG.REBIND_MS);
+
     if (ui.open) togglePanel(true);
+    drawSoon();
   }
 
   function togglePanel(force) {
@@ -1941,7 +2747,19 @@
   window.__pkmw = {
     hist, get rules() { return rules; }, CFG, refresh,
     get ids() { return entityIds; },
+    get trades() { return trades; },
     series: () => [...seriesIndex()].map(([s, f]) => ({ series: s, fields: f })),
     export: () => JSON.stringify({ hist, rules }, null, 2),
+
+    // What the overlay thinks it is looking at, in one object. This is the thing
+    // to print when a mark lands somewhere it should not: it carries the bars, the
+    // decoded game day and the bar indexes the mark was computed from.
+    model: () => chartModel(),
+
+    // The bench seam. userscripts/tools/harness/ has no React and no chart library,
+    // so the fiber walk has nothing to walk; handing it a stand-in exercises every
+    // line downstream of the walk against canned candles. It only ever RECEIVES an
+    // object — it cannot reach the game, and passing null puts the real lookup back.
+    attachChart: (stub) => { testChart = stub ? Object.assign({ off: [] }, stub) : null; drawSoon(); refresh(); },
   };
 })();

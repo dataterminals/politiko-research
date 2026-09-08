@@ -65,6 +65,108 @@ that the holdings price field is `current_price`, not `price`.
   window; `price`, `bid` and `ask` did.
 - `ipo_game_day` read **1408** identically across every instrument.
 
+## The chart, and where your own fills sit on it
+
+Read **2026-09-07** off `StocksPage-DkzFUOgF.js` in the 2026-08-26 bundle set. Nothing
+was fetched and no session was needed; this is the client telling us what it draws.
+
+**The chart is TradingView Lightweight Charts v5**, rendering to a canvas. The v5 API
+gives it away — `chart.addSeries(CandlestickSeries, …)`, not v4's `addCandlestickSeries`.
+Three consequences, in descending order of how annoying they are:
+
+- **Series markers are not available.** v5 moved them out of the series API and into a
+  plugin, and the bundle has been tree-shaken: `createSeriesMarkers` and `setMarkers`
+  appear nowhere in it. Anything that wants to mark a point on this chart has to draw
+  its own layer.
+- **The coordinate functions are all present**: `timeToCoordinate`, `priceToCoordinate`,
+  `coordinateToTime`, `logicalToCoordinate`, `createPriceLine`, `barsInLogicalRange`, and
+  both `subscribeVisible*RangeChange` pairs. So a layer *can* be glued to the chart
+  properly rather than guessed at.
+- **`series.data()` exists**, which means the bars actually on screen can be read back
+  rather than inferred from the last response — the two differ whenever the socket has
+  advanced the live bar.
+
+The chart component is keyed `` `${symbol}-${timeframe}` ``, so changing either
+**remounts it** and disposes the old chart object. It holds the chart and the series in
+React refs and exposes neither, so reaching them means walking the fiber tree from the
+container element (React 19.2.6; `__reactFiber$…` confirmed present in `index-*.js`).
+The container carries the library's own `tv-lightweight-charts` class, which appears in
+`StocksPage` **and nowhere else** — checked across both the 2026-08-10 and 2026-08-26
+bundle sets.
+
+### Timeframes and how much real time they cover
+
+`Wi = ['4h', '1d', '1w']`, always `n=150`, and `bucket_secs` comes back on the response
+(the client defaults to `86400` if it is missing). Buckets are **game** time, so at
+acceleration 52.14 ([`06-time-surface.md`](06-time-surface.md)):
+
+| tf | bucket | 150 bars = | ≈ real time |
+|---|---|---|---|
+| `4h` | 4 game hours | 25 game days | **11.5 hours** |
+| `1d` | 1 game day | 150 game days | **2.9 days** |
+| `1w` | 7 game days | 1050 game days ≈ 2.9 game years | **20 days** |
+
+This is arithmetic on `n=150` × bucket, not a measurement — the server returns whatever
+history it has, which is at most back to `ipo_game_day`. Worth noting because the widest
+window is nearly three real weeks, not the one week it is easy to assume from the `1w`
+label, and the *narrowest* is under half a real day.
+
+### The trade record
+
+`GET /api/stocks/trades?limit=25[&before=<cursor>]`, paged, `{ trades: [...],
+next_cursor }`. It is behind the stocks page's **`history` tab**, which is not the
+default (`positions` is) — so under consume-don't-request it is only observable after
+the player has opened that tab.
+
+```
+trades[] :: id                one per fill; stable, usable as a dedupe key
+         :: game_day          integer, absolute — rendered as "D<game_day>"
+         :: symbol
+         :: trade_type        buy | sell | short_open | short_cover
+                              | margin_open | margin_close
+                              | margin_liquidation | short_liquidation
+         :: shares
+         :: price_per_share
+         :: total_cash
+         :: realized_pnl      null on an opening trade
+```
+
+**`game_day * 86400` is a game-second in the chart's own x-axis space.** That is the
+load-bearing claim and it is worth stating plainly, because nothing in either payload
+says so:
+
+- the chart's `bucket_start` is decoded by the client with `year = floor(s/31_536_000)+1`,
+  i.e. it is absolute game-seconds from world origin;
+- `ipo_game_day: 1408` decoded through that same calendar gives **Nov 14, Y4**, which is
+  what this document already recorded from the other direction.
+
+Two fields, two derivations, one date. It is not a wire capture, but it is as close as
+the bundles get, and `userscripts/tools/test-market-chart.js` re-derives that date from
+the userscript's own decoder so the two cannot drift apart silently.
+
+The resolution mismatch that follows from it is worth writing down: a fill is dated to a
+whole game day, so on `1w` and `1d` it lands on exactly one bar, but on `4h` a game day
+is **six** bars and the honest mark is a band, not a line.
+
+### Two corrections to what was inferred above
+
+- **`holdings` is a list, not a symbol-keyed map.** `{ holdings: [...] }`, and the page
+  matches rows with `L.find(h => h.instrument_id === D)`. Rows also carry
+  `short_position_id` and `margin_position_id`, which is how the page tells a long from a
+  short from a margin buy on the same instrument.
+- **The candles and quote paths take the TICKER, not a numeric id.** In the client `E` is
+  the symbol and `D` is the id, and it is `E` that goes into the URL:
+  `` `/stocks/instruments/${E}/candles?tf=${i}&n=150` ``. So those responses are
+  self-identifying, and nothing needs a symbol→id map to read them. Orders still go by
+  `instrument_id` — see below — so both are real and they are not interchangeable.
+
+### And the cash field this document said was missing
+
+`GET /api/user/money`, fetched by StocksPage under the query key `sidebar-money`. Listed
+here because "a cash / balance field" is named under *Still unknown* below as the thing
+blocking spend-an-amount sizing. Not yet read on the wire, so its shape is still unknown
+— only its existence and its path are established.
+
 ## The order endpoint
 
 Captured **2026-07-28** from a buy the player placed by hand, via the userscript's
@@ -133,8 +235,21 @@ the executor returns 401 and says so rather than reading the token.
   funds, insufficient shares, market closed) comes back as a non-2xx or as a 200 with
   an error body. Only the request side has been captured; the executor currently
   treats any 2xx as filled.
-- A **cash / balance field**. Nothing matching one has appeared on any response the
+- ~~A **cash / balance field**. Nothing matching one has appeared on any response the
   tap has seen, which is what currently blocks spend-an-amount position sizing. It may
-  live on a player/account response rather than the stocks one.
-- Whether `holdings` arrives on the same response as `instruments` or a separate one —
-  both are under the `stocks` scope, so the tap can't tell them apart.
+  live on a player/account response rather than the stocks one.~~
+
+  **Located 2026-09-07**, and the guess was right — it is on an account response, not a
+  stocks one: `GET /api/user/money`. Its shape has still not been read, so sizing is
+  unblocked in principle and not in practice.
+- ~~Whether `holdings` arrives on the same response as `instruments` or a separate one —
+  both are under the `stocks` scope, so the tap can't tell them apart.~~
+  **Separate**, and separately fetched: `stocks-instruments` polls every 2 s,
+  `stocks-holdings` does not poll at all.
+- **Whether `game_day` on a trade is really the absolute day.** Everything above rests on
+  it and the evidence is two independent derivations agreeing on one date, which is
+  strong but is not a capture. The cheap confirmation costs nothing and needs no request:
+  open the History tab next to a chart and check that a fill's `D<n>` falls inside the
+  `D<from> – D<to>` the chart covers. `market-watch` prints both for exactly this reason,
+  and refuses to draw a mark for a fill dated later than the newest bar rather than put
+  one somewhere it cannot defend.

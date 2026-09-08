@@ -18,7 +18,7 @@ bump; the table below is hand-kept and can drift.
 | tool | version | raw link |
 |---|---|---|
 | People Watch | 1.10.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
-| Market Watch | 1.4.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
+| Market Watch | 1.6.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
 | Time Watch | 0.10.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
 | Align Watch | 0.6.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
 | Comms Move | 0.1.1 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
@@ -395,20 +395,68 @@ walk is just you pressing a key.
 
 # Market Watch
 
-Records numeric series out of market responses the game client already fetched, charts them
-in-page, and raises alerts when something moves.
+Marks where your own trades sit on the game's stock chart, and records numeric series out
+of market responses the client already fetched.
 
 ## What it does
 
+- **Puts your last buy on the chart.** A dashed line down the bar you bought on, a line
+  across at the price you paid, and a diamond where the two meet — drawn on the game's own
+  candle chart, in its own colours, so you can see at a glance whether the thing has gone
+  anywhere since. Your average cost gets a second line in amber. Both are switchable.
+- **Says where the mark is when it can't draw one.** A fill older than the loaded window
+  is not silently dropped: the panel tells you how many game days back it is, so you know
+  that switching to a wider timeframe will reach it.
 - **Builds history.** The game shows you a number now; this keeps the series, so you can
   see where it came from.
 - **Charts it in-page**, including sparklines beside the headline figures.
 - **Alerts** on absolute thresholds, percentage moves, and rate-of-change — in-page only,
   and only while the tab is visible. Alerts raised while the tab is hidden are queued and
   shown when you come back.
-- **Derived views** over the recorded history.
 
 Everything is computed and stored locally in your browser.
+
+## The chart marks, and what they depend on
+
+Three things have to line up, and the panel tells you when one of them hasn't.
+
+**It needs to have seen your trades.** They arrive on `/api/stocks/trades`, which the game
+only fetches when you open the **History** tab on the stocks page. Open it once and the
+tool remembers what it saw; until then the panel says so rather than guessing. Nothing
+here fetches that for you — that would be a request, and this script does not make
+requests.
+
+**A fill is dated to a whole game day, not to a moment.** So on the `1d` and `1w`
+timeframes the mark is a line on exactly the right bar; on `4h`, where six bars share a
+game day, it is honestly a *band* across those six, and the panel says why.
+
+**The window is smaller than it looks.** All three timeframes load 150 bars, in game time:
+
+| tf | 150 bars ≈ |
+|---|---|
+| `4h` | 11.5 real hours |
+| `1d` | 2.9 real days |
+| `1w` | 20 real days |
+
+So `1w` is the one that reaches back weeks, and `4h` barely covers a day. The panel prints
+the exact game-day range the chart covers next to your fill's game day, which is also how
+you check the tool is right — the number beside `LAST BUY` is the same `D<n>` the game's
+own History table shows for that row.
+
+**It will refuse to mark rather than mark wrongly.** Every instrument shares the same bar
+times on a given timeframe, so times alone cannot tell PNRG from RCRD; the tool compares a
+settled bar's closing price against what it recorded for the stock it thinks you are
+looking at, and draws nothing until that agrees. If the game ever swaps chart libraries
+the marks stop appearing on the chart and the panel draws the same picture itself instead.
+
+## What it does to the game's chart
+
+Nothing. It reads the chart object the page already built — asking it where a given time
+and price fall in pixels — and draws its own layer on top, inside this script's own shadow
+root. It never calls `setData`, `applyOptions`, `update` or `remove`, the layer cannot
+take a pointer event, and the chart underneath pans, zooms and tracks its crosshair
+exactly as it did. `tools/test-market-passive.js` fails the build if any of that stops
+being true.
 
 ## Buy and sell rules — what they actually do
 
@@ -2111,6 +2159,7 @@ Run from the repository root:
 node userscripts/tools/test-people.js
 node userscripts/tools/test-placement.js
 node userscripts/tools/test-market-passive.js
+node userscripts/tools/test-market-chart.js
 node userscripts/tools/test-harvest.js
 node userscripts/tools/test-sizing.js
 node userscripts/tools/test-views.js
@@ -2145,7 +2194,12 @@ Several are **fences** rather than behaviour tests — they read the shipped fil
 something that could originate a request has reappeared, because "we removed it" stays true
 only until someone adds it back:
 
-- `test-market-passive` fences market-watch's deleted order-execution seam.
+- `test-market-passive` fences market-watch’s deleted order-execution seam, and — since
+  1.6.0 — that its chart bridge only ever *reads* the game’s chart. That tool now holds the
+  page’s own chart object in order to draw on it, and every method that would alter the
+  chart under you sits on the object it is holding, so “read-only” needs a fence rather
+  than a promise. (Its companion `test-market-chart` is a behaviour test, not a fence: it
+  drives the arithmetic that decides which bar a fill lands on.)
 - `test-passive` fences ws-watch, which replaces `window.WebSocket` and is therefore
   structurally one line away from being a bot. It also drives the tap's behaviour.
   **Added 2026-08-26:** it now fences the *credential* half too. The game's three sockets

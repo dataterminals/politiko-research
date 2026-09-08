@@ -37,7 +37,7 @@ const TOOLS = {
   'align-watch': { word: 'ALGN', blurb: 'your political compass on the home page, with a change log' },
   'gov-watch': { word: 'GOV', blurb: 'change ledger for the government: what moved between readings' },
   'quick-jump': { word: 'JUMP', blurb: "launcher for the 64 screens the sidebar can't reach" },
-  'market-watch': { word: 'MKT', blurb: 'charts market series locally and fires threshold alerts' },
+  'market-watch': { word: 'MKT', blurb: 'marks where you bought on the stock chart; charts market series locally' },
   'raid-watch': { word: 'RAID', blurb: 'records faction raids, their event log and post-mortems' },
   'sleeper-watch': { word: 'SLP', blurb: 'keeps sleeper-recruitment timers running after you leave' },
   'ws-watch': { word: 'SOCK', blurb: 'read-only observer for the three sockets the game opens' },

@@ -961,14 +961,59 @@ window.HARNESS_FIXTURES = {
     ],
   },
 
-  'market-watch': {
+  'market-watch': (() => {
+  // Shared by the canned candles below and by the chart stub, so the stub is
+  // showing the SAME bars the tool absorbed. That matters: market-watch checks a
+  // settled bar's close against its own candle set before it will mark a fill,
+  // precisely so a PNRG buy can never be drawn on an RCRD chart. A stub built
+  // from different numbers would (correctly) refuse to draw.
+  const DAY = 86_400;
+  const END_DAY = 5040;   // "now" — chosen so the D5033 buy lands near the right edge
+  const series = (bars, bucket, last) => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    const out = [];
+    let px = 27.1;
+    // i counts back from the oldest bar, and each one is PUSHED — so the run comes
+    // out oldest-first, which is how both /candles and the chart's own data()
+    // hand bars over. Built the other way round it reads as a fill dated after the
+    // newest bar, which market-watch (correctly) refuses to draw.
+    for (let i = bars - 1; i >= 0; i--) {
+      const open = px;
+      const close = +(open * (1 + (rnd() - 0.48) * 0.035)).toFixed(2);
+      out.push({
+        bucket_start: last - i * bucket,
+        open, close,
+        high: +(Math.max(open, close) * (1 + rnd() * 0.012)).toFixed(2),
+        low: +(Math.min(open, close) * (1 - rnd() * 0.012)).toFixed(2),
+        volume: Math.round(2000 + rnd() * 9000),
+      });
+      px = close;
+    }
+    return out;
+  };
+  const CANDLES = {
+    // 150 × 1 game day ≈ 2.9 real days. The D5033 buy is bar 143 of 150.
+    '1d': { bucket: DAY, bars: series(150, DAY, END_DAY * DAY) },
+    // 150 × 4 game hours ≈ 11.5 real hours, and six bars share a game day — so
+    // the mark has to be a band here rather than a line. The case worth looking at.
+    '4h': { bucket: 14_400, bars: series(150, 14_400, END_DAY * DAY) },
+    // 150 × 1 game week ≈ 20 real days, which reaches back to the D4102 buy.
+    '1w': { bucket: 604_800, bars: series(150, 604_800, END_DAY * DAY) },
+  };
+
+  return {
     label: 'Market Watch',
     hotkey: 'Alt+M',
     source: 'docs/04-stocks-surface.md',
-    note: 'Fire the watchlist, then "prices moved" two or three times — a series is a '
-      + 'difference between readings, so one call charts nothing. market-watch taps '
-      + "onApi('*') on purpose, so the last call is charted too rather than ignored: "
-      + 'that is the documented behaviour, not a leak.',
+    note: 'For the chart marks: fire candles, then holdings, then trades. There is no '
+      + 'chart library in here, so bind a stand-in with __pkmw.attachChart(...) — see '
+      + 'the CHART STUB note below — or just leave it unbound and watch the panel draw '
+      + 'the same picture itself, which is the fallback path. For the price series: fire '
+      + 'the watchlist, then "prices moved" two or three times — a series is a difference '
+      + "between readings, so one call charts nothing. market-watch taps onApi('*') on "
+      + 'purpose, so the last call is charted too rather than ignored: that is the '
+      + 'documented behaviour, not a leak.',
     calls: (() => {
       // Fields per docs/04: price, bid and ask moved across the observed window;
       // float_shares, spread_bps and ipo_game_day did not, and ipo_game_day read
@@ -1008,20 +1053,87 @@ window.HARNESS_FIXTURES = {
           body: book(0.911),
         },
         {
-          label: 'holdings — what position sizing reads',
+          // Corrected 2026-09-07: this used to be a bare array. StocksPage reads
+          // `I?.holdings ?? []` and matches rows on `instrument_id`, so it is an
+          // object with a `holdings` list, and the rows carry the two position-id
+          // fields the page uses to tell a long from a short from a margin buy.
+          label: 'holdings — position, avg cost, and the avg-cost line',
           path: '/api/stocks/holdings',
-          body: [
-            { id: 77, instrument_id: 10, symbol: 'PNRG', shares: 92, avg_cost: 27.10 },
-            { id: 78, instrument_id: 13, symbol: 'USTL', shares: 5, avg_cost: 59.80 },
-          ],
+          // PNRG's numbers are derived from the trades below rather than picked:
+          // +30 @ 21.05, then -20, then +92 @ 27.10 leaves 102 shares at a blended
+          // 26.51. That keeps the avg-cost line clear of the last fill's price line
+          // — coincide them and the screenshot cannot tell you the two are separate
+          // marks — and it means the panel's P/L can be checked by hand.
+          body: {
+            holdings: [
+              { id: 77, instrument_id: 10, symbol: 'PNRG', shares: 102, avg_cost: 26.51,
+                current_price: 28.70, market_value: 2927.40, unrealized_pnl: 223.38,
+                short_position_id: null, margin_position_id: null },
+              { id: 78, instrument_id: 13, symbol: 'USTL', shares: 5, avg_cost: 59.80,
+                current_price: 61.25, market_value: 306.25, unrealized_pnl: 7.25,
+                short_position_id: null, margin_position_id: null },
+            ],
+          },
         },
         {
-          label: 'trades',
-          path: '/api/stocks/trades?limit=50',
-          body: [
-            { id: 900, instrument_id: 10, symbol: 'PNRG', side: 'buy', shares: 92, price: 27.10 },
-            { id: 901, instrument_id: 13, symbol: 'USTL', side: 'sell', shares: 1, price: 60.40 },
-          ],
+          // Corrected 2026-09-07 off StocksPage's history table, which had guessed
+          // `side` and `price`. The real record is keyed by `trade_type` and
+          // `price_per_share`, and carries `game_day` — the field the chart marks
+          // are computed from. The page asks for 25 at a time and pages with
+          // `before=<cursor>`; only the first page is canned here.
+          label: 'trades (History tab) — where the buy mark comes from',
+          path: '/api/stocks/trades?limit=25',
+          body: {
+            trades: [
+              { id: 903, game_day: 5033, symbol: 'PNRG', trade_type: 'buy', shares: 92,
+                price_per_share: 27.10, total_cash: 2493, realized_pnl: null },
+              { id: 902, game_day: 5019, symbol: 'PNRG', trade_type: 'sell', shares: 20,
+                price_per_share: 29.44, total_cash: 589, realized_pnl: 168 },
+              { id: 901, game_day: 4988, symbol: 'USTL', trade_type: 'buy', shares: 5,
+                price_per_share: 59.80, total_cash: 299, realized_pnl: null },
+              { id: 900, game_day: 4102, symbol: 'PNRG', trade_type: 'buy', shares: 30,
+                price_per_share: 21.05, total_cash: 632, realized_pnl: null },
+            ],
+            next_cursor: null,
+          },
+        },
+        {
+          label: 'trades — a buy older than any 1d window',
+          path: '/api/stocks/trades?limit=25',
+          variant: 'old',
+          body: {
+            trades: [
+              { id: 800, game_day: 4102, symbol: 'PNRG', trade_type: 'buy', shares: 30,
+                price_per_share: 21.05, total_cash: 632, realized_pnl: null },
+            ],
+            next_cursor: null,
+          },
+        },
+        // Candles. `bucket_start` is absolute GAME-seconds — the same count
+        // `game_day * 86400` gives, which is the whole reason a fill can be placed
+        // against a bar at all. The path segment is the TICKER, not a numeric id:
+        // StocksPage builds this URL from the symbol, which is what makes the
+        // response self-identifying.
+        ...Object.entries(CANDLES).map(([name, c]) => ({
+          label: `candles ${name} — PNRG`,
+          path: `/api/stocks/instruments/PNRG/candles?tf=${name}&n=150`,
+          body: { bucket_secs: c.bucket, candles: c.bars },
+        })),
+        {
+          // Same bars, different prices. Fire this and the marks must vanish: the
+          // tool compares a settled close against its own candle set before it
+          // will draw, because bar TIMES are identical across every instrument on
+          // a timeframe and cannot tell PNRG from RCRD.
+          label: 'candles 1d — RCRD (a different stock; marks must disappear)',
+          path: '/api/stocks/instruments/RCRD/candles?tf=1d&n=150',
+          body: {
+            bucket_secs: DAY,
+            candles: CANDLES['1d'].bars.map((c) => ({
+              ...c,
+              open: +(c.open / 2.29).toFixed(2), close: +(c.close / 2.29).toFixed(2),
+              high: +(c.high / 2.29).toFixed(2), low: +(c.low / 2.29).toFixed(2),
+            })),
+          },
         },
         {
           label: 'tax',
@@ -1038,7 +1150,107 @@ window.HARNESS_FIXTURES = {
         },
       ];
     })(),
-  },
+
+    // -----------------------------------------------------------------------
+    // CHART STUB
+    //
+    // market-watch draws its marks over the game's own Lightweight Charts canvas,
+    // which it reaches by walking React's fiber tree. There is no React and no
+    // chart library in this page, so the walk has nothing to walk — and the
+    // *interesting* code is all downstream of it: snapping a game day onto a
+    // bucket, turning that into pixels, flipping a label off an edge, refusing to
+    // draw on the wrong stock.
+    //
+    // So: a stand-in with the four read methods the tool actually calls, over a
+    // real box on this page, handed to the tool through its disclosed debug
+    // handle. It is a linear scale rather than the library's, which is enough —
+    // what is being checked is the arithmetic that decides WHICH bar, not
+    // TradingView's rendering.
+    // -----------------------------------------------------------------------
+    extras: [
+      ...['1d', '4h', '1w'].map((tfName) => ({
+        label: `bind stub chart (${tfName})`,
+        title: 'stands in for the game chart so the overlay has somewhere to draw',
+        run: () => {
+          const api = window.__pkmw;
+          if (!api || !api.attachChart) return 'market-watch is not loaded';
+
+          let host = document.getElementById('stub-chart');
+          if (!host) {
+            host = document.createElement('div');
+            host.id = 'stub-chart';
+            host.style.cssText = 'position:relative;height:320px;margin:14px 0;'
+              + 'border:1px solid #27272a;background:#09090b';
+            const cv = document.createElement('canvas');
+            cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';
+            const cap = document.createElement('div');
+            cap.textContent = 'stub chart — stands in for the game’s canvas';
+            cap.style.cssText = 'position:absolute;left:8px;bottom:6px;color:#3f3f46;font-size:10px';
+            host.append(cv, cap);
+            document.getElementById('log').before(host);
+          }
+
+          const bucket = CANDLES[tfName].bucket;
+          const bars = CANDLES[tfName].bars.map((c) => ({
+            time: c.bucket_start, open: c.open, high: c.high, low: c.low, close: c.close,
+          }));
+          const t0 = bars[0].time, t1 = bars[bars.length - 1].time;
+          const box = () => host.getBoundingClientRect();
+          const lo = Math.min(...bars.map((b) => b.low));
+          const hi = Math.max(...bars.map((b) => b.high));
+          const noop = () => {};
+
+          api.attachChart({
+            host,
+            chart: {
+              applyOptions: noop,
+              timeScale: () => ({
+                // Linear across the pane, half a bar in from each edge — the same
+                // shape the real scale has when fitContent() has just run.
+                timeToCoordinate: (t) => {
+                  const w = box().width;
+                  const half = w / bars.length / 2;
+                  return half + ((t - t0) / ((t1 - t0) || 1)) * (w - half * 2);
+                },
+                subscribeVisibleLogicalRangeChange: noop,
+                unsubscribeVisibleLogicalRangeChange: noop,
+              }),
+            },
+            series: {
+              data: () => bars,
+              priceToCoordinate: (p) => {
+                const h = box().height;
+                return 8 + (1 - (p - lo) / ((hi - lo) || 1)) * (h - 16);
+              },
+              subscribeDataChanged: noop,
+              unsubscribeDataChanged: noop,
+            },
+            bucket,
+          });
+          return `stub chart bound — ${tfName}, ${bars.length} bars, D${Math.floor(t0 / 86400)}–D${Math.floor(t1 / 86400)}`;
+        },
+      })),
+      {
+        label: 'unbind stub chart (back to the fallback)',
+        title: 'the panel should start drawing the picture itself',
+        run: () => {
+          const host = document.getElementById('stub-chart');
+          if (host) host.remove();
+          window.__pkmw && window.__pkmw.attachChart(null);
+          return 'stub chart released';
+        },
+      },
+      {
+        label: 'print the overlay model',
+        run: () => JSON.stringify(
+          (() => {
+            const m = window.__pkmw && window.__pkmw.model();
+            return m && { ...m, bars: m.bars ? `${m.bars.length} bars` : null };
+          })(), null, 1),
+      },
+    ],
+  };
+  })(),
 
   'bar-watch': {
     label: 'Bar Watch',

@@ -181,6 +181,22 @@ if (spec.calls.length) {
   callsEl.prepend(all);
 }
 
+// Extras: buttons that run a function instead of answering a fetch. A tool that
+// reads something other than a response — the page's own chart object, say — needs
+// a stand-in for that thing, and a canned payload cannot be one. They are declared
+// by the spec and run in this page, so they can reach the tool's own debug handle.
+// Nothing here gets network access it did not already lack.
+(spec.extras || []).forEach((x) => {
+  const b = document.createElement('button');
+  b.textContent = x.label;
+  b.title = x.title || '';
+  b.onclick = () => {
+    try { say(x.run() || `${x.label} — ok`, 'nav'); }
+    catch (e) { say(`${x.label} threw: ${e && e.message}`, 'bad'); }
+  };
+  callsEl.append(b);
+});
+
 // ---------------------------------------------------------------------------
 // finally, the tool itself
 // ---------------------------------------------------------------------------

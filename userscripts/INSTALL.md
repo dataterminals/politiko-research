@@ -17,11 +17,17 @@ Tools are listed in the order their buttons sit on screen, left to right.
 Each script declares `@updateURL`, so fixes arrive on your script manager's own
 update check — no reinstall.
 
+> [!WARNING]
+> Held out of the paste blocks below — these links do not serve current code yet:
+> - **Market Watch 1.6.0** — local file differs from `origin/main`; the raw link serves the older version.
+>
+> Push, re-run the generator, then post.
+
 ## Discord paste
 
 Discord's message limit is 2000 characters, so this is split into 3 messages. Copy each block and post them in order.
 
-**Message 1 of 3** — 1536 characters
+**Message 1 of 3** — 1541 characters
 
 ```
 ## Politiko userscripts — install links (1/3)
@@ -38,9 +44,6 @@ Discord's message limit is 2000 characters, so this is split into 3 messages. Co
 **JUMP — Quick Jump** · launcher for the 64 screens the sidebar can't reach
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js>
 
-**MKT — Market Watch** · charts market series locally and fires threshold alerts
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js>
-
 **RAID — Raid Watch** · records faction raids, their event log and post-mortems
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js>
 
@@ -49,15 +52,15 @@ Discord's message limit is 2000 characters, so this is split into 3 messages. Co
 
 **SOCK — WS Watch** · read-only observer for the three sockets the game opens
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js>
-```
-
-**Message 2 of 3** — 1569 characters
-
-```
-## Politiko userscripts — install links (2/3)
 
 **TIME — Time Watch** · real to game clock, month schedule, next-registration countdown
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js>
+```
+
+**Message 2 of 3** — 1558 characters
+
+```
+## Politiko userscripts — install links (2/3)
 
 **WRLD — World Watch** · plots law, opinion, street, media and citizens on one compass
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js>
@@ -79,15 +82,15 @@ Discord's message limit is 2000 characters, so this is split into 3 messages. Co
 
 **JACK — Jack Watch** · blackjack solved: the right play, the chances, the count, the money
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js>
-```
-
-**Message 3 of 3** — 697 characters
-
-```
-## Politiko userscripts — install links (3/3)
 
 **Comms Move** · adds a drag bar to the game's Comms dock so you can move it
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js>
+```
+
+**Message 3 of 3** — 515 characters
+
+```
+## Politiko userscripts — install links (3/3)
 
 **Time Bridge** · hands Time Watch's clock anchor to the Time Wire planner
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js>
@@ -103,7 +106,7 @@ Install Tampermonkey first, then click a link and confirm the prompt. Every one 
 | 1 | `ALGN` | Align Watch | 0.7.0 | your political compass on the home page, with a change log | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
 | 2 | `GOV` | Gov Watch | 0.4.0 | change ledger for the government: what moved between readings | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
 | 3 | `JUMP` | Quick Jump | 0.7.0 | launcher for the 64 screens the sidebar can't reach | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
-| 4 | `MKT` | Market Watch | 1.5.0 | charts market series locally and fires threshold alerts | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
+| 4 | `MKT` | Market Watch | 1.6.0 | marks where you bought on the stock chart; charts market series locally | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
 | 5 | `RAID` | Raid Watch | 0.7.0 | records faction raids, their event log and post-mortems | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
 | 6 | `SLP` | Sleeper Watch | 0.7.0 | keeps sleeper-recruitment timers running after you leave | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
 | 7 | `SOCK` | WS Watch | 0.8.0 | read-only observer for the three sockets the game opens | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
