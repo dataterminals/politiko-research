@@ -78,7 +78,7 @@ Double-click the header hands back both the position and the size.
 
 ## The buttons
 
-`FAB KIT v7` is the same idea applied to the toggle button — the one part of any of this a
+`FAB KIT v9` is the same idea applied to the toggle button — the one part of any of this a
 player sees before they open anything. Install four of these tools and four buttons land on
 your screen, so they are a set rather than each tool's own flourish: **one 38px square, one
 three-or-four-letter word, all of them in one row.** (The row, and which button is which,
@@ -142,20 +142,46 @@ re-deal, not a sort to be re-run.
 The row is 728px wide (sixteen 38px buttons, 8px apart) and centred on the window, with a
 floor at 440px so it stops sliding left rather than climb onto the game's own nav links.
 Above about 1608px it is centred; between roughly 1176 and 1608 it sits at that floor; and
-**below about 1176 it gives the floor up and slides left**, so that its far end stays on
-screen. That last part is v8. Before it, the row simply ran off the right-hand edge on a
+from 1176 down to the breakpoint **it gives the floor up and slides left**, so that its far
+end stays on screen. That last part is v8. Before it, the row simply ran off the right-hand edge on a
 narrow window — and the safety net that drags a stray button back into view pulled every one
 of them to the *same pixel* and then saved it there. Four buttons on one square, permanently,
 and a double-click each to undo. Overlapping the game's own chrome is legible; that was not.
 
-Below 744px the row is wider than the window and there is nothing to be done: sixteen
-buttons at that size simply are 728px. The game is in its mobile layout there anyway.
+**Below 768px the row folds, and that is v9.** v8 had left this as a stated limit: sixteen
+38px buttons 8px apart simply are 728px, so under 744 the row ran off the edge and got
+stacked exactly as it used to at 1200. Calling that "a phone" was the mistake. 768 is the
+pixel the *game* changes layout on — Tailwind's `md:`, and the `useIsMobile` every chunk
+carries — and a desktop reaches it easily: a half-screen pane, a snapped window, or a zoom
+level. The operator runs the game at 150% on half a tablet, where 125% is already past it.
+
+And past it there is no band to sit in. The desktop header is a wordmark, five nav links
+and an account menu with empty screen in the middle; the mobile header is a hamburger and
+the wordmark on the left, a scrollable strip of your own vitals filling the middle, and
+your username pinned right. A row sliding left to stay on screen lands on the account menu,
+and its far end runs off anyway. So down there the row leaves the band: **two lines of
+eight, directly under the mobile header, right-aligned to the same 8px edge.** Slots 0-7
+are the first line and 8-15 the second, so the grouping in the table above is also what
+each line means, and a button's neighbours are the same buttons in both shapes.
+
+Nothing about a tool changes — it still declares its slot and nothing else. The fold is
+four custom properties that a media query re-answers, so it happens with no script running
+and follows the window on its own. Between the two shapes the row now fits everywhere from
+376px up: measured on the bench, 376 is the last width at which the fold is still clean,
+and below it the tail hangs off again — and *that* is a phone.
+
+One number is worth stating because it looks like the 7.5px lean below and is its mirror:
+a media query's width **includes** the classic scrollbar, and a percentage inside the rule
+excludes it. So the fold picks its regime against the window and places itself against the
+containing block — two different widths, deliberately, and it is why the two self-placing
+tools ask `matchMedia` rather than comparing a number of their own.
 
 Those numbers move every time the row gains a slot, which is why adding one is a kit version
 bump rather than a one-line edit: half the row is a literal in the CSS, because CSS cannot
 count the tools you happen to have installed. `tools/test-placement.js` derives what it
 expects from the number of tools on disk, so the build fails rather than letting the row
-quietly stop being centred — or, since v8, quietly stop fitting.
+quietly stop being centred — or, since v8, quietly stop fitting. Since v9 there are two
+such numbers, because there are two shapes: a seventeenth tool means nine and eight.
 
 **v8 also fixed a 7.5px lean.** Fourteen of the sixteen buttons are placed by the kit's
 stylesheet; People Watch and Market Watch compute the same row in JavaScript, because they

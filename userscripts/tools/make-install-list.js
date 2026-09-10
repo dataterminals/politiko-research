@@ -203,6 +203,9 @@ md += '1. Install [Tampermonkey](https://www.tampermonkey.net/) (or Violentmonke
 md += '2. Click a raw link below and confirm the install prompt.\n';
 md += '3. Reload politiko.io. Buttons land in one row above the header rule; drag any of\n';
 md += '   them anywhere, double-click one to send it home.\n\n';
+md += 'On a narrow window — under 768px, where the game switches to its mobile header —\n';
+md += 'that row folds into two lines of eight underneath the header instead, because the\n';
+md += 'mobile header has no empty band to sit in. Same slots, same order, same gestures.\n\n';
 md += "Each script declares `@updateURL`, so fixes arrive on your script manager's own\n";
 md += 'update check — no reinstall.\n\n';
 

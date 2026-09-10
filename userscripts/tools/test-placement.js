@@ -28,7 +28,21 @@ const CFG = { PANEL_W: 560, PANEL_MIN_H: 160, FAB_SIZE: 38, EDGE: 8 };
 // Windows reports, so every stage below is asking the question the shipped page
 // asks; pass 0 for a page with no bar.
 const mkStage = (vw, vh, storedFab = null, bar = 15) => {
-  const window = { innerWidth: vw, innerHeight: vh };
+  // matchMedia is not a convenience here, it is the second of the two widths. Since
+  // v9 the row has two shapes, and the REGIME is chosen by a media query — which per
+  // Media Queries 4 measures the viewport INCLUDING the scrollbar, so it answers
+  // against vw while every percentage in the same rule answers against vw - bar. A
+  // stage that faked this with clientWidth would agree with itself and disagree with
+  // the browser by exactly one scrollbar, right at the breakpoint.
+  const window = {
+    innerWidth: vw,
+    innerHeight: vh,
+    matchMedia: (q) => {
+      const m = /max-width: (\d+)px/.exec(q);
+      if (!m) throw new Error('the stage cannot answer ' + q);
+      return { matches: vw <= Number(m[1]) };
+    },
+  };
   const document = { documentElement: { clientWidth: Math.max(0, vw - bar) } };
   // The button reports where it actually IS, which is the whole point since v8: with
   // nothing stored, this layer hands the button back to FAB KIT's rule and then reads
@@ -49,7 +63,7 @@ const mkStage = (vw, vh, storedFab = null, bar = 15) => {
   const root = { querySelector: () => panel };
   const ui = { fab: storedFab };
   const api = new Function('window', 'document', 'fab', 'root', 'ui', 'CFG',
-    `${P_SLICE}\nreturn { defaultFabPos, clampFab, viewportUsable, placeFab, placePanel, fabAt, HOME };`
+    `${P_SLICE}\nreturn { defaultFabPos, clampFab, viewportUsable, placeFab, placePanel, fabAt, folded, HOME };`
   )(window, document, fab, root, ui, CFG);
   return { window, document, fab, panel, ui, ...api };
 };
@@ -65,10 +79,11 @@ const check = (label, got, want) => {
 
 console.log('\n— the home row —');
 {
-  // FAB KIT v8: every button in this repo defaults to one slot of one row across the
-  // band above the game's header rule. people-watch holds slot 0 and places its own
-  // button, so this is the JS half of that row — the CSS half is checked at the bottom
-  // of this file, against these same numbers.
+  // FAB KIT v9: every button in this repo defaults to one slot of one row across the
+  // band above the game's header rule — and, below the game's own breakpoint, to one
+  // slot of a fold of two lines under its mobile header. people-watch holds slot 0
+  // and places its own button, so this is the JS half of both shapes; the CSS half is
+  // checked at the bottom of this file, against these same numbers.
   const s = mkStage(1700, 900);
   const d = s.defaultFabPos();
   check('sits in the header band, not in a corner', d.y, 7);
@@ -125,17 +140,93 @@ console.log('\n— the home row —');
     const st = mkStage(vw, 900);
     return st.defaultFabPos().x + (16 - 1) * st.HOME.pitch + CFG.FAB_SIZE;
   };
+  //    Since v9 the sweep starts at the breakpoint rather than at 744: below 768 the
+  //    row is not this shape at all, it is the fold, which has its own sweep.
   const spills = [];
-  for (let vw = 744 + 15; vw <= 2560; vw += 1) if (far(vw) > vw - 15) spills.push(vw);
-  check('the far slot is on screen at every width from 759px up', spills.slice(0, 8), []);
+  for (let vw = 768; vw <= 2560; vw += 1) if (far(vw) > vw - 15) spills.push(vw);
+  check('the far slot is on screen at every width from the breakpoint up', spills.slice(0, 8), []);
   check('...and the left end never leaves either',
-    [...Array(200)].map((_, i) => mkStage(760 + i * 9, 900).defaultFabPos().x).filter((x) => x < CFG.EDGE), []);
+    [...Array(200)].map((_, i) => mkStage(768 + i * 9, 900).defaultFabPos().x).filter((x) => x < CFG.EDGE), []);
 
   // Under 744px of containing block the row simply IS wider than the window — sixteen
-  // 38px buttons 8px apart are 728px — and it runs off the edge again. That is a
-  // stated limit, not an oversight: the game is in its mobile layout there and the
-  // alternative is a second regime for both JS copies of this row to get wrong.
-  check('...and 744px is where that stops being possible', 15 * 46 + CFG.FAB_SIZE + CFG.EDGE * 2, 744);
+  // 38px buttons 8px apart are 728px. Until v9 that was a stated limit; the sweep
+  // above starts at 759 because below it the row ran off the edge and fit() stacked
+  // it. The fold is the second regime that limit was deferring, and the two of them
+  // now meet without a gap: 744 is unreachable in the wide regime, because the
+  // breakpoint hands anything narrower to the fold.
+  check('...and 744px is what the wide row needs', 15 * 46 + CFG.FAB_SIZE + CFG.EDGE * 2, 744);
+  check('...which the narrowest wide viewport still has',
+    mkStage(768, 900).document.documentElement.clientWidth >= 744, true);
+}
+
+console.log('\n— the fold —');
+{
+  // Below the game's breakpoint the row does not slide, shrink or stack: it drops out
+  // of the header band and becomes two lines of eight under the mobile header. Every
+  // number here is FAB KIT v9's, and the CSS half is checked against these same ones
+  // at the bottom of the file.
+  const H = mkStage(700, 900).HOME;
+  check('the fold is half the row, counted in buttons', H.fold, 16 / 2);
+  check('...and lands under the mobile header, not in a band that is not there',
+    [H.foldTop, H.foldTop >= 48 + 1], [55, true]);
+  check('...at the breakpoint the game itself uses', H.narrow, 768);
+
+  // 1. THE REGIME IS THE MEDIA QUERY'S TO DECIDE, AND IT MEASURES THE WINDOW.
+  //    This is the v8 fault mirrored: there, the row was placed against innerWidth
+  //    when the rule used the containing block. Here the regime must be chosen
+  //    against the WINDOW, because Media Queries 4 includes the scrollbar and the
+  //    game's own md: therefore flips on innerWidth. Choose it on clientWidth
+  //    instead and there is a 15px band — 768 to 782 — where the game is in its
+  //    desktop layout and our row has folded, or the reverse on the way back.
+  check('the fold flips exactly where the game does', [
+    mkStage(768, 900).folded(), mkStage(767, 900).folded(),
+  ], [false, true]);
+  check('...on the window, so a scrollbar cannot put the two layouts out of step',
+    [...Array(40)].map((_, i) => 748 + i).filter((vw) => mkStage(vw, 900).folded() !== (vw < 768)), []);
+
+  // 2. TWO LINES OF EIGHT, IN THE ORDER THE ROW ALREADY HAD. Slot 0-7 keep their
+  //    order on the first line and 8-15 repeat it on the second, so a button's
+  //    neighbours are the same buttons in both shapes.
+  const at = (slot, vw = 700) => {
+    const st = mkStage(vw, 900);
+    st.HOME.slot = slot;
+    return st.defaultFabPos();
+  };
+  check('slot 0 opens the first line', at(0), { x: 700 - 15 - 368, y: 55 });
+  check('slot 7 closes it', at(7), { x: 700 - 15 - 368 + 7 * 46, y: 55 });
+  check('slot 8 opens the second, back at the left of the block', at(8), { x: 700 - 15 - 368, y: 55 + 46 });
+  check('slot 15 closes it', at(15), { x: 700 - 15 - 368 + 7 * 46, y: 55 + 46 });
+  check('the two lines are one pitch apart', at(8).y - at(0).y, 46);
+
+  // 3. THE BLOCK IS LAID OUT AGAINST THE CONTAINING BLOCK, like the wide row and for
+  //    the same reason — the CSS half of this is a percentage, and a percentage on a
+  //    fixed element excludes the classic scrollbar.
+  check('the fold is right-aligned against the containing block, not the window',
+    [at(15, 700).x, mkStage(700, 900, null, 0).HOME && (() => {
+      const st = mkStage(700, 900, null, 0); st.HOME.slot = 15; return st.defaultFabPos().x;
+    })()],
+    [700 - 15 - 46, 700 - 46]);
+
+  // 4. THE FENCE, same shape as the wide row's: sweep every width the fold owns and
+  //    assert nothing overhangs. 376 is where the block plus its two edges stops
+  //    fitting — under that the tail hangs off again, and that IS a phone.
+  const spills = [];
+  for (let vw = 376 + 15; vw < 768; vw += 1) {
+    const st = mkStage(vw, 900); st.HOME.slot = 15;
+    if (st.defaultFabPos().x + CFG.FAB_SIZE > vw - 15) spills.push(vw);
+  }
+  check('the last slot is on screen at every folded width from 391px up', spills.slice(0, 8), []);
+  check('...and the first never leaves the left edge either',
+    [...Array(392)].map((_, i) => {
+      const st = mkStage(376 + i, 900); st.HOME.slot = 0; return st.defaultFabPos().x;
+    }).filter((x) => x < CFG.EDGE), []);
+  check('...and 376px is where that stops being possible', 7 * 46 + CFG.FAB_SIZE + CFG.EDGE * 2, 376);
+
+  // 5. AND NOTHING FOLDS ABOVE THE BREAKPOINT. The whole point of choosing the regime
+  //    the way the game chooses its layout is that neither shape can appear in the
+  //    other's territory.
+  check('the wide row is untouched above the breakpoint',
+    [mkStage(1700, 900).defaultFabPos().y, mkStage(768, 900).defaultFabPos().y], [7, 7]);
 }
 
 console.log('\n— clamping —');
@@ -700,7 +791,7 @@ console.log('\n— the drag handle survives a repaint —');
 }
 
 // ---------------------------------------------------------------------------
-// FAB KIT v8 — one button, sixteen copies.
+// FAB KIT v9 — one button, sixteen copies.
 //
 // The toggle button is the only part of this repo a player sees before they open
 // anything, and several of these tools sit on the same screen at once. Before the
@@ -713,10 +804,10 @@ console.log('\n— the drag handle survives a repaint —');
 // the element actually wears the class, that the word is a word, and that a tool
 // doing its own placement maths agrees with the kit about how big the box is.
 // ---------------------------------------------------------------------------
-console.log('\n— FAB KIT v8 is one button everywhere —');
+console.log('\n— FAB KIT v9 is one button everywhere —');
 {
   const dir = path.join(__dirname, '..');
-  const A = '    /* FAB KIT v8 — shared verbatim block.';
+  const A = '    /* FAB KIT v9 — shared verbatim block.';
   const B = '    .pk-fab svg { width: 24px; height: 24px; display: block; }';
   const BOX = 38; // .pk-fab's width/height, and what CFG.FAB_SIZE has to agree with
 
@@ -881,7 +972,7 @@ console.log('\n— FAB KIT v8 is one button everywhere —');
 
 
 // ---------------------------------------------------------------------------
-// FAB KIT v8 — one row, sixteen slots.
+// FAB KIT v9 — one row, sixteen slots.
 //
 // v3 took the last thing a tool still chose about its button: where it starts.
 // Eleven tools picking their own corner meant eleven buttons down both edges of
@@ -902,7 +993,7 @@ console.log('\n— FAB KIT v8 is one button everywhere —');
 // tools that place their own button — let the JS drift from the CSS. All three fail
 // silently and only on someone else's screen, so all three are checked here.
 // ---------------------------------------------------------------------------
-console.log('\n— FAB KIT v8 puts every button in one row —');
+console.log('\n— FAB KIT v9 puts every button in one row —');
 {
   const dir = path.join(__dirname, '..');
   const NO_FAB = new Set(['time-bridge.user.js', 'comms-move.user.js']);
@@ -912,11 +1003,30 @@ console.log('\n— FAB KIT v8 puts every button in one row —');
 
   // The row itself, read back out of the kit rather than restated here — restating
   // it is how a test ends up agreeing with itself instead of with the shipped file.
+  //
+  // Since v9 it is read in two halves, because the rule is in two halves: four custom
+  // properties say where a shape starts and how a slot steps through it, and one pair
+  // of top/left declarations turns those into a position. Parsing them apart is what
+  // lets the fold below be checked against these same numbers rather than a second
+  // copy of them.
   const kit = src('_template.user.js');
-  const row = kit.match(
-    /position: fixed; top: (\d+)px;\s*\n\s*left: calc\(max\((\d+)px, min\(max\((\d+)px, 50% - (\d+)px\), 100% - (\d+)px\)\)\s*\n\s*\+ var\(--pk-slot, 0\) \* (\d+)px\);/);
-  check('the kit places the row itself', !!row, true);
-  const [TOP, EDGE, FLOOR, HALF, SPAN, PITCH] = row ? row.slice(1).map(Number) : [];
+  const varOf = (block, name) => {
+    const m = block.match(new RegExp('--pk-' + name + ': ([^;]+);'));
+    return m ? m[1].trim() : null;
+  };
+  const wide = kit.slice(kit.indexOf('    .pk-fab {'), kit.indexOf('    @media (max-width:'));
+  const step = kit.match(
+    /position: fixed;\s*\n\s*top: calc\(var\(--pk-band\) \+ var\(--pk-line\) \* (\d+)px\);\s*\n\s*left: calc\(var\(--pk-start\) \+ var\(--pk-col\) \* (\d+)px\);/);
+  const start = (varOf(wide, 'start') || '').match(
+    /^max\((\d+)px, min\(max\((\d+)px, 50% - (\d+)px\), 100% - (\d+)px\)\)$/);
+  const band = (varOf(wide, 'band') || '').match(/^(\d+)px$/);
+  check('the kit places the row itself', [!!step, !!start, !!band], [true, true, true]);
+  check('...one slot per column, and no line but the first',
+    [varOf(wide, 'col'), varOf(wide, 'line')], ['var(--pk-slot, 0)', '0']);
+  const [PITCH_Y, PITCH] = step ? step.slice(1).map(Number) : [];
+  const [EDGE, FLOOR, HALF, SPAN] = start ? start.slice(1).map(Number) : [];
+  const TOP = band ? Number(band[1]) : null;
+  check('...stepping the same 46px down as across, so the fold cannot skew', PITCH_Y, PITCH);
   check('...7px down, inside the 52px header band', [TOP, TOP + 38 <= 52], [7, true]);
   check('...floored where the game nav ends, centred above that', [FLOOR, HALF], [440, 364]);
   check('...at a 46px pitch, which is the 38px box and an 8px gap', PITCH, 38 + 8);
@@ -936,6 +1046,38 @@ console.log('\n— FAB KIT v8 puts every button in one row —');
   // changing anything a reader would look at twice.
   check(`...and the span it must not overhang is the row plus that edge`,
     SPAN, SLOTS * 38 + (SLOTS - 1) * 8 + EDGE);
+
+  // v9's half: the same four properties, re-answered under the game's own
+  // breakpoint. Everything here is derived from the numbers just read out of the wide
+  // rule and from the tool count, for the same reason those are — a seventeenth tool
+  // moves the fold too, and a fold left behind is eight buttons in the wrong place
+  // rather than a row that is slightly off centre.
+  const fold = kit.slice(kit.indexOf('    @media (max-width:'), kit.indexOf('    .pk-fab:hover'));
+  const mq = fold.match(/@media \(max-width: (\d+)px\)/);
+  check('the kit folds the row below the breakpoint', !!mq, true);
+  // Half the row again, counted in buttons this time. 364 is the pixel version of
+  // this same number and both move together, which is the point of deriving it.
+  const FOLD = Math.ceil(SLOTS / 2);
+  check('...at the pixel the game changes layout on, no earlier and no later',
+    mq && Number(mq[1]) + 1, 768);
+  check(`...into two lines of ${FOLD}, which is ${SLOTS} slots halved`,
+    [varOf(fold, 'line'), varOf(fold, 'col')],
+    [`clamp(0, calc(var(--pk-slot, 0) - ${FOLD - 1}), 1)`,
+      `calc(var(--pk-slot, 0) - var(--pk-line) * ${FOLD})`]);
+  // 49 is the mobile header: h-12 is 48 and its border-b is one more, measured off
+  // the bundle. The first line has to clear that, and it is the only thing in the
+  // fold that is a measurement of the game rather than of the row.
+  const fband = (varOf(fold, 'band') || '').match(/^(\d+)px$/);
+  check('...parked under the mobile header rather than on top of it',
+    fband && Number(fband[1]) >= 48 + 1, true);
+  // Right-aligned, off the same edge the wide row keeps. The block is FOLD buttons
+  // and their gaps; the edge beyond it makes the two cancel to FOLD * PITCH, which is
+  // the form both JS copies use.
+  const fstart = (varOf(fold, 'start') || '').match(/^max\((\d+)px, 100% - (\d+)px\)$/);
+  check('...right-aligned against the containing block, off the same edge',
+    fstart && [Number(fstart[1]), Number(fstart[2])],
+    [EDGE, FOLD * 38 + (FOLD - 1) * 8 + EDGE]);
+  check('...which is the block plus that edge, exactly as 736 is', fstart && Number(fstart[2]), FOLD * PITCH);
 
   // Every tool declares a slot, and the sixteen of them are exactly 0..15 — no
   // duplicates (two buttons stacked on one square, and the one underneath is
@@ -1017,12 +1159,18 @@ console.log('\n— FAB KIT v8 puts every button in one row —');
   for (const f of SELF_PLACED) {
     const s = src(f);
     const m = s.match(
-      /const HOME = \{ slot: (\d+), top: (\d+), floor: (\d+), half: (\d+), pitch: (\d+), edge: (\d+), row: (\d+) \};/);
+      /const HOME = \{ slot: (\d+), top: (\d+), floor: (\d+), half: (\d+), pitch: (\d+), edge: (\d+), row: (\d+),\s*\n\s*narrow: (\d+), fold: (\d+), foldTop: (\d+) \};/);
     check(`${f} carries the row in JS`, !!m, true);
     if (!m) continue;
-    const [slot, top, floor, half, pitch, edge, span] = m.slice(1).map(Number);
+    const [slot, top, floor, half, pitch, edge, span, narrow, jsFold, foldTop] = m.slice(1).map(Number);
     check(`${f}: the JS row matches the CSS`,
       [top, floor, half, pitch, edge, span + edge], [TOP, FLOOR, HALF, PITCH, EDGE, SPAN]);
+    // …and so does the fold, which is three more numbers with three more ways to
+    // drift. The breakpoint is the one that matters most: a copy that folded at 767
+    // while the kit folded at 768 would put this button on the other side of the
+    // screen from the other fifteen, at exactly one width, on someone else's monitor.
+    check(`${f}: the JS fold matches the CSS`,
+      [narrow, jsFold, foldTop], [Number(mq[1]) + 1, FOLD, Number(fband[1])]);
     const css = slotOf(s);
     check(`${f}: the JS slot matches its own --pk-slot`, slot, css);
 
@@ -1038,6 +1186,20 @@ console.log('\n— FAB KIT v8 puts every button in one row —');
     const place = s.slice(s.indexOf('const defaultFabPos'), s.indexOf('const clampFab'));
     check(`${f}: ...and defaultFabPos reaches for that, never innerWidth`,
       /window\.innerWidth/.test(place) ? 'reads innerWidth' : 'clean', 'clean');
+
+    // v9 puts a second width in the same file, and it is the one place innerWidth is
+    // the RIGHT answer: the regime is a media query, and a media query includes the
+    // scrollbar. So the rule is not "never innerWidth" but "innerWidth only here" —
+    // and the honest way to spell "here" is to ask matchMedia the same question the
+    // game asks, rather than to compare a number and hope the two agree.
+    const regime = s.slice(s.indexOf('const folded = ()'), s.indexOf('const rowWidth = ()'));
+    check(`${f}: asks matchMedia which layout is on screen`,
+      /window\.matchMedia\(/.test(regime), true);
+    // …and asks it for the game's breakpoint rather than for a number of its own.
+    // HOME.narrow is checked against the kit above; this is what makes the query the
+    // same query, so the two cannot be edited apart.
+    check(`${f}: ...for HOME.narrow, so the query and the constant cannot drift`,
+      /max-width: \$\{HOME\.narrow - 1\}px/.test(regime), true);
   }
 
   // Double-click is the ONLY way back into the row. Drag a button somewhere awkward

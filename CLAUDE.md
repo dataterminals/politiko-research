@@ -122,14 +122,14 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   horizontal scrollbar is the failure and the dividers are the refinement.
 - **Every toggle button is the same button.** One 38px square, one three- or four-letter
   word — `ALGN`, `MKT`, `RAID`, `SLOT`. Install four tools and four of these land on one
-  screen, so the box is not the tool's to pick; copy the `FAB KIT v8` block from
+  screen, so the box is not the tool's to pick; copy the `FAB KIT v9` block from
   [`userscripts/_template.user.js`](userscripts/_template.user.js) verbatim, same
   bump-the-version rule as PANEL KIT. What a tool still owns is its slot in the row, its
   z-index, and its state colours, layered on top. No emoji — a 15px glyph is a coin toss
   across fonts, and four of them tell you nothing about which is which. people-watch is the
   one exception and is grandfathered: the eye of providence is its mark. `test-placement.js`
   hashes the copies and names that exception, so a second symbol button fails the build.
-- **Every button starts in the same row.** `FAB KIT v8` places them: one line across the
+- **Every button starts in the same row.** `FAB KIT v9` places them: one line across the
   band above the game's header rule, one slot each, declared as `--pk-slot: N` in the
   tool's own rule and *nothing else about position* — an inset in a tool's rule silently
   leaves the row and fails the build. Slots are fixed rather than packed, so a new tool
@@ -144,7 +144,22 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   `test-placement.js` derives the expected half from the number of tools on disk and fails
   the build rather than let the row quietly stop being centred — that is how v3's eleven
   slots became v4's thirteen, v4's thirteen became v5's fourteen, v5's fourteen became
-  v6's fifteen, and v6's fifteen became v7's sixteen.
+  v6's fifteen, and v6's fifteen became v7's sixteen. Since v9 that half is *two* derived
+  numbers, because the row has two shapes; both come off the same tool count.
+  **Below the game's own breakpoint the row folds, and it is the kit that decides that,
+  not the tool.** Under `max-width: 767px` — Tailwind's `md:` and the `useIsMobile` every
+  chunk carries, i.e. the pixel the game itself changes layout on — the desktop header is
+  not on screen and the mobile one has no empty band in it: hamburger and wordmark left,
+  your vitals across the middle, the account menu right. So the row leaves the band and
+  becomes two lines of eight parked under that header, right-aligned. A tool declares the
+  same `--pk-slot` and nothing else; the fold is four custom properties the media query
+  re-answers, so it follows the window with no script running. Two consequences: slots
+  0-7 are the first line and 8-15 the second, and the row now fits at every width from
+  376px up, which retires v8's "under 744 it cannot be a row" as a stated limit.
+  The regime is the one place `window.innerWidth` is the *right* width to read: a media
+  query includes the classic scrollbar, so asking `matchMedia` is what keeps the fold and
+  the game's own layout flipping on the same pixel. Everything inside a regime is still
+  measured against the containing block.
   Two things about the row are not width and are easy to undo by accident. **The row yields
   the nav floor before it yields the window edge**: past the edge, the clamp that keeps a
   button reachable pulls every stray one to the *same pixel* and saves it there, which is

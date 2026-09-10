@@ -608,7 +608,7 @@
   };
 
   // ===========================================================================
-  // 5. FAB KIT v8 — shared verbatim block.
+  // 5. FAB KIT v9 — shared verbatim block.
   //
   //    The toggle button, and the one piece of this repo a player sees before
   //    they open anything. Sixteen tools can be on screen at once, so the button
@@ -640,7 +640,19 @@
   //    kit measured against the containing block — half a scrollbar apart, which
   //    is most of the 8px gap. It also re-deals the slots by what the tools are
   //    FOR; the block carries the table and the reasoning. If you are adding a
-  //    tool, that re-deal is over: take slot 16 and bump the kit to v9.
+  //    tool, that re-deal is over: take slot 16 and bump the kit to v10.
+  //
+  //    v9 gives the row a second shape, because there are two headers. Under the
+  //    game's own breakpoint (`max-width: 767px`, the same query shadcn's
+  //    useIsMobile and Tailwind's `md:` use) the desktop header is not on screen
+  //    at all, and the mobile one has no empty band in it — hamburger and wordmark
+  //    left, your vitals across the middle, the account menu right. So down there
+  //    the row FOLDS: two lines of eight, under the mobile header, right-aligned.
+  //    Nothing changes for a tool — you still declare `--pk-slot` and nothing else
+  //    — and the fold is four custom properties the media query re-answers, so it
+  //    follows the window with no script running. Two consequences worth knowing:
+  //    slots 0-7 are the first line and 8-15 the second, and the fold is what
+  //    finally makes the row fit at every width from 376px up.
   //
   //    The bench for all of this is tools/harness/row.html — every shipped tool on
   //    one page, with a readout of where each button actually landed. Nothing in
@@ -675,7 +687,7 @@
   //    left/top inline. test-placement.js checks the two against each other.
   // ===========================================================================
   const FAB_CSS = `
-    /* FAB KIT v8 — shared verbatim block.
+    /* FAB KIT v9 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
        bump the version here and in every tool carrying a copy, so the copies can
        be diffed. Several of these tools are on screen at once, and buttons that
@@ -728,6 +740,63 @@
             same containing block. test-placement.js fails a copy that reaches for
             innerWidth instead.
 
+       v9 is the second, and it takes on what v8 left as a stated limit: below
+       744px of containing block the row is simply wider than the window, so it ran
+       off the edge and fit() stacked it exactly as it used to at 1200. v8 called
+       that a phone and moved on. It is not only a phone — it is any window the
+       game has put into its MOBILE layout, which on a desktop is a half-screen
+       pane, a snapped window, or a zoom level. The operator runs the game at 150%
+       on half a tablet, where 125% is already past the breakpoint.
+
+       And in that layout the band this row was built for does not exist. The
+       desktop header (hidden md:block) is a wordmark, five nav links and an
+       account menu, with empty screen in the middle. The mobile header (md:hidden,
+       h-12) is a hamburger and the wordmark on the left, a flex-1 horizontally
+       scrollable strip of your own vitals filling the middle, and the username and
+       its caret pinned right. There is no gap to borrow: a row sliding left to stay
+       on screen lands on the account menu, and its far end does not stay on screen
+       anyway.
+
+       So under the breakpoint the row leaves the band and FOLDS — two lines of
+       eight, parked directly under the mobile header, right-aligned to the same
+       8px edge. Four numbers do that, and each is a measurement rather than a
+       taste:
+
+         767  the game's own breakpoint. Tailwind's md: is width >= 48rem, and
+              every chunk that branches in JS uses shadcn's useIsMobile, which is
+              matchMedia('(max-width: 767px)'). Asking the same question the same
+              way is the point: the fold and the layout it is folding for can never
+              disagree about which one is on screen.
+          55  where the mobile header ends. h-12 is 48px and its border-b is one
+              more, and then the same ~6px of air the desktop band leaves above the
+              button.
+           8  half the row, which is the number 364 is half of, counted in buttons
+              instead of pixels. It moves with the tool count exactly as 364 and
+              736 do: a seventeenth tool means nine and eight, a new version, and a
+              pass over every copy.
+         368  the fold block: 8 * 46 - 8 = 360 wide, plus the 8px it keeps off the
+              right edge — the same shape as the 736 above it.
+
+       One subtlety worth stating, because it looks like the v8 bug and is its
+       mirror image: a media query's width INCLUDES the classic scrollbar (Media
+       Queries 4 says so, which is why the game's md: and this fold flip on the
+       same pixel), while a percentage inside the rule EXCLUDES it. Two different
+       widths in one rule, deliberately — the regime is chosen against the window,
+       and the arithmetic inside it is done against the containing block. The two
+       tools that compute this row in JS therefore ask matchMedia which regime they
+       are in and documentElement.clientWidth where to sit, and test-placement.js
+       fails a copy that mixes the two up.
+
+       With both regimes the row now fits at every width worth having: at or above
+       the breakpoint the one-line row needs 744 and the narrowest containing block
+       up there is about 751, and below it the fold needs 376. Under 376 the tail
+       overhangs again, and that IS a phone.
+
+       What the fold covers is the strip of page directly under the mobile header,
+       and, when there is one, the live-combat banner that renders there. Named
+       rather than solved: a narrow screen has no free band, every one of these
+       buttons drags, and double-click still brings one home.
+
        The kit owns the row. A tool owns its SLOT and nothing else about position:
 
          .pkxx-fab { --pk-slot: 16; z-index: 2147482000; }
@@ -762,6 +831,10 @@
        the launcher that reaches the casinos, so JACK and SLOT follow it; SOCK is
        last because it is the one tool that is meant to be uninstalled.
 
+       The fold splits that list down the middle, which is worth knowing before
+       anything is renumbered: slots 0-7 are the first line and 8-15 the second, so
+       the grouping above is also what each line of the fold means.
+
        Sixteen 38px buttons 8px apart is a 728px row, so it runs 364px either side
        of the middle of the viewport. The floor at 440px is where the game's own
        chrome ends — 24px of padding, a 62px wordmark, 24px of gap and five nav
@@ -770,16 +843,10 @@
        about 1174px it starts sliding left again, because from there the far end of
        the row would be off the edge, and that outranks the nav.
 
-       Four numbers, if that header ever changes shape: 7 (where the band is), 440
+       Six numbers, if that header ever changes shape: 7 (where the band is), 440
        (where the nav ends), 364 (half the row), 736 (the whole row plus the 8px it
-       keeps off the right edge). Nothing else in here is placement.
-
-       The floor of the whole arrangement is 744px of viewport: sixteen buttons at a
-       46px pitch simply are 728px wide, and under that the row cannot be a row. It
-       runs off the edge there and fit() stacks it, exactly as it used to do at
-       1200. That width is a phone, the game is in its mobile layout, and a row of
-       sixteen desktop buttons has no meaning on it — so it is a stated limit rather
-       than a third regime for the two tools that mirror this in JS to get wrong.
+       keeps off the right edge), and the fold's 55 and 368. Nothing else in here
+       is placement.
 
        (No backticks anywhere in here, incidentally. This block is pasted INSIDE a
        template literal in every tool that carries it, and one backtick in a comment
@@ -816,19 +883,39 @@
        that inside the same square as everyone else's letters. */
     .pk-fab {
       box-sizing: border-box; width: 38px; height: 38px; padding: 0;
-      /* The home row. --pk-slot is the tool's; the four numbers are the kit's.
-         Read the insides out: centre the row, but not left of the nav (440), and
-         not so far right that its far end leaves the window (736 = 728 + 8) —
-         that inner min is what stops fit() from stacking the tail. */
-      position: fixed; top: 7px;
-      left: calc(max(8px, min(max(440px, 50% - 364px), 100% - 736px))
-                 + var(--pk-slot, 0) * 46px);
+      /* The home row, in four variables so the fold below can move it without
+         restating it. --pk-slot is the tool's; the rest of this is the kit's.
+         Read --pk-start insides out: centre the row, but not left of the nav
+         (440), and not so far right that its far end leaves the window
+         (736 = 728 + 8) — that inner min is what stops fit() stacking the tail. */
+      --pk-line: 0;
+      --pk-col: var(--pk-slot, 0);
+      --pk-band: 7px;
+      --pk-start: max(8px, min(max(440px, 50% - 364px), 100% - 736px));
+      position: fixed;
+      top: calc(var(--pk-band) + var(--pk-line) * 46px);
+      left: calc(var(--pk-start) + var(--pk-col) * 46px);
       display: grid; place-items: center;
       background: #18181b; color: #e4e4e7;
       border: 1px solid #3f3f46; border-radius: 3px;
       font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       letter-spacing: .08em; text-align: center;
       cursor: pointer; user-select: none; touch-action: none;
+    }
+    /* v9, the fold: the same four variables with different answers. Under the
+       game's own breakpoint the row leaves a header band it does not fit in and
+       becomes two lines of eight, under the mobile header, right-aligned to the
+       same edge. clamp() rather than mod(): the line is 0 up to slot 8 and 1 from
+       there, which is the whole of a fold of two, and it asks nothing of the engine
+       that has not worked for years. Both lines still resolve their x against a
+       percentage, so the block follows the window with no script running. */
+    @media (max-width: 767px) {
+      .pk-fab {
+        --pk-line: clamp(0, calc(var(--pk-slot, 0) - 7), 1);
+        --pk-col: calc(var(--pk-slot, 0) - var(--pk-line) * 8);
+        --pk-band: 55px;
+        --pk-start: max(8px, 100% - 368px);
+      }
     }
     .pk-fab:hover { border-color: #71717a; color: #fafafa; }
     .pk-fab.dragging { cursor: grabbing; border-color: #52525b; }

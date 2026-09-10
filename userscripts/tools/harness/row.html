@@ -28,13 +28,19 @@
   writing the row down in its place. A row that is wrong after a reset is wrong, full
   stop.
 
-  The three widths worth walking through, measured against the CONTAINING BLOCK the
-  readout prints rather than the window — they differ by the scrollbar, which is the
-  whole of one of the bugs this bench found:
+  The widths worth walking through. The first three are measured against the
+  CONTAINING BLOCK the readout prints rather than the window — they differ by the
+  scrollbar, which is the whole of one of the bugs this bench found. The fourth is
+  measured against the WINDOW, because it is a media query and those include the
+  scrollbar; the readout prints both numbers so you can see them part company:
     above ~1608   the row is centred
     ~1176-1608    it is floored at 440, clear of the game's nav
-    below ~1176   it gives up that floor and slides left, so its far end stays on
-                  screen; under 744 it cannot fit at all and says so
+    ~768-1176     it gives up that floor and slides left, so its far end stays on
+                  screen
+    below 768     the game is in its mobile layout and the row FOLDS: two lines of
+                  eight under where the mobile header would be, right-aligned. The
+                  band this page draws moves with it. Under ~376 the tail hangs off
+                  again, and that is a phone.
 -->
 <style>
   :root { color-scheme: dark; }
@@ -57,9 +63,12 @@
   td, th { padding:2px 10px 2px 0; text-align:left; vertical-align:top; }
   th { color:#52525b; font-weight:500; }
   /* The band the row lives in, drawn so a misplaced button is visible as well as
-     printed. 52px is the game's header; 7px down is where the kit puts the box. */
+     printed. 52px is the game's desktop header and 7px down is where the kit puts
+     the box; below the breakpoint the game's header is h-12 and the height here
+     follows, because the fold hangs off the bottom of it rather than sitting in it. */
   .band { position:fixed; left:0; right:0; top:0; height:52px; pointer-events:none;
           border-bottom:1px dashed #27272a; z-index:1; }
+  @media (max-width: 767px) { .band { height:49px; } }
 </style>
 </head>
 <body>
@@ -176,7 +185,17 @@ const measure = () => {
   // A button whose tool has hidden its root reports a zero rect at (0, 0). Left in,
   // it reads as a button parked in the top-left corner overlapping everything that
   // is also not drawn — so it is counted separately rather than measured.
-  const rows = all.filter((r) => r.w > 0).sort((a, b) => a.x - b.x || a.y - b.y);
+  //
+  // Sorted down and then across since v9, because the row is two lines below the
+  // breakpoint and sorting by x alone interleaves them.
+  const rows = all.filter((r) => r.w > 0).sort((a, b) => a.y - b.y || a.x - b.x);
+
+  // Which shape the row should be in, asked the way the kit asks it — a media query,
+  // which measures the window and so includes the scrollbar. The containing block
+  // printed beside it is the number the positions themselves resolve against; the two
+  // are a scrollbar apart and both are correct.
+  const folded = window.matchMedia('(max-width: 767px)').matches;
+  const LINES = folded ? [55, 101] : [7];
 
   // Two buttons overlap when their boxes intersect at all — not only when they land
   // on the identical pixel. A 6px overhang is still one button hiding another.
@@ -190,17 +209,21 @@ const measure = () => {
     }
   }
   const off = rows.filter((r) => r.x + r.w > window.innerWidth || r.x < 0);
-  const strays = rows.filter((r) => r.y !== 7);
+  const strays = rows.filter((r) => !LINES.includes(r.y));
 
   const t = document.createElement('table');
   t.innerHTML = '<tr><th>slot<th>word<th>x<th>y<th>gap<th>note</tr>';
   rows.forEach((r, i) => {
-    const gap = i ? Math.round((r.x - (rows[i - 1].x + rows[i - 1].w)) * 10) / 10 : '';
+    // The gap only means anything between neighbours on the same line: the first
+    // button of the fold's second line is 322px left of the last one on the first,
+    // and printing that as a negative gap reads exactly like an overlap.
+    const prev = i ? rows[i - 1] : null;
+    const gap = prev && prev.y === r.y ? Math.round((r.x - (prev.x + prev.w)) * 10) / 10 : '';
     const notes = [];
     if (clash.has(r)) notes.push('OVERLAPS');
     if (r.x + r.w > window.innerWidth) notes.push('off the right edge');
     if (r.x < 0) notes.push('off the left edge');
-    if (r.y !== 7) notes.push('not in the band');
+    if (!LINES.includes(r.y)) notes.push('not on a line of the row');
     if (r.inline) notes.push('inline left/top');
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${r.slot}<td>${r.name}<td>${Math.round(r.x * 10) / 10}<td>${r.y}` +
@@ -217,13 +240,16 @@ const measure = () => {
   const dark = all.length - rows.length;
 
   const v = document.getElementById('verdict');
-  const bits = [`${rows.length}/16 buttons`, `viewport ${window.innerWidth}px`,
+  const bits = [`${rows.length}/16 buttons`, folded ? 'FOLDED (mobile layout)' : 'one row',
+    `viewport ${window.innerWidth}px`,
     `containing block ${document.documentElement.clientWidth}px`];
   if (dark) bits.push(`${dark} mounted but not drawn`);
   if (clash.size) bits.push(`${clash.size} OVERLAPPING`);
   if (off.length) bits.push(`${off.length} off screen`);
-  if (strays.length) bits.push(`${strays.length} outside the band`);
-  if (!clash.size && !off.length && !strays.length && rows.length === 16) bits.push('clean row');
+  if (strays.length) bits.push(`${strays.length} off the line`);
+  if (!clash.size && !off.length && !strays.length && rows.length === 16) {
+    bits.push(folded ? 'clean fold' : 'clean row');
+  }
   v.textContent = bits.join('  ·  ');
   v.className = clash.size || off.length ? 'bad' : (rows.length === 16 ? 'ok' : 'warn2');
 };
