@@ -507,9 +507,18 @@ absent('...and drives no element through the accessibility layer',
 // row on every state change and would otherwise wipe the class within milliseconds — an
 // observer is the comms-move answer to exactly that, and is not a timer.
 check('the guide re-applies on mutation rather than on a schedule',
-  /new MutationObserver\(\(\) => paintGuide\(\)\)/.test(CODE)
+  /new MutationObserver\(\(recs\) => \{[\s\S]{0,200}?paintGuide\(\)/.test(CODE)
     && !/set(?:Timeout|Interval)[\s\S]{0,120}paintGuide/.test(CODE),
   'a redraw on a schedule is the first half of alerting from a background tab');
+// And it ignores its own churn, which stopped being a nicety in 0.12.0. Marking a DOM
+// button was an attribute write and a childList observer never saw it; drawing a layer is
+// a childList write inside the very subtree being watched, so an unguarded observer
+// re-triggers the repaint that triggered it and spins until the tab is killed. The bench
+// caught it in the first second of the first run, which is what the bench is for.
+check('...and never reacts to its own drawing',
+  /for \(const r of recs\) if \(!ours\(r\.target\)\) \{ paintGuide\(\); return; \}/.test(CODE)
+    && /n\.closest\('\.pkbj-ovl'\)/.test(CODE),
+  'a repaint that re-triggers the observer that caused it does not settle');
 
 // Marks are cosmetic and must stay that way: outline and box-shadow paint outside the box
 // and take part in no layout, so a marked button is the same size and in the same place.
@@ -536,7 +545,92 @@ check('the fallback finds the control by text containment, not by cursor',
     && !/getComputedStyle\([^)]*\)\.cursor === 'pointer'/.test(CODE),
   'cursor is inherited; text containment is not, and only one of them can find the control');
 
-// It is off until asked for, because it restyles controls this tool does not own.
+// 0.12.0: the table turned out to be a Phaser CANVAS, so the marks moved off the game's
+// elements and onto a layer of our own above it. That change is mostly an improvement in
+// how far this tool is from the line — a layer that cannot be clicked is not a button —
+// but it introduces one genuinely new capability worth fencing, and three properties that
+// are easy to undo by accident.
+//
+// THE NEW CAPABILITY. This file now holds a reference to the game's canvas. Reading its
+// SIZE and POSITION is geometry; reading its CONTENTS is something else entirely, and
+// docs/01-rules-envelope.md files canvas readback next to the fingerprint headers it
+// refuses to touch. There is no legitimate reason for this tool to want a pixel: it knows
+// the cards from the wire, which is strictly better than reading them off a picture of
+// themselves. So the API is absent rather than unused.
+absent('it never reads a pixel off the game\'s canvas',
+  /getContext\s*\(|toDataURL|getImageData|createImageBitmap|OffscreenCanvas|captureStream/g);
+check('...and what it does read off the canvas is a box and two integers',
+  /const r = c\.getBoundingClientRect\(\);/.test(CODE) && /feltRow\(found\.c\.width, found\.c\.height/.test(CODE),
+  'size and position are the permitted surface; contents are not');
+
+// The layer cannot receive a click, which is the strongest form this file's central
+// promise has ever taken: not "it does not press one" but "it could not forward one".
+// It is also what keeps the felt underneath fully playable — a mark that ate a press
+// would be worse than no guide.
+check('the marks are on a layer that cannot be clicked',
+  /\.pkbj-ovl \{[^}]*pointer-events: none/.test(SRC.replace(/\r/g, '')),
+  'a layer over the play area that takes clicks is a layer that can take a press');
+
+// The layer is OURS, appended to the body, and never inserted into the game's own
+// subtree. market-watch's argument applies unchanged: React reconciles its own DOM, so a
+// node we put inside it is a node that vanishes without warning — and, worse here, a node
+// we put inside it is a modification of the game's UI rather than an overlay on it.
+check('the layer is this tool\'s own element, not a node added to the game\'s DOM',
+  /ovl = el\('div', 'pkbj-ovl'\); document\.body\.append\(ovl\)/.test(CODE),
+  'an element inserted into the game\'s subtree is neither ours nor durable');
+
+// The geometry is the game's, transcribed from the bundle, and the one fact that is easy
+// to get wrong invisibly is the ORIGIN: a Phaser rectangle is positioned by its centre,
+// so a box built without subtracting half of it sits half a button up and to the left and
+// still looks deliberate. tools/test-jack-ev.js drives the arithmetic; this pins the fact.
+check('placement subtracts the half-button, because a Phaser rectangle is centred',
+  /left: rect\.left \+ \(b\.x - b\.w \/ 2\) \* s/.test(CODE)
+    && /top: rect\.top \+ \(b\.y - b\.h \/ 2\) \* s/.test(CODE),
+  'the game gives the centre of the button; a CSS box wants its corner');
+// And the pixel constants belong to the two layouts the bundle mounts. Anything else must
+// draw nothing: marks from stale constants sit on empty felt looking exactly as confident
+// as correct ones, which is the failure this whole feature is kept narrow to avoid.
+check('an unrecognised felt draws nothing rather than guessing',
+  /const FELT_LAYOUTS = \[\[900, 680\], \[540, 1060\]\];/.test(CODE)
+    && /if \(!FELT_LAYOUTS\.some\(\(\[w, h\]\) => w === baseW && h === baseH\)\) return null;/.test(CODE),
+  'every pixel in feltRow belongs to those two sizes and to nothing else');
+
+// WHICH buttons are on the felt is read off the server's own allowed_actions, which this
+// tool already has on the wire. Counting them off the screen would mean measuring pixels
+// to recover something already known, and would be wrong first on exactly the hand that
+// matters — a pair, where the row grows by one.
+check('the row\'s contents come from allowed_actions, not from the picture',
+  /allowed: v\.live\.allowed/.test(CODE)
+    && /FELT_ORDER\.filter\(\(a\) => allowed\.includes\(a\)\)/.test(CODE),
+  'the wire says what the table offered; the canvas would have to be guessed at');
+
+// A class sits on its button through anything; a box pinned to viewport coordinates is
+// wrong the moment the canvas moves. So scroll, resize and zoom re-PLACE the marks — and
+// must not re-derive them, because view() walks the whole ledger and paying for that on
+// every scroll event is how a panel becomes the reason the table stutters.
+check('a scroll or a resize re-places the marks',
+  /addEventListener\('scroll', placeFelt, \{ capture: true, passive: true \}\)/.test(CODE)
+    && /addEventListener\('resize', placeFelt\)/.test(CODE),
+  'a mark pinned to the viewport is wrong as soon as the canvas moves under it');
+const placeBody = (/const placeFelt = \(\) => \{[\s\S]*?\n  \};/.exec(CODE) || [''])[0];
+check('...without re-deriving the view to do it',
+  /requestAnimationFrame/.test(placeBody) && !/view\(\)/.test(placeBody),
+  'placement is a rect and a few style writes; deriving is the whole ledger');
+
+// The diagnosis line is the readout you consult when the marks are missing, so it is the
+// one piece of this panel that must never be stale. The guide repaints on its own
+// observer and the panel only redraws on a repaint, so the two drift — the bench caught
+// the felt going unrecognised while the panel still claimed four buttons on it. It now
+// asks for a repaint when what there is to say changes, and ONLY then, because render
+// calls paintGuide and paintGuide asks render for a frame.
+check('a change in what the guide can report reaches the panel',
+  /if \(said === guideSaid\) return;/.test(CODE) && /guideEcho\(\)/.test(CODE),
+  'a count that lies is worse than no count; that is what the line exists to prevent');
+check('...and a guide with nothing new to say asks for no frame',
+  /const said = `\$\{guideVia\}\|\$\{guideSeen\}\|\$\{guideNote\}\|\$\{guideScanned\}`;/.test(CODE),
+  'render -> paintGuide -> repaint -> render is a cycle, broken by the state not moving');
+
+// It is off until asked for, because it draws over the game this tool does not own.
 check('the guide is off by default',
   /if \(typeof ui\.guide !== 'boolean'\) ui\.guide = false;/.test(CODE),
   'a tool that restyles the game on first run is a surprise, not a feature');
@@ -622,6 +716,28 @@ check('the header discloses the trail by name, with its bounds and its refusals'
   /TRAIL/.test(HEADER) && /16 sightings/.test(HEADER) && /120/.test(HEADER)
     && /no action is named/i.test(HEADER) && /would be invented/i.test(HEADER),
   'a record of your own pace of play has to be disclosed as precisely as a network read');
+
+// The canvas overlay is the second thing in this file that draws on the game rather than
+// beside it, and clause 6 makes an undisclosed one bannable. The header has to say where
+// the marks are, what is read to place them, and what is not read — the refusal is the
+// half a suspicious reader cannot verify for themselves without the source.
+check('the header discloses the overlay by what it reads and what it refuses',
+  /canvas/i.test(HEADER) && /pointer-events: none/.test(HEADER)
+    && /getContext/.test(HEADER) && /allowed_actions/.test(HEADER),
+  'a layer drawn over the game is functionality, and undisclosed functionality is bannable');
+
+// Two places name the version: the userscript header, which is what a script manager
+// compares to decide whether an update exists, and SCRIPT_VERSION, which is what the
+// export and the diagnosis report stamp themselves with. They drifted — 0.10.2 shipped
+// under a header reading 0.11.0 — and the cost lands exactly where it hurts: a pasted
+// diagnosis describes a version that is not the one running, which is the report's whole
+// job. One of them is not allowed to move alone.
+{
+  const head = (/^\/\/ @version\s+(\d+\.\d+\.\d+)$/m.exec(SRC) || [])[1];
+  const konst = (/const SCRIPT_VERSION = '(\d+\.\d+\.\d+)';/.exec(SRC) || [])[1];
+  check('the header version and SCRIPT_VERSION are the same version',
+    !!head && head === konst, `header ${head}, constant ${konst}`);
+}
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);

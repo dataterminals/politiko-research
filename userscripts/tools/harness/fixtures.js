@@ -1564,6 +1564,28 @@ window.HARNESS_FIXTURES = {
           body: { hand: live({}) },
         },
         {
+          // The only shape that puts FOUR buttons on the felt, which makes it the one
+          // the guide's row arithmetic is widest on — and a pair of eights against a
+          // ten is also the hand basic strategy is most often argued about, so the
+          // panel's own answer is worth being able to look at.
+          label: 'hand in play — a pair of eights, so SPLIT is on the row',
+          path: '/api/corporations/7/casino/blackjack/hands',
+          variant: true,
+          body: {
+            // Its own id, and that is not arbitrary. The panel MERGES sightings of a
+            // round so a later, thinner payload can never delete what an earlier one
+            // knew — so a second "hand" reusing 8814 keeps the first one's cards and
+            // its three allowed actions, and the bench quietly tests nothing. Found
+            // exactly that way: the felt painted four buttons and the tool marked a
+            // three-button row, 53px to the left.
+            hand: live({
+              id: 8820,
+              player_hands: [{ cards: ['8H', '8C'], wager: 500, outcome: null, status: 'active' }],
+              allowed_actions: ['hit', 'stand', 'double', 'split'],
+            }),
+          },
+        },
+        {
           label: '…you hit, and draw a four',
           path: '/api/corporations/7/casino/blackjack/hands/8814/actions',
           variant: true,
@@ -1684,6 +1706,166 @@ window.HARNESS_FIXTURES = {
           // gross - tax does not equal net. The panel must say so rather than print
           // figures built on an assumption that has stopped holding.
           body: { hands: [{ ...round(8850, 500, 500, 1500, 100, ['10S', 'AH'], ['9C', '8D'], 'win'), net_payout: 999 }] },
+        },
+      ];
+    })(),
+
+    // -----------------------------------------------------------------------
+    // FELT STUB
+    //
+    // The blackjack table is not HTML. It is a Phaser canvas, and HIT / STAND /
+    // DOUBLE / SPLIT are rectangles painted into it with no element underneath —
+    // which is why jack-watch's first button finder reported "no action buttons
+    // found" against three buttons in plain sight. Since 0.12.0 the marks are
+    // drawn on a layer above the canvas and placed by arithmetic, and arithmetic
+    // is the kind of thing that is confidently wrong in silence.
+    //
+    // So: a stand-in canvas at the game's own backing size, with the buttons
+    // painted where the bundle paints them. Then the tool marks it, and you can
+    // SEE whether the ring lands on the button.
+    //
+    // The layout numbers below are transcribed from the bundle a SECOND time, on
+    // purpose. A bench that imported them from jack-watch would agree with a typo
+    // as readily as with the truth; two independent transcriptions disagree
+    // visibly, which is the entire value of drawing the felt rather than asserting
+    // about it.
+    // -----------------------------------------------------------------------
+    extras: (() => {
+      const LAYOUTS = {
+        wide: { w: 900, h: 680, bw: 132, gap: 14, bh: 54, y: 565, css: 660 },
+        compact: { w: 540, h: 1060, bw: 112, gap: 8, bh: 72, y: 759, css: 300 },
+      };
+      const ORDER = [['hit', 'HIT'], ['stand', 'STAND'], ['double', 'DOUBLE'], ['split', 'SPLIT']];
+      const ROUTE = '/corporations/7/casino/blackjack';
+
+      const rowOf = (L, allowed) => {
+        const list = ORDER.filter(([a]) => allowed.includes(a));
+        const total = list.length * L.bw + Math.max(0, list.length - 1) * L.gap;
+        return list.map(([action, label], i) => ({
+          action, label, y: L.y, w: L.bw, h: L.bh,
+          x: L.w / 2 - total / 2 + L.bw / 2 + i * (L.bw + L.gap),
+        }));
+      };
+
+      let live = null;   // { L, row } — what is currently on the bench
+
+      const mount = (key, allowed) => {
+        const L = LAYOUTS[key];
+        const row = rowOf(L, allowed);
+
+        let host = document.getElementById('stub-felt');
+        if (!host) {
+          host = document.createElement('div');
+          host.id = 'stub-felt';
+          host.style.cssText = 'margin:14px 0;display:flex;gap:12px;align-items:flex-start';
+          document.getElementById('log').before(host);
+        }
+        host.replaceChildren();
+
+        const cv = document.createElement('canvas');
+        // Backing store at the game's base size, CSS box scaled — which is exactly
+        // what Phaser's FIT mode produces, and exactly what the tool reads to work
+        // out both the scale and whether the table is in its compact layout.
+        cv.width = L.w;
+        cv.height = L.h;
+        cv.style.width = `${L.css}px`;
+        cv.style.height = `${Math.round(L.css * L.h / L.w)}px`;
+        cv.style.display = 'block';
+        const cap = document.createElement('div');
+        cap.style.cssText = 'color:#3f3f46;font-size:10px;max-width:26ch;line-height:1.5';
+        cap.textContent = `stub felt ${L.w}x${L.h} — stands in for the game’s canvas. `
+          + `Open the panel, switch the guide on, then "measure the marks".`;
+        host.append(cv, cap);
+
+        const g = cv.getContext('2d');
+        g.fillStyle = '#07351f';
+        g.fillRect(0, 0, L.w, L.h);
+        g.font = '600 28px monospace';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillStyle = '#8fb9a3';
+        g.fillText('STUB FELT — NOT THE GAME', L.w / 2, 60);
+        for (const b of row) {
+          g.fillStyle = '#c9a642';
+          g.fillRect(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h);
+          g.fillStyle = '#16120a';
+          g.font = `bold ${L.w <= 540 ? 17 : 12}px monospace`;
+          g.fillText(b.label, b.x, b.y);
+        }
+
+        live = { L, row };
+        // The tool only marks a page whose path is the blackjack route, so the bench
+        // has to be on it. Same-origin and same document — this is the harness's own
+        // pushState, which the tool watches exactly as it watches the game's.
+        if (location.pathname !== ROUTE) history.pushState({ idx: 1 }, '', ROUTE);
+        return `felt mounted ${L.w}x${L.h} with ${row.length} button(s): `
+          + `${row.map((b) => b.action).join(', ')} — now fire "hand in play" and switch the guide on`;
+      };
+
+      // The check that matters, and the reason this is a bench rather than a picture.
+      // Every mark on screen is measured against where the felt PAINTED its button,
+      // computed here from this file's own constants. A half-button offset — the
+      // mistake a centred Phaser origin invites — shows up as a failing dx or dy
+      // rather than as something that looks roughly right.
+      const measure = () => {
+        if (!live) return 'mount a felt first';
+        const layer = document.querySelector('.pkbj-ovl');
+        const marks = layer ? [...layer.children] : [];
+        if (!marks.length) return 'no marks on screen — is the guide switched on, with a hand in play?';
+        const cv = document.querySelector('#stub-felt canvas');
+        const r = cv.getBoundingClientRect();
+        const s = r.width / live.L.w;
+        const out = [];
+        for (const m of marks) {
+          const b = m.getBoundingClientRect();
+          // Which button is this mark nearest? Answering by distance rather than by
+          // order is what makes a mark on the WRONG button a visible failure instead
+          // of a silently renamed pass.
+          let near = null;
+          for (const g of live.row) {
+            const want = { x: r.left + g.x * s, y: r.top + g.y * s };
+            const d = Math.hypot(b.left + b.width / 2 - want.x, b.top + b.height / 2 - want.y);
+            if (!near || d < near.d) near = { g, d, want };
+          }
+          const dx = b.left + b.width / 2 - near.want.x;
+          const dy = b.top + b.height / 2 - near.want.y;
+          const dw = b.width - near.g.w * s;
+          const dh = b.height - near.g.h * s;
+          const ok = Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dw) < 1 && Math.abs(dh) < 1;
+          out.push(`${ok ? 'ok' : 'OFF'} ${m.className} on ${near.g.action}`
+            + ` — dx ${dx.toFixed(2)} dy ${dy.toFixed(2)} dw ${dw.toFixed(2)} dh ${dh.toFixed(2)}`);
+        }
+        return `${marks.length} mark(s) measured against the felt:\n      ${out.join('\n      ')}`;
+      };
+
+      // A mount paints the row the SERVER said was allowed, so each one names the call
+      // it belongs with: a felt drawn for four buttons beside a hand that allows three
+      // is a disagreement the bench invented, not one the tool made.
+      return [
+        {
+          label: 'mount stub felt (900x680) — for "hand in play"',
+          title: 'the desktop table, three buttons, to go with "dealt 12 against a ten"',
+          run: () => mount('wide', ['hit', 'stand', 'double']),
+        },
+        {
+          label: 'mount stub felt (540x1060, compact) — for "hand in play"',
+          title: 'the table the game mounts under its own (max-width: 639px)',
+          run: () => mount('compact', ['hit', 'stand', 'double']),
+        },
+        {
+          label: 'mount stub felt (900x680) — for "a pair of eights"',
+          title: 'the widest row there is: four buttons, so SPLIT has a slot',
+          run: () => mount('wide', ['hit', 'stand', 'double', 'split']),
+        },
+        {
+          label: 'mount stub felt (540x1060) — for "…you hit, and draw a four"',
+          title: 'two buttons, so the row re-centres on a narrower felt',
+          run: () => mount('compact', ['hit', 'stand']),
+        },
+        {
+          label: 'measure the marks',
+          title: 'every mark against where the felt painted its button',
+          run: measure,
         },
       ];
     })(),

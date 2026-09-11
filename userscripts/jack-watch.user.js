@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.11.0
+// @version      0.12.0
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -83,21 +83,34 @@
  *             transmitted and no destination is named — it exists so that a large export
  *             does not have to go through the clipboard.
  *
- *   Page:     since 0.10.0, with the "guide" switch ON, it reads the labels of the visible
- *             buttons on the blackjack page to find HIT / STAND / DOUBLE / SPLIT, and
- *             outlines the one to press while dimming the worst one. Reading the DOM of a
- *             page you are actively viewing is the permitted surface; restyling the game's
- *             own controls is what comms-move already does to the Comms dock. It adds no
- *             request.
+ *   Page:     since 0.10.0, with the "guide" switch ON, it marks the action to press on
+ *             the blackjack table itself — the right button ringed in green, the worst
+ *             press dimmed and dashed in red — so the answer is where your eyes already
+ *             are rather than in a panel in the margin. It adds no request.
  *
- *             It CANNOT PRESS THEM. There is no .click() on any control it finds, no
+ *             Since 0.12.0 that mark is drawn ON A LAYER OVER THE GAME'S CANVAS, because
+ *             the table is a canvas: its buttons are painted pixels with no element under
+ *             them, which is why the DOM-reading version of this never found them. The
+ *             layer is this tool's own element, sitting above the canvas and never inside
+ *             the game's DOM. It reads the canvas's SIZE AND POSITION and nothing else —
+ *             no drawing context is ever requested and no pixel is ever read back, and
+ *             tools/test-jack-passive.js fails the build if getContext, toDataURL or
+ *             getImageData appears in this file. Where the buttons are is then arithmetic
+ *             on the game's own layout, and WHICH buttons are there comes from the
+ *             server's allowed_actions, which this tool already has. The older reader that
+ *             looks for HIT / STAND / DOUBLE / SPLIT on real elements is still here and
+ *             still runs when the page has no felt on it.
+ *
+ *             It CANNOT PRESS THEM, and over a canvas it is further from doing so than it
+ *             ever was: the layer is pointer-events: none, so it cannot even receive a
+ *             click, let alone forward one. There is no .click() on anything it finds, no
  *             synthesised mouse, pointer or keyboard event, and nothing driven through
  *             focus or requestSubmit — the single .click() in this file is the export
  *             anchor, which touches no game UI. tools/test-jack-passive.js counts them and
- *             fails the build on a second one. Marks use outline and box-shadow only, so a
- *             marked button is the same size and in the same place as an unmarked one. The
- *             switch is OFF until you turn it on, and the panel prints how many action
- *             buttons it can see so a guide that matches nothing says so.
+ *             fails the build on a second one. Nothing the game drew is restyled, moved or
+ *             resized; the marks are a separate layer above it. The switch is OFF until
+ *             you turn it on, and the panel prints what it located so a guide that matches
+ *             nothing says so rather than leaving an absence to be read as an answer.
  *
  *   Advice:   the panel names the best action and prices every other one. It says nothing
  *             about HOW MUCH to bet, and that is deliberate rather than missing: at this
@@ -194,7 +207,7 @@
   // which build produced it. Deliberately outside the engine markers below: the engine is
   // lifted whole by tools/test-jack-ev.js and must reference nothing it was not handed,
   // so exportBundle takes this as an argument rather than reaching for it.
-  const SCRIPT_VERSION = '0.10.2';
+  const SCRIPT_VERSION = '0.12.0';
 
   const K = { data: 'pkbj:data', ui: 'pkbj:ui' };
 
@@ -1149,6 +1162,76 @@
     const w = label.toUpperCase().replace(/[^A-Z]/g, '');
     if (!w || w.length > 20) return null;
     return BUTTON_WORDS[w] || null;
+  };
+
+  // --- where the felt draws its buttons -------------------------------------
+  //
+  // The table is not HTML. It is a Phaser canvas, and `renderActions` draws HIT, STAND,
+  // DOUBLE and SPLIT as rectangles with text painted on top of them — there is no
+  // element under any of those words. That is why the DOM finder above found nothing on
+  // a real table and why no wider selector was ever going to fix it: the labels are
+  // pixels. A canvas cannot be annotated by adding elements to it, so the mark goes on a
+  // layer ABOVE the canvas, placed by arithmetic. market-watch draws over the game's
+  // chart canvas for the same reason and in the same way.
+  //
+  // The arithmetic is the game's own, read off the bundle rather than guessed:
+  //
+  //     let a = compact ? 112 : 132,                             // button width
+  //         o = compact ? 8 : 14,                                // gap
+  //         s = i.length * a + Math.max(0, i.length - 1) * o;    // row width
+  //     i.forEach(([n, r], i) => {
+  //       let c = this.tableWidth / 2 - s / 2 + a / 2 + i * (a + o);
+  //       this.renderPrimaryButton(c, compact ? 759 : 565, a, compact ? 72 : 54, ...)
+  //
+  // `renderPrimaryButton` builds a Phaser rectangle, and a Phaser rectangle's origin is
+  // its CENTRE — so `(c, y)` is the middle of the button and not its top-left corner.
+  // Getting that one fact wrong puts every mark half a button up and to the left, which
+  // is the kind of wrong that still looks deliberate.
+  //
+  // Two things make this computed rather than assumed. The row's CONTENTS are the game's
+  // fixed order filtered by the server's own `allowed_actions`, which this tool already
+  // has on the wire — so a two-button row and a four-button row are told apart by data,
+  // never by counting pixels. And the BASE SIZE comes off the canvas itself: Phaser's
+  // FIT mode sets the backing store to the game's base size and scales it with CSS, so
+  // `canvas.width` is exactly the `tableWidth` these numbers are written against, and
+  // `compact` is the game's own test applied to it. Nothing here reads a media query,
+  // which is what keeps this correct under a zoom, a scrollbar, or a resized pane.
+  const FELT_ORDER = ['hit', 'stand', 'double', 'split'];
+  // The two sizes the page mounts: 900x680, or 540x1060 under the game's own
+  // `(max-width: 639px)`. Every literal above belongs to these two and to nothing else,
+  // so an unrecognised canvas draws NO marks and says so, rather than marks in invented
+  // places. A mark on the wrong pixel is worse than no mark at all — it is the same
+  // confidently-wrong failure the label matcher is kept narrow to avoid.
+  const FELT_LAYOUTS = [[900, 680], [540, 1060]];
+
+  const feltRow = (baseW, baseH, allowed) => {
+    if (!FELT_LAYOUTS.some(([w, h]) => w === baseW && h === baseH)) return null;
+    const list = Array.isArray(allowed) ? FELT_ORDER.filter((a) => allowed.includes(a)) : [];
+    if (!list.length) return null;
+    const compact = baseW <= 540;            // the game's own `get compact()`
+    const w = compact ? 112 : 132;
+    const gap = compact ? 8 : 14;
+    const h = compact ? 72 : 54;
+    const y = compact ? 759 : 565;
+    const total = list.length * w + Math.max(0, list.length - 1) * gap;
+    return list.map((action, i) => ({
+      action, w, h, y,
+      x: baseW / 2 - total / 2 + w / 2 + i * (w + gap),
+    }));
+  };
+
+  // Game space to viewport pixels. `rect` is the canvas's own box, which already carries
+  // whatever letterboxing FIT left over and whatever margin autoCenter added, so a single
+  // scale factor off its width is the entire transform — and the corner falls out of the
+  // centre by subtracting half the box, which is the step the origin note above is about.
+  const feltPlace = (b, rect, baseW) => {
+    const s = rect.width / baseW;
+    return {
+      left: rect.left + (b.x - b.w / 2) * s,
+      top: rect.top + (b.y - b.h / 2) * s,
+      width: b.w * s,
+      height: b.h * s,
+    };
   };
 
   // --- what a bet actually puts at risk -------------------------------------
@@ -2202,6 +2285,36 @@
     .pkbj-best { animation: pkbj-nudge .45s ease-out 1; }
     @media (prefers-reduced-motion: reduce) { .pkbj-best { animation: none; } }
 
+    /* The felt's marks, which are the ones that actually land on this table. The buttons
+       are painted into a canvas, so these are not ON them — they are a layer above the
+       canvas, pinned by arithmetic to where the game draws each one.
+
+       pointer-events: none on the layer, inherited by every mark in it. That is
+       load-bearing rather than tidy: the felt underneath keeps every click, so a mark
+       can never eat a press meant for the game — and it is also the shape of the
+       promise, because a layer that cannot be clicked is not a button this tool could
+       ever be one edit away from pressing.
+
+       Below the panel's z-index on purpose. This is pinned over the play area, the panel
+       lives in the margin, and on a narrow window the two overlap — the panel is the
+       thing you are reading when that happens. */
+    .pkbj-ovl { position: fixed; inset: 0; pointer-events: none; z-index: 2147481875;
+                display: none; }
+    .pkbj-ovl > div { position: absolute; box-sizing: border-box; border-radius: 5px; }
+    /* Border rather than outline here, unlike the DOM marks. An outline is drawn OUTSIDE
+       the box, which is right when the box is the game's own button and must not move;
+       these boxes are ours and are already exactly the button's size, so the mark belongs
+       on the edge rather than around it. */
+    .pkbj-ovl .best { border: 2px solid #4ade80;
+                      box-shadow: 0 0 0 3px rgba(74,222,128,.2), 0 0 14px rgba(74,222,128,.5);
+                      animation: pkbj-nudge .45s ease-out 1; }
+    /* Dimming is a scrim, because we cannot reach into the canvas to lower a button's
+       opacity the way the DOM marks do. Dark enough to read as "not this one", light
+       enough that the word underneath is still legible — a mark that hides the label
+       would make the guide harder to argue with, not easier. */
+    .pkbj-ovl .avoid { border: 2px dashed #f87171; background: rgba(9,9,11,.5); }
+    @media (prefers-reduced-motion: reduce) { .pkbj-ovl .best { animation: none; } }
+
     /* The strategy grid: eleven columns of one character each, which is the one
        shape that stays legible when the panel is a margin. */
     .pkbj-grid { width: 100%; table-layout: fixed; border-collapse: collapse;
@@ -2812,23 +2925,26 @@
       });
       bar.append(b);
       if (ui.guide) {
-        // Two different failures wearing the same sentence is how an evening gets wasted,
-        // so they are separated. Nothing scanned means the selector missed the controls
-        // entirely; controls scanned but none matched means the table words its buttons
-        // differently, which is a one-line fix once the label is known.
-        bar.append(el('span', 'pkbj-n', guideSeen
-          ? `${guideSeen} action button${guideSeen === 1 ? '' : 's'} found`
-          : (!v.live ? 'waiting for a hand'
-            : (guideScanned
-              ? `no action words on ${guideScanned} visible controls`
-              : 'no controls found on this page'))));
+        // Several different failures used to wear one sentence, which is how an evening
+        // gets wasted, so each says what it is. "on the felt" means the canvas was
+        // measured and the marks are arithmetic; "found" means this page was built out of
+        // elements after all and the old DOM finder answered; the rest are the ways each
+        // of those can come up empty, and every one of them names its own fix.
+        bar.append(el('span', 'pkbj-n', guideVia === 'felt'
+          ? `${guideSeen} button${guideSeen === 1 ? '' : 's'} on the felt`
+          : (guideVia === 'dom'
+            ? `${guideSeen} action button${guideSeen === 1 ? '' : 's'} found`
+            : (!v.live ? 'waiting for a hand'
+              : (guideNote || (guideScanned
+                ? `no action words on ${guideScanned} visible controls`
+                : 'no controls found on this page'))))));
         // When it cannot find them, it can at least say what it DID see. This repo does
         // not point Claude at the live table, so a finder built against a stand-in is
         // going to be wrong in ways no amount of local testing reveals — and the loop of
         // "still nothing" / "try this" is expensive in a way one paste is not. The report
         // goes to the clipboard because the operator should not have to open a console to
         // tell a tool what it is looking at.
-        if (!guideSeen && v.live) {
+        if (!guideVia && v.live) {
           const rep = el('button', 'pkbj-btn', 'copy what it sees');
           rep.title = 'a short description of the controls on this page, to paste back';
           rep.addEventListener('click', () => {
@@ -3605,12 +3721,22 @@
   //      night. This puts the answer ON the control you are about to press, which
   //      is where your eyes already are.
   //
+  //      WHAT THE TABLE ACTUALLY IS, since 0.12.0 and since three versions were
+  //      spent not knowing. It is a Phaser canvas. HIT, STAND, DOUBLE and SPLIT are
+  //      rectangles painted into it, with no element under any of them, so the DOM
+  //      finder below could never have worked and no wider selector was ever going
+  //      to fix it. The marks are therefore drawn on a layer ABOVE the canvas and
+  //      placed by arithmetic — the game's own layout arithmetic, read off the
+  //      bundle — which is what `feltRow` and `feltPlace` in the engine are.
+  //
   //      THE LINE, because this is the closest this file has ever been to it.
   //
   //      Locating the game's buttons is reading the DOM of a page you are actively
   //      viewing, which docs/01-rules-envelope.md scores as permitted on its very
-  //      first row. Changing how they LOOK is the same modification comms-move
-  //      already makes to the Comms dock. Neither adds a request.
+  //      first row; over a canvas that is a box and two integers, and never a pixel
+  //      read back. Drawing computed information over the page is the same row, and
+  //      market-watch already marks the game's chart canvas this way. Neither adds a
+  //      request.
   //
   //      Pressing one would be a script-initiated game action, and it does not
   //      matter that React would build the request rather than us — that is
@@ -3652,7 +3778,12 @@
     return c.visibility !== 'hidden' && c.display !== 'none';
   };
 
-  const ours = (n) => !!(n.closest('.pkbj-panel') || n.classList.contains('pkbj-fab'));
+  // Anything this tool drew. The mark layer is in here as well as the panel and the
+  // button, and that is not tidiness: the layer is inside document.body, which is what
+  // the guide's own MutationObserver watches, so a layer that did not count as ours
+  // would be a repaint reacting to itself.
+  const ours = (n) => !!(n && n.closest && (n.closest('.pkbj-panel') || n.closest('.pkbj-ovl')
+    || n.classList.contains('pkbj-fab')));
 
   // Two passes, because a table's action controls are usually <button> and occasionally
   // not. The first pass is the narrow, obviously-right one. The second only runs if the
@@ -3704,39 +3835,161 @@
     if (!ui.guide) return null;
     if (!active || !ROUTE.test(location.pathname)) return null;   // not at this table
     if (!v || !v.live) return null;
+    // The felt draws "HAND ACTIONS UNAVAILABLE" in place of the whole row when the client
+    // judges the server's table data incomplete, and your cash is half of the test it
+    // uses. Marking a row that is not on screen is the confidently-wrong failure again.
+    if (num(v.cfg.cash) === null) return null;
     const i = num(v.live.cur) ?? 0;
     const mine = (v.live.hands || [])[i];
     if (!mine) return null;
     const s = solve(mine.cards, upOf(v.live), v.comp, v.live.allowed);
     if (!s || !s.pick) return null;
     const cost = pressCost(s.ev, mine.stake);
-    return { best: s.pick, worst: cost ? cost.worst : null };
+    return { best: s.pick, worst: cost ? cost.worst : null, allowed: v.live.allowed };
   };
 
-  let guideSeen = 0;              // how many action buttons were found, for the panel
+  // The game's own canvas. Phaser mounts exactly one and nothing else on this route draws
+  // to one. Found by area rather than by class — a generated class is a hash that changes
+  // every deploy (CLAUDE.md), and market-watch picks the chart's main pane out of a
+  // library's several canvases the same way. Our own UI has no canvas at all, but it is
+  // skipped anyway, because `ours()` is cheaper than the assumption staying true.
+  //
+  // Reading `width`, `height` and the box is ALL this does. It never asks for a drawing
+  // context and never reads a pixel back: docs/01-rules-envelope.md puts canvas readback
+  // next to the fingerprint headers, and tools/test-jack-passive.js fails the build if
+  // `getContext`, `toDataURL` or `getImageData` ever appears in this file.
+  const feltCanvas = () => {
+    let best = null;
+    for (const c of document.querySelectorAll('canvas')) {
+      if (ours(c)) continue;
+      const r = c.getBoundingClientRect();
+      if (r.width < 80 || r.height < 80) continue;
+      if (!best || r.width * r.height > best.r.width * best.r.height) best = { c, r };
+    }
+    return best;
+  };
+
+  // The layer the felt's marks live on. Built once, on first use — a tool whose guide is
+  // never switched on adds nothing to the page.
+  let ovl = null;
+  const overlay = () => {
+    if (!ovl) { ovl = el('div', 'pkbj-ovl'); document.body.append(ovl); }
+    return ovl;
+  };
+  const hideFelt = () => { if (ovl) { ovl.replaceChildren(); ovl.style.display = 'none'; } };
+
+  let guideSeen = 0;              // how many buttons were located, for the panel
+  let guideVia = null;            // 'felt' | 'dom' | null — which finder answered
+  let guideNote = null;           // why the felt declined, when it did
+
+  // Marks over the canvas. Returns false when this page is not a felt it recognises, so
+  // the DOM finder below still gets its turn on a table that is ever built out of
+  // elements again.
+  const paintFelt = (want) => {
+    guideNote = null;
+    const found = feltCanvas();
+    if (!found) return false;
+    const row = feltRow(found.c.width, found.c.height, want.allowed);
+    if (!row) {
+      // A canvas this size is a table whose layout changed, and every pixel constant in
+      // feltRow belongs to the two sizes it did not match. Saying which size it saw is
+      // the difference between a one-line fix and another evening of guessing.
+      guideNote = `the table is ${found.c.width}x${found.c.height}, which is not a felt this knows`;
+      return false;
+    }
+    if (!(found.r.width > 0 && found.r.height > 0)) return false;
+
+    const layer = overlay();
+    layer.replaceChildren();
+    for (const b of row) {
+      // The worst press is only marked when it is a DIFFERENT button, which it always is
+      // by construction — but a hand offering one action would otherwise take both marks
+      // on the same box, which reads as a contradiction.
+      const cls = b.action === want.best ? 'best'
+        : (b.action === want.worst && want.worst !== want.best ? 'avoid' : null);
+      if (!cls) continue;
+      const box = feltPlace(b, found.r, found.c.width);
+      const d = el('div', cls);
+      d.style.left = `${box.left}px`;
+      d.style.top = `${box.top}px`;
+      d.style.width = `${box.width}px`;
+      d.style.height = `${box.height}px`;
+      layer.append(d);
+    }
+    layer.style.display = layer.firstChild ? 'block' : 'none';
+    guideSeen = row.length;
+    guideVia = 'felt';
+    return true;
+  };
+
+  // The last thing the felt was asked to mark. Kept so the marks can be re-placed when
+  // the canvas MOVES without the game changing state — a scroll, a resize, a zoom — which
+  // is cheap, where re-deriving the whole view to answer the same question is not.
+  let feltWant = null;
+  let placing = 0;
+  const placeFelt = () => {
+    if (placing || !feltWant) return;
+    placing = requestAnimationFrame(() => { placing = 0; if (feltWant) paintFelt(feltWant); });
+  };
+
+  // What the panel would SAY about the guide right now. The diagnosis line is the thing
+  // you read when the marks are not where you expect, so a stale one is worse than no
+  // line at all — a wrong count is what sent three versions chasing the wrong cause. The
+  // panel only redraws on a repaint and the guide runs on its own observer, so the two
+  // drift: the felt can stop being recognised while the panel still claims four buttons.
+  // When what there is to say changes, ask for a repaint.
+  //
+  // Compared as a string and acted on only when it CHANGES, because render calls
+  // paintGuide and this calls repaint, and that cycle has to be broken by something.
+  // "Nothing new to say" is the honest place to break it: it settles after one frame.
+  let guideSaid = null;
+  const guideEcho = () => {
+    const said = `${guideVia}|${guideSeen}|${guideNote}|${guideScanned}`;
+    if (said === guideSaid) return;
+    guideSaid = said;
+    if (ui.open) repaint();
+  };
+
   // `v` is handed in by render, which has just built it. The observer calls this with
   // nothing and pays for its own view() — that path only runs when the page actually
   // changed, which is exactly when the answer might be stale.
   const paintGuide = (v) => {
     const want = guideTargets(v === undefined ? view() : v);
     clearMarks();
-    if (!want) { guideSeen = 0; return; }
+    if (!want) {
+      guideSeen = 0; guideVia = null; guideNote = null; feltWant = null;
+      hideFelt(); guideEcho(); return;
+    }
+
+    // The felt first, because that is what this table actually is.
+    if (paintFelt(want)) { feltWant = want; guideEcho(); return; }
+    feltWant = null;
+    hideFelt();
+
     const btns = actionButtons();
     guideSeen = btns.size;
+    guideVia = btns.size ? 'dom' : null;
     const best = btns.get(want.best);
     if (best) best.classList.add(MARK_BEST);
-    // The worst press is only marked when it is a DIFFERENT control, which it always is
-    // by construction — but a table offering one action would otherwise get both marks on
-    // the same button, which reads as a contradiction.
     if (want.worst && want.worst !== want.best) {
       const bad = btns.get(want.worst);
       if (bad) bad.classList.add(MARK_WORST);
     }
+    guideEcho();
   };
 
   // What the scanner can see, in a form that fits in a message. Written for the case the
   // guide keeps failing on a table nobody here can open: rather than another round of
-  // guessing, it answers the four questions that actually separate the causes.
+  // guessing, it answers the questions that actually separate the causes.
+  //
+  // The canvas block leads, because the canvas is the answer on this table and its two
+  // numbers decide everything. A backing size that is not one of the two known layouts is
+  // the whole diagnosis — every pixel constant in `feltRow` is written against those two,
+  // and the new ones are a one-line change once the size is known. A canvas whose backing
+  // size and displayed box disagree in ASPECT would mean Phaser stopped letterboxing the
+  // way FIT does, which is the one assumption the placement arithmetic rests on.
+  //
+  // The DOM block stays underneath for the table that is ever built out of elements:
   //
   //   Is the word in the page's text at all? If not, the label is drawn — canvas, an
   //   image, or a font trick — and no DOM reader will ever find it.
@@ -3752,6 +4005,19 @@
     const text = (document.body.innerText || '').toUpperCase();
     L.push(`jack-watch ${SCRIPT_VERSION} — guide diagnosis`);
     L.push(`route: ${location.pathname}`);
+    L.push('');
+    const canvases = [...document.querySelectorAll('canvas')].filter((n) => !ours(n));
+    L.push(`canvases on the page: ${canvases.length}`
+      + `  (known felts: ${FELT_LAYOUTS.map(([w, h]) => `${w}x${h}`).join(', ')})`);
+    for (const c of canvases.slice(0, 4)) {
+      const r = c.getBoundingClientRect();
+      const known = FELT_LAYOUTS.some(([w, h]) => w === c.width && h === c.height);
+      L.push(`    backing ${c.width}x${c.height} ${known ? '(known)' : '(UNKNOWN LAYOUT)'}`
+        + ` · box ${Math.round(r.width)}x${Math.round(r.height)}`
+        + ` · aspect backing ${(c.width / (c.height || 1)).toFixed(3)}`
+        + ` vs box ${(r.width / (r.height || 1)).toFixed(3)}`);
+    }
+    L.push('');
     L.push(`visible controls matching the selector: ${controls.length}`);
     L.push(`iframes: ${document.querySelectorAll('iframe').length}`);
     let shadows = 0;
@@ -3785,11 +4051,41 @@
 
   // Idle until the page changes. `paintGuide` is cheap and re-entrant: it clears its own
   // marks and re-derives them, so a burst of mutations settles correctly.
+  //
+  // A mutation is not the only thing that moves a mark, though, and this is the part the
+  // DOM version never needed: a class sits on its button through anything, while a box
+  // pinned to viewport coordinates is wrong the moment the canvas moves under it. Three
+  // things move it with no mutation at all — the page scrolling, the window resizing, and
+  // a zoom — so each re-PLACES the marks without re-deriving them. Placement is a rect
+  // and a few style writes; deriving is the whole view, and paying for that on every
+  // scroll event is how a panel becomes the reason the table stutters.
   let guideObserver = null;
   const watchButtons = () => {
     if (guideObserver) return;
-    guideObserver = new MutationObserver(() => paintGuide());
+    // Only the GAME changing is news. Our own UI churns constantly — the panel rebuilds
+    // its body on every render, and the mark layer rewrites its children every time the
+    // marks move — and both of those are inside the subtree being watched.
+    //
+    // This is not an optimisation. Marking a DOM button was an ATTRIBUTE write, which a
+    // childList observer never saw; drawing a layer is a childList write, which it sees
+    // every time, and a repaint that re-triggers the observer that caused it does not
+    // settle — it spins until the tab is killed. The bench found this in the first
+    // second of the first run.
+    guideObserver = new MutationObserver((recs) => {
+      for (const r of recs) if (!ours(r.target)) { paintGuide(); return; }
+    });
     guideObserver.observe(document.body, { childList: true, subtree: true });
+
+    // Captured, because the felt sits in a scroll container of the app's rather than on
+    // the document, and a scroll event there does not bubble.
+    window.addEventListener('scroll', placeFelt, { capture: true, passive: true });
+    window.addEventListener('resize', placeFelt);
+    window.visualViewport?.addEventListener('resize', placeFelt);
+    // The layout viewport changing width with no event at all, which is what a scrollbar
+    // appearing or going does — and what the game's own pane does when the panel beside
+    // it changes the page's height.
+    try { new ResizeObserver(placeFelt).observe(document.documentElement); }
+    catch { /* no ResizeObserver: the three listeners above still cover scroll and zoom */ }
   };
 
   // ---------------------------------------------------------------------------

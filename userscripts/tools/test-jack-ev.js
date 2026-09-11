@@ -57,7 +57,8 @@ const E = new Function(`${SRC.slice(i, j)}
            doubleEV, splitEV, solve, roundEV, gridOf, countOf, shoeState, isHand,
            isSettled, netOf, slimHand, mergeHand, above, rollup, mean, stdev,
            roundReturns, replayHand, upOf, decisionRoll, plan, betBounds,
-           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation, pressCost, replayNote, exportBundle, trailSig, pushTrail, exposure, MAX_STAKE_MULT, actionOf };`)();
+           curveOf, extent, SHOE_SIZE, HIDDEN, CARD, runDeviation, pressCost, replayNote, exportBundle, trailSig, pushTrail, exposure, MAX_STAKE_MULT, actionOf,
+           FELT_ORDER, FELT_LAYOUTS, feltRow, feltPlace };`)();
 
 let fail = 0;
 const check = (label, got, want) => {
@@ -1027,6 +1028,114 @@ console.log('\n— reading a button label —');
   check('this tool\'s own buttons name no action',
     ['copy', 'copy+', 'save', 'clear', 'all', 'guide: on', 'HAND', 'COUNT', 'MONEY', 'PLAN', 'LOG']
       .map(E.actionOf).filter(Boolean), []);
+}
+
+console.log('\n— where the felt draws its buttons —');
+{
+  // The table is a Phaser canvas: the four action buttons are rectangles painted into
+  // it, with no element under any of them. So the marks are placed by arithmetic, and
+  // arithmetic that puts a green ring half a button away from the button is worse than
+  // no ring at all — it is confidently wrong, and it looks deliberate. This is the part
+  // that has to be right, and it is checked against the game's INTENT rather than
+  // against a second copy of the same formula.
+  //
+  // What the bundle says, for the record:
+  //   width 132 / gap 14 / height 54 / y 565     on the 900x680 felt
+  //   width 112 / gap  8 / height 72 / y 759     on the 540x1060 one
+  //   centre_i = tableWidth/2 - rowWidth/2 + width/2 + i*(width + gap)
+
+  const wide = E.feltRow(900, 680, ['hit', 'stand', 'double', 'split']);
+  check('the wide felt lays out every button the table offered',
+    wide.map((b) => b.action), ['hit', 'stand', 'double', 'split']);
+  check('...at the size the game draws them',
+    [wide[0].w, wide[0].h, wide[0].y], [132, 54, 565]);
+
+  // The independent statement: a row of four 132-wide buttons with 14 between them is
+  // 570 across, and the game centres it. Neither number is read back out of feltRow.
+  const span = (row) => ({
+    left: row[0].x - row[0].w / 2,
+    right: row[row.length - 1].x + row[row.length - 1].w / 2,
+  });
+  {
+    const s = span(wide);
+    near('the row is 4 buttons and 3 gaps across', s.right - s.left, 4 * 132 + 3 * 14);
+    near('...and centred on the table', (s.left + s.right) / 2, 900 / 2);
+  }
+
+  // Adjacent buttons are exactly one gap apart. This is what catches a stride that used
+  // the width where it wanted the pitch — an error that leaves the first mark perfect
+  // and every later one drifting, which is the hardest kind to see at a glance.
+  for (let i = 1; i < wide.length; i++) {
+    near(`gap ${i} is the gap and not the width`,
+      (wide[i].x - wide[i].w / 2) - (wide[i - 1].x + wide[i - 1].w / 2), 14);
+  }
+
+  // The compact felt is the one the operator's own window lands in, so it is not the
+  // afterthought here. Different width, different gap, different height, different row.
+  const narrow = E.feltRow(540, 1060, ['hit', 'stand', 'double']);
+  check('the compact felt has its own geometry',
+    [narrow.length, narrow[0].w, narrow[0].h, narrow[0].y], [3, 112, 72, 759]);
+  {
+    const s = span(narrow);
+    near('...a 3-button row 2 gaps wide', s.right - s.left, 3 * 112 + 2 * 8);
+    near('...still centred', (s.left + s.right) / 2, 540 / 2);
+  }
+
+  // WHICH buttons are on the felt is read off the server's allowed_actions, never
+  // counted off the screen — but the ORDER is the game's, and the two are not the same
+  // list. A table that sends them back the other way round must not flip the row.
+  check('the row follows the game\'s order, not the order the server listed',
+    E.feltRow(900, 680, ['split', 'double', 'stand', 'hit']).map((b) => b.action),
+    ['hit', 'stand', 'double', 'split']);
+  check('...and a word it does not know takes no slot in the row',
+    E.feltRow(900, 680, ['hit', 'insurance', 'surrender']).map((b) => b.action), ['hit']);
+  check('a two-button hand is a two-button row',
+    E.feltRow(900, 680, ['hit', 'stand']).map((b) => b.action), ['hit', 'stand']);
+
+  // Every pixel above belongs to the two layouts the bundle mounts. On anything else the
+  // honest answer is no marks: a redesign moves the row, and a mark drawn from stale
+  // constants would sit on empty felt looking exactly as confident as a correct one.
+  check('an unrecognised canvas gets no marks at all',
+    [E.feltRow(800, 600, ['hit']), E.feltRow(900, 681, ['hit']), E.feltRow(1920, 1080, ['hit'])],
+    [null, null, null]);
+  check('...and so does a hand with nothing to press',
+    [E.feltRow(900, 680, []), E.feltRow(900, 680, null), E.feltRow(900, 680, ['fold'])],
+    [null, null, null]);
+
+  // Placement. `renderPrimaryButton` builds a Phaser rectangle and a Phaser rectangle's
+  // origin is its CENTRE, so the box has to be derived by subtracting half of it. Getting
+  // that wrong shifts every mark up and to the left by half a button, which still looks
+  // like a deliberate design. This is the check that would catch it.
+  const rect = { left: 100, top: 50, width: 450, height: 340 };   // the 900x680 felt at 0.5
+  {
+    const b = wide[0];
+    const box = E.feltPlace(b, rect, 900);
+    near('a mark is scaled by the canvas box', box.width, 132 / 2);
+    near('...in both axes', box.height, 54 / 2);
+    near('the mark is centred on the button, not hung off its centre',
+      box.left + box.width / 2, rect.left + b.x / 2);
+    near('...vertically too', box.top + box.height / 2, rect.top + b.y / 2);
+  }
+
+  // And the whole row has to land inside the canvas that drew it. A sign error or a
+  // forgotten offset shows up here as a mark off the felt entirely.
+  for (const b of wide) {
+    const box = E.feltPlace(b, rect, 900);
+    check(`the ${b.action} mark lands inside the canvas`,
+      [box.left >= rect.left, box.top >= rect.top,
+        box.left + box.width <= rect.left + rect.width,
+        box.top + box.height <= rect.top + rect.height],
+      [true, true, true, true]);
+  }
+
+  // The canvas is not at the origin and does not have to be: it scrolls, and the page
+  // around it resizes. Placement is relative to the box it was handed, every time.
+  {
+    const moved = { left: -30, top: 900, width: 900, height: 680 };   // scrolled, unscaled
+    const box = E.feltPlace(wide[1], moved, 900);
+    near('a scrolled canvas moves its marks with it', box.left, -30 + wide[1].x - 132 / 2);
+    near('...by the same offset down the page', box.top, 900 + 565 - 54 / 2);
+  }
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

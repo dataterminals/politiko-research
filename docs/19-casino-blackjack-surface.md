@@ -940,6 +940,78 @@ That distinction is the difference between an evening of guessing and a one-line
 Building a DOM reader against a page you cannot see is going to be wrong the first time;
 what it has to be is wrong *legibly*.
 
+### The table is a canvas, so there was never a button to find — added 2026-09-10
+
+Three versions were spent making the DOM finder better. The answer was that no DOM finder
+could ever work, and it was sitting in the bundle the whole time.
+
+**`CasinoBlackjackPage` mounts a Phaser game.** The felt, the cards, the chips and the
+action row are all drawn into a single `<canvas>`; `renderActions` builds each button as a
+rectangle with a text object on top of it, and the page's own container div is marked
+`aria-hidden`. `HIT`, `STAND`, `DOUBLE` and `SPLIT` are **pixels**. There is no element
+under any of them, no class to match, no text to read — which is exactly what 0.10.2's
+diagnosis was reporting when it said the words were in the page while no element's text
+was any of them, and why the report also has to name the canvas before anything else.
+
+The fix is not a wider selector. It is to stop looking for a button and to compute where
+the game drew one. Since **0.12.0** the marks are a layer of this tool's own elements
+pinned over the canvas — the same thing `market-watch` does over the game's chart, and the
+same row of [`01-rules-envelope.md`](01-rules-envelope.md): read the page you are viewing,
+draw computed information over it, add no request.
+
+**Why this is computable rather than guessable**, which is the part that decides whether it
+ships at all. Three separate things have to be known, and each is *read* rather than
+assumed:
+
+| what | where it comes from |
+|---|---|
+| which buttons are on the row | the server's own `allowed_actions`, already on the wire |
+| which layout is mounted | `canvas.width` — Phaser's FIT mode sets the backing store to the game's base size, so it *is* `tableWidth`, and the game's own test is `tableWidth <= 540` |
+| where the canvas is on screen | `getBoundingClientRect()`, which already carries the letterboxing and the centring margin |
+
+Only the per-layout constants are transcribed, and they come straight out of
+`renderActions`: width 132, gap 14, height 54, row centre *y* 565 on the 900×680 felt;
+112 / 8 / 72 / 759 on the 540×1060 one the game mounts under its own `(max-width: 639px)`.
+Everything else is arithmetic on those three reads.
+
+Note what this does **not** do: it never reads the media query. Which layout is live is
+answered by the canvas the game actually mounted, which is correct through a zoom, a
+resized pane, or a scrollbar appearing — the trap `FAB KIT` already documents from the
+other direction.
+
+**Three things that were nearly wrong, two of them found by the bench in its first run.**
+
+**A Phaser rectangle's origin is its centre.** `renderPrimaryButton(c, y, w, h, …)` gives
+the *middle* of the button, not its corner. A box built without subtracting half of it
+sits half a button up and to the left — close enough to look deliberate, wrong on every
+press. Fenced, and measured in the harness to within 0.01px.
+
+**The observer fed itself.** Marking a DOM button is an *attribute* write, which a
+`childList` observer never sees. Drawing a layer is a `childList` write **inside the
+subtree being watched**, so the repaint re-triggered the observer that caused it and the
+tab locked up within a second of the guide being switched on. The observer now ignores
+mutations inside this tool's own UI. This is the clearest case yet for the bench existing:
+it is a bug that would have been found on the live table, at the cost of a session.
+
+**The diagnosis line went stale.** The guide repaints on its own observer; the panel only
+redraws on a repaint. So the felt could stop being recognised while the panel still
+claimed four buttons on it — and the diagnosis line is precisely the thing you read when
+the marks are missing. A count that lies is worse than no count, given it is what sent the
+last three versions after the wrong cause. It now asks for a repaint when what there is to
+say changes, and only then, because `render → paintGuide → repaint` is a cycle that has to
+be broken by the state not moving.
+
+**What it refuses.** An unrecognised canvas draws **nothing** and names the size it saw —
+every pixel constant belongs to those two layouts, and a mark drawn from stale ones would
+sit on empty felt looking exactly as confident as a correct one. And the canvas is read
+for its size and position only: no drawing context is ever requested and no pixel is read
+back, which is both a fingerprinting refusal and a pointless capability here, since the
+cards are already on the wire in a form strictly better than a picture of themselves.
+
+**The line moved further away, not closer.** The layer is `pointer-events: none`. It
+cannot receive a click, so it cannot forward one — the promise stopped being "it does not
+press a button" and became "it has nothing that could".
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count

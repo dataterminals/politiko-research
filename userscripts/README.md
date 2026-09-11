@@ -34,7 +34,7 @@ bump; the table below is hand-kept and can drift.
 | Shop Watch | 0.4.1 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
 | Bar Watch | 0.2.1 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
 | Slot Watch | 0.2.1 | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
-| Jack Watch | 0.10.3 | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
+| Jack Watch | 0.12.0 | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, and the shared `PANEL KIT` and `FAB KIT` blocks).
@@ -1885,28 +1885,55 @@ press - three fixations per decision, several hundred times a night. Since 0.10.
 outlined in green, the worst press dimmed and dashed in red. It works with the panel shut,
 which is the entire point.
 
-**It cannot press them.** Finding the buttons is reading the DOM of a page you are actively
-viewing, which the rules envelope scores permitted on its first row, and restyling them is
-what `comms-move` already does to the Comms dock. Pressing one would be a script-initiated
-game action, and it would not matter that React builds the request rather than us - that is
-the hole `test-sleeper-passive` exists to close. So there is no `.click()` on anything it
-finds, no synthesised mouse, pointer or keyboard event, and nothing driven through focus or
+**The table is a canvas, which is why the first three attempts at this found nothing.** The
+blackjack page mounts a Phaser game: the felt, the cards and the action row are all painted
+into one `<canvas>`, and `HIT`, `STAND`, `DOUBLE` and `SPLIT` are pixels with no element
+under them. No selector was ever going to find them. Since 0.12.0 the marks are a layer of
+this tool's own elements pinned over the canvas, exactly as `market-watch` marks the game's
+chart, and placed by the game's own layout arithmetic. The older element-reading finder is
+still there and still runs on a page that has no felt on it.
+
+**It cannot press them, and over a canvas it is further from doing so than it ever was.**
+The layer is `pointer-events: none`, so it cannot receive a click, let alone forward one.
+Reading the page you are actively viewing and drawing computed information over it are both
+on the first row of the rules envelope. Pressing would be a script-initiated game action,
+and it would not matter that React builds the request rather than us - that is the hole
+`test-sleeper-passive` exists to close. There is no `.click()` on anything it finds, no
+synthesised mouse, pointer or keyboard event, and nothing driven through focus or
 `requestSubmit`. The one `.click()` in the file is the export anchor, and the fence counts
 them.
 
-Four details that are load-bearing rather than incidental, all fenced:
+What makes the placement computable rather than guessable is that all three inputs are
+read. Which buttons are on the row comes from the server's own `allowed_actions`, already on
+the wire. Which layout is mounted comes from `canvas.width`, which under Phaser's FIT mode
+is the game's base size and so is the very number the game tests to decide its compact
+layout - no media query is consulted, which is what keeps it right through a zoom or a
+resized pane. Where the canvas sits comes from its bounding box. Only the per-layout pixel
+constants are transcribed, and an unrecognised canvas draws nothing and names the size it
+saw.
 
-- **Matched on words, not classes**, because a generated class is a hash that changes every
-  deploy. An exact set, not a prefix - the prefix version was caught by its own test
-  claiming "doubles". A miss shows up as a count in the panel; a false positive highlights
-  the wrong control with total confidence.
-- **Re-applied by `MutationObserver`, never a clock.** React rebuilds the button row on every
-  state change; an observer is idle until the page changes, and this file is allowed exactly
-  one timer.
-- **Outline and box-shadow only**, so a marked button is the same size and in the same place
-  - measured to within half a pixel, not asserted.
-- **Off by default, and it reports what it found.** A guide that silently matches nothing is
-  worse than none, because the absence of a mark would read as meaning something.
+Details that are load-bearing rather than incidental, all fenced:
+
+- **A Phaser rectangle's origin is its centre**, so the box subtracts half of it. Without
+  that, every mark sits half a button up and to the left - wrong on every press and close
+  enough to look deliberate. Measured in the harness to within 0.01px against an
+  independently transcribed felt.
+- **The size and position of the canvas are read, and nothing else.** No drawing context is
+  requested and no pixel is read back; the cards are already on the wire in a better form
+  than a picture of themselves, and canvas readback sits next to the fingerprint headers
+  this repo refuses to touch.
+- **Matched on words, not classes** in the element-reading fallback, because a generated
+  class is a hash that changes every deploy. An exact set, not a prefix - the prefix version
+  was caught by its own test claiming "doubles".
+- **Re-applied by `MutationObserver`, never a clock** - and it ignores its own drawing.
+  Marking an element was an attribute write an observer never saw; drawing a layer is a
+  childList write inside the watched subtree, so an unguarded observer re-triggers the
+  repaint that caused it and locks the tab up. The bench caught that in the first second of
+  the first run.
+- **Nothing the game drew is restyled, moved or resized.** The marks are a separate layer
+  above it, so the table's own controls never shift under the cursor.
+- **Off by default, and it reports what it found** - including a stale report being treated
+  as a bug, since the diagnosis line is the thing you read when the marks are missing.
 
 Underneath: the chance the next card busts you, the chance the dealer busts, and the
 win/push/lose split if you stand. All of those are exact off the stated rules; nothing there
@@ -2514,6 +2541,18 @@ saw it because they slice the sampler and the rule evaluator out of the file and
 the paint layer at all. `tools/test-placement.js` now fails the build on a bare
 `paint*`/`render*`/`sync*`/`update*` call that resolves to no definition in its own file,
 which is that whole class of bug across every tool rather than this one instance.
+
+A fifth, and the most expensive one it has prevented: jack-watch's on-felt guide locked the
+tab up within a second of being switched on. The marks are a layer drawn over the game's
+canvas, and the observer that re-applies them watches `document.body` for childList changes
+— so the repaint mutated the very subtree that triggered it, forever. Marking an element
+had been an *attribute* write, which that observer never saw, so the bug arrived with the
+change of medium and nothing in the fences could have predicted it. The bench also holds
+the standing check that the marks are in the right place at all: a stub canvas at the game's
+own backing size with the action row painted where the bundle paints it, transcribed a
+second time so a typo in the tool disagrees with the picture instead of agreeing with
+itself. Four row shapes, both layouts, measured to within 0.01px, and the same button
+tells you which one the panel would have named.
 
 ---
 
