@@ -2349,6 +2349,7 @@ node userscripts/tools/test-jack-ev.js
 node userscripts/tools/test-jack-passive.js
 node userscripts/tools/test-http-tap.js
 node userscripts/tools/test-collect.js
+node userscripts/tools/test-read-stores.js
 ```
 
 Every suite slices the layer it covers straight out of the shipped script rather than
@@ -2498,7 +2499,14 @@ only until someone adds it back:
   disclosure against the build: the header has to state the zero request budget, name the
   filter precisely rather than as "our keys", name both never-touch keys, say the output is
   never transmitted, and refuse the refresh feature in writing — where it will be read by
-  whoever next asks for it.
+  whoever next asks for it. Since 2026-09-11 it also **runs** the file against a stub
+  store and asks for each reading and each credential by name — see *The scrub that ate
+  canvass* below.
+
+- `test-read-stores` fences [`tools/read-stores.js`](../tools/read-stores.js), the reader
+  — no network, no browser, no child process, one file write and only behind `--out` — and
+  runs it against a synthetic bundle covering every section, a prior for the comparison,
+  and an empty bundle. See *The reader* below.
 
 They have nothing else in common; market-watch's was named `test-passive.js` when it
 lived in its own repository and was renamed on the way in.
@@ -2712,3 +2720,68 @@ writes. That is the asymmetry above, asserted rather than commented.
 `test-poll-watch` and `test-shop-passive` each drive their tool's real migration against a
 store shaped the way a two-tool install actually looked, and assert the sibling's blob comes
 out byte-identical.
+
+---
+
+## The scrub that ate canvass
+
+Found 2026-09-11, on the first bundle [`tools/collect-stores.js`](../tools/collect-stores.js)
+ever produced. It carried 28 redactions and **every one was a false positive.** The key-name
+check was a substring match over `token|auth|…|secret|…|refresh|…|canvas`, and three
+ordinary names contain those words: `canvass` — the sleeper-recruitment action — contains
+`canvas`; `Slutty secretary`, a corporation job title market-watch had learned an id for,
+contains `secret`; and world-watch's per-endpoint last-seen stamp for `/api/refresh` contains
+`refresh`. What the bundle lost was the XP record of every canvass the operator had ever
+run, a dozen market ids, and one timestamp.
+
+The fix is the obvious one and the fence is the point. A key is now split into tokens — on
+anything that is not a letter or digit, and on a lower→upper case change — and a name is a
+credential only if a **whole token** is a credential word. `refresh_token`, `refreshToken`
+and `x-csrf-token` all still carry the token `token`; `canvass` is not `canvas`. A number or
+boolean is never redacted whatever its key says, because a counter cannot be a credential.
+`test-collect` no longer only greps the file: it **runs** it against a stub localStorage that
+holds the three keys it must never read (with greppable payloads), the three names it
+wrongly redacted, and a probe of eleven credential names beside readings that merely
+contain the same words, and asks for each by name.
+
+Two other things came out of the same run and are fenced with it. The download anchor is
+created in the XHTML namespace, so the collector runs unchanged from a static SVG document
+— `https://politiko.io/favicon.svg` shares the origin's localStorage and has zero scripts,
+which is how a browser extension collects for an installed PWA whose window it cannot
+reach, at the cost of one GET of an icon and no game traffic at all. And the return value
+is a summary of key names and sizes, never the bundle, because through an extension's
+script runner the return value travels back to whoever asked, and three megabytes of
+other players' readings is not a thing to hand over as a side effect.
+
+## The reader
+
+[`tools/read-stores.js`](../tools/read-stores.js) is the other half of the collector: it
+turns a bundle into a brief. `node tools/read-stores.js` reads the newest
+`artifacts/politiko-stores-*.json`, compares it with the one before, and prints markdown;
+`--out <file>` also writes it, `--since <file>` picks the prior, `--no-since` skips the
+comparison.
+
+It is written to be read at the top of a strategy conversation, so it puts the world before
+the stat sheet. First the game clock and the real dates of the next elections and
+registration windows. Then a **levers** table: money and net worth; sleepers able to
+advocate or embezzle *now*, and when the next one can; open leads and their meetings;
+whether the opinion poll is on cooldown; the president's favour and term; each chamber's
+lean and seat split; which issues have never been polled; how many players share your city.
+Then government in full — every policy with the game's own description of its current
+setting, recent changes, faction jobs — opinion with the fine distribution and the swing
+group, the world (cities, walls, protests, campaigns, dominance), the people (activity,
+city, rank, faction, corporation, new accounts, relationships, fighters, your neighbours,
+the population's compass), you (skills with the 30-day change and this city's training
+gains, every action with its success rate, jail and hospital counts and XP yield, mastery,
+education, the last day of activity), the faction and its sleepers, the economy (shops with
+stock movement differenced across readings, corporations, casinos), the socket census, what
+changed since the prior bundle, a freshness table per tool, and finally **what the bundle
+does not know** — the empty collections, and the things no store carries at all. Every
+section is guarded, so a store that changes shape costs one section, not the brief.
+
+The chamber axis in it reads the way the game paints it — −3 *Tankie*, 0 *Moderate*, +3
+*Fascist* ([`docs/13-world-politics-surface.md`](../docs/13-world-politics-surface.md)) — so
+"right (a>0)" is the right bloc, and a mean is printed with its word.
+
+It originates nothing: it is a file reader that writes markdown, and `test-read-stores`
+fences that.
