@@ -124,6 +124,12 @@ unfocused pages "in order to send it elsewhere, **raise alerts, or draw attentio
 or another window**." A desktop notification that fires while the operator is in another
 tab is that sentence's worked example.
 
+*Updated 2026-09-11: the operator lifted that refusal for `bar-watch` and `poll-watch`,
+narrowly and knowingly — see [`01-rules-envelope.md`](01-rules-envelope.md). It changes
+nothing here. Both of those alert on a deadline the server had already handed over while
+the page was in front of the operator, so clause 4 was the only wall in their way. A
+restock has no such deadline: walls 1 and 2 stand on their own, and either is fatal.*
+
 None of these is a gray area to be argued down, and the penalty is a game ban on the only
 account that exists (hard rule 3). This repo has already ruled this out twice, under two
 names — *"Background cooldown alerts (unfocused page + alerting + extra requests)"* and

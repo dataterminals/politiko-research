@@ -119,8 +119,11 @@ So the move [`01-rules-envelope.md`](01-rules-envelope.md) recommends first — 
 server-side switch the game already ships — **has no switch to reach for here.** Four keys,
 none of them a bar. That is a measurement, not an assumption, and it is the thing worth
 asking staff for: a `bars_full` key, or three of them, in Politiko's own push vocabulary
-would make this tool's second and third alert channels unnecessary, which is exactly the
-outcome the rules envelope says to prefer. The `/contact` ticket system added on 2026-08-26
+would make this tool's optional alert channels unnecessary, which is exactly the outcome the
+rules envelope says to prefer. **That ask got more valuable on 2026-09-11**, when the
+operator authorised a desktop-notification channel here — the one case clause 4 names
+outright. A `bars_full` key would retire a channel the account is now carrying real risk
+for, rather than merely a convenience. The `/contact` ticket system added on 2026-08-26
 is the place to ask, and it is a cheap thing to append to the sanctioned-API question that
 file has been holding since July.
 

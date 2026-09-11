@@ -135,9 +135,12 @@ and radiation is special-cased as "regen paused" — whether the server folds a 
 the game computes and *names* the effect beside the countdown rather than modelling it. And
 the alert channels split: in-page is the default; tab title, favicon and a synthesised tone
 are off behind a switch each and are an explicit operator decision
-([`01-rules-envelope.md`](01-rules-envelope.md)); a desktop notification is absent from the
-file entirely. Politiko's own push vocabulary is four keys wide and none is a bar — asking
-for a `bars_full` key is what would retire the three optional channels.
+([`01-rules-envelope.md`](01-rules-envelope.md)). A desktop notification was absent from
+the file entirely until **2026-09-11**, when the operator lifted that refusal for this tool
+and poll-watch — narrowly, off by default, with the ban risk priced and the case against it
+written down in the same file. Politiko's own push vocabulary is four keys wide and none is
+a bar — asking for a `bars_full` key is what would retire all four optional channels, and it
+is worth more now than it was, because one of them is a channel we carry real risk for.
 Findings: [`17-attribute-surface.md`](17-attribute-surface.md).
 
 ### Slots bankroll and EV — **shipped 2026-08-30** as `slot-watch` 0.1.0

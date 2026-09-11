@@ -43,6 +43,7 @@ Penalty: game ban.
 | ^ *departed from 2026-07-28, **retired 2026-08-07** — see note below* | | |
 | Desktop notifications sourced from a script | ❌ | "Draw attention to itself or another window" — the clause's own worked example |
 | ^ *tab title / favicon / sound, on a countdown computed while focused* | ⚠️ | *operator decision 2026-08-27, below — narrower than the row above and argued separately* |
+| ^ *a `new Notification` on two named countdowns, computed while focused* | ⚠️ | *operator decision 2026-09-11, below — this one takes the row itself, knowingly* |
 | Anything that touches the Cloudflare challenge | ❌ | CAPTCHA bypass, named directly |
 | Automating game actions (auto-travel, auto-attack, auto-deal) | ❌ | Requests not manually initiated by the user |
 | ^ *superseded in part by operator decision 2026-07-28 — see note below* | | |
@@ -150,6 +151,10 @@ that; the decision was taken knowing it.
    worked example is not shipped, not disabled, not flagged — the `Notification` API is
    absent from the file, with `tools/test-bar-passive.js` failing the build if it appears.
    The decision taken is strictly narrower than the row in the table.
+   **↑ Superseded 2026-09-11 — see the next section.** Point 2 is left standing rather
+   than rewritten, because it is the argument the later decision had to get past, and a
+   decision whose losing side has been quietly deleted is not a decision you can re-read.
+   Points 1 and 3 are unchanged and still govern.
 3. **The default is the safe one.** `PAGE` — an in-page banner and a lit button — is on, and
    is unambiguously inside the clause on any reading. The other three are one deliberate
    click each, and every one of them restores the tab exactly as it found it.
@@ -158,6 +163,103 @@ that; the decision was taken knowing it.
 key in Politiko's own push preferences. It costs the operator nothing to ask for, the
 `/contact` ticket system exists to ask in, and it is cheap to append to the sanctioned-API
 question this file has been holding since July. If it lands, these three channels come out.
+
+### Desktop notifications — operator decision, 2026-09-11
+
+**The refusal in the table above is lifted, narrowly, on the operator's explicit
+instruction.** Two tools may raise an OS notification, on two named countdowns, off by
+default and behind a switch each:
+
+| tool | event | channel |
+|---|---|---|
+| `bar-watch` | a bar reaches the level you set (full, or a number you typed) | `NOTIFY`, default OFF |
+| `poll-watch` | the opinion-poll cooldown reported by your own memo expires | `NOTIFY`, default OFF |
+
+This is the row the clause names as its own worked example, and it is being taken rather
+than argued around. The operator asked for it, was told what it costs, and said proceed.
+That sentence is the decision; everything below is the record of what was known when it
+was taken, so that a later reader can re-derive it rather than re-litigate it.
+
+**The argument, which is the 2026-08-27 argument unchanged.** Clause 4 prohibits
+*extracting data from unfocused pages in order to* send it elsewhere, raise alerts, or draw
+attention to another window. Neither countdown extracts anything from an unfocused page:
+
+- `bar-watch` projects `CurrentValue` forward from `LastUpdate` at the client's own rate.
+  Measured in [`17-attribute-surface.md`](17-attribute-surface.md): the client sets no
+  `refetchIntervalInBackground`, so its polling stops on blur, and there is nothing
+  arriving in the background to extract.
+- `poll-watch` is **the stronger case of the two.** `cooldown_until` is a single absolute
+  timestamp, handed over inside the memo returned by a poll *you* ran and paid for. From
+  that moment the deadline is fully known; there is nothing further the server could tell
+  us about it, and nothing this tool could learn by asking. The alert is a comparison
+  against the clock.
+
+So what crosses the tab boundary in both cases is arithmetic on a payload captured while
+the page was in front of you.
+
+**The counter-reading, which is now the stronger one, and is not being pretended away.**
+On 2026-08-27 the counter-reading — that clause 4 targets the *effect*, with "extracting
+data from unfocused pages" as description rather than condition — was recorded as real but
+survivable, because the channels at issue (a title prefix, a favicon dot, a tone) were not
+the thing the clause pictures. That defence is gone here. **A desktop notification is
+precisely the thing clause 4 pictures**, and no reading of the sentence makes it
+comfortable. The honest summary is: there is a coherent argument that this is inside the
+clause, and there is a coherent argument that it is the exact case the clause was written
+to stop, and a moderator would be entitled to take the second one.
+
+**What is being risked, concretely.** The penalty section below is not abstract any more:
+`fedded_permanent` is a boolean on the account, a hold locks all game systems, and a held
+account is [auctioned as labour](#what-a-hold-costs-in-public) on a public board. There is
+one account and there is no alt. That is the price of being wrong about this, it is written
+here in full, and the operator accepted it.
+
+**The boundary, which is narrow and is enforced by tests rather than by intention.** What
+this decision authorises is `window.Notification` — the page-level constructor, which puts
+zero bytes on any wire — in `bar-watch` and `poll-watch`, on the two events above. What it
+does **not** authorise, in those two files or anywhere else:
+
+1. **No service worker, no `PushManager`, no push subscription.** Those are a *server*
+   telling the browser something, which means a registration request, an endpoint, and a
+   subscription the game does not know about. `serviceWorker`, `pushManager` and
+   `showNotification` stay absent from every file in this repo, fence tests included.
+2. **No request, of any kind, still.** Hard rule 1 is untouched. The instant either tool
+   originates a fetch, the argument above stops being merely contested and becomes false:
+   something *would* then be pulled from a page nobody is viewing in order to raise an
+   alert, which is clause 4 verbatim rather than clause 4 interpreted.
+3. **No focus stealing.** `window.focus()` stays absent; the notification is read-only
+   furniture and clicking it dismisses it. Pulling a window to the front is the second half
+   of the clause's sentence and there is no reason to reach for it.
+4. **No other tool, no other event.** Every other script in this repo keeps its `Alerts:
+   none` or its in-page-only disclosure, and every other fence keeps banning the API
+   outright. A decision about a bar and a cooldown is not a decision about a shop restock,
+   a raid timer or a sleeper meeting.
+5. **Off by default, one deliberate click, and disclosed by name.** Same terms as the three
+   2026-08-27 channels, plus: permission is requested *only* from the click that switches
+   the channel on, never at load.
+6. **Nothing is left behind.** A raised notification is closed when the alert clears, when
+   the switch goes off, and on `pagehide` — the same three exits the title and favicon
+   channels already have.
+
+**A hazard that belongs to this decision specifically.** Politiko ships its own Web Push:
+support is gated on `serviceWorker in navigator && PushManager in window && Notification in
+window`, and the settings screen has toggles for the four keys
+([`15-shop-surface.md`](15-shop-surface.md)). Notification permission is **per origin**, so
+the game's push and this channel share one grant. Two consequences:
+
+- If the operator already enabled the game's own push, `Notification.permission` is already
+  `granted` and no new prompt appears.
+- If a prompt *does* appear and is dismissed with **Block**, that denial is the origin's —
+  **it turns off Politiko's own push notifications too**, and only a browser site-settings
+  change brings them back. So the switch asks only when the permission is still `default`,
+  and says this on the button before it does.
+
+**What retires this, unchanged from 2026-08-27 and now worth more:** a `bars_full` key —
+and a poll-cooldown key beside it — in Politiko's own push preferences. The vocabulary is
+four keys today and none of them is either of these. The `/contact` desk is a threaded
+ticket system now, the sanctioned-API question is already queued for it, and this is cheap
+to ask in the same message. **If staff ship either key, the matching channel comes out of
+the tool the same day** — the operator keeps the alert, the account stops carrying the
+argument, and that trade has been the right one every previous time this file has made it.
 
 ## Three more rules with teeth
 

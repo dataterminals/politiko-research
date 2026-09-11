@@ -10,11 +10,24 @@
 //
 // What that means concretely:
 //
-//   The desktop notification stays absent. Not off, not behind a flag, not "disabled by
-//   default" — the Notification API, the service worker and the push manager do not
-//   appear in the file at all. That is the case clause 4 names as its own worked
-//   example, and the moment the API is referenced anywhere the distance between "we
-//   chose not to" and "someone flips a boolean" is one line.
+//   The desktop notification USED to stay absent, and that was the right default until
+//   the operator overruled it on 2026-09-11 with the ban risk priced — the decision, and
+//   the case against it, are in docs/01-rules-envelope.md. It is the case clause 4 names
+//   as its own worked example, so what this file does now is hold it at exactly the
+//   width that was authorised and no wider:
+//
+//     `window.Notification` only. The OTHER way to make a notification is a service
+//     worker with a push subscription, which is a registration request and an endpoint
+//     the game knows nothing about. `serviceWorker`, `pushManager` and
+//     `showNotification` stay banned outright, here and everywhere else in the repo.
+//
+//     One construction, one prompt, one live notification. It cannot fire with its
+//     switch off, without permission, or while you are looking at the page — each
+//     checked where it writes, not where the switch is offered.
+//
+//     Permission is asked for from the switch click and only while it is still
+//     `default`. The grant is per origin and Politiko's own Web Push shares it, so a
+//     second ask after a denial is useless and a Block turns the game's own push off.
 //
 //   Every raise has a clear. A channel that writes to the tab (title, favicon) and
 //   cannot put it back leaves a permanent mark on a browser the tool does not own. Both
@@ -83,15 +96,27 @@ absent('it never imports at runtime', /\bimport\s*\(/g);
 absent('it names no write verb', /method:\s*['"`](POST|PUT|PATCH|DELETE)/gi);
 absent('it builds no request body', /\bbody:\s*(JSON\.stringify|new\s+FormData|new\s+URLSearchParams)/g);
 
-console.log('\n— the notification API is absent, not disabled —');
+console.log('\n— the notification channel is held at the width it was granted —');
 
-absent('it never notifies', /Notification|showNotification/g);
-absent('it never registers a worker', /serviceWorker|pushManager|PushManager/g);
+// Reached through `window.` every time. A bare `Notification` would work just as well in
+// the page; the prefix is what makes every use of it greppable on one line, and this is
+// the check that keeps it that way.
+const bareNotif = CODE.match(/(?<!window\.)\bNotification\b/g) || [];
+check('Notification is only ever reached through window.', bareNotif.length === 0,
+  `${bareNotif.length} bare mention(s)`);
+check('exactly one notification is ever constructed',
+  (CODE.match(/new\s+window\.Notification\s*\(/g) || []).length === 1,
+  'a second construction is a second channel');
+check('permission is requested from exactly one place',
+  (CODE.match(/requestPermission/g) || []).length === 1,
+  'one switch, one prompt');
+absent('it never registers a worker or subscribes to push',
+  /serviceWorker|pushManager|PushManager|showNotification|getSubscription|vapid/gi);
 absent('it never touches the game\'s push preferences', /politiko_push_preferences|push\/(vapid|subscription)/g);
 absent('it never takes focus', /window\.focus\s*\(|\.blur\s*\(\)|alert\s*\(/g);
 absent('it never draws on a canvas', /getContext\s*\(|createElement\(\s*['"`]canvas|toDataURL|OffscreenCanvas/g);
 
-console.log('\n— the three tab-reaching channels are opt-in —');
+console.log('\n— the four tab-reaching channels are opt-in —');
 
 // The defaults live in one object so there is one place to read them and one place a
 // mistake could be made. PAGE is the only one that ships on.
@@ -103,22 +128,45 @@ if (defaults) {
   check('TITLE is off', /title:\s*false/.test(d), d.trim());
   check('ICON is off', /icon:\s*false/.test(d), d.trim());
   check('SOUND is off', /sound:\s*false/.test(d), d.trim());
+  check('NOTIFY is off', /notify:\s*false/.test(d), d.trim());
 }
 
 // Every channel that writes outside the panel is gated on its own switch at the point
 // it writes, not merely at the point it is offered.
 for (const [word, fn, flag] of [['title', 'titleRaise', 'ui.ch.title'],
   ['icon', 'iconRaise', 'ui.ch.icon'],
-  ['sound', 'soundPlay', 'ui.ch.sound']]) {
+  ['sound', 'soundPlay', 'ui.ch.sound'],
+  ['notify', 'notifyRaise', 'ui.ch.notify']]) {
   const body = CODE.slice(CODE.indexOf(`const ${fn} = `), CODE.indexOf(`const ${fn} = `) + 260);
   check(`${word} refuses to fire when its switch is off`,
     body.includes(`if (!${flag}`),
     `expected an early return on ${flag} inside ${fn}()`);
 }
 
+// NOTIFY carries two gates the other three do not need.
+const raise = CODE.slice(CODE.indexOf('const notifyRaise = '),
+  CODE.indexOf('const notifyRaise = ') + 700);
+check('notify refuses to fire when permission was never granted',
+  /Notification\.permission !== 'granted'\) return;/.test(raise),
+  'expected an early return unless the permission is granted');
+check('...and refuses while you are already looking at the page',
+  /if \(document\.hasFocus\(\)\) return;/.test(raise),
+  'a notification over a window you are looking at is noise — PAGE already said it');
+
+const arm = CODE.slice(CODE.indexOf('const notifyArm = '), CODE.indexOf('const notifyArm = ') + 500);
+check('permission is only ever asked for while it is still undecided',
+  /permission !== 'default'\) return false;/.test(arm),
+  're-asking after a denial is useless, and the grant is shared with the game\'s own push');
+check('...and only from the click that switches the channel on',
+  /if \(k === 'notify' && ui\.ch\.notify\) \{\s*notifyArm\(\)/.test(CODE),
+  'permission cannot be requested outside a user gesture');
+check('...and a refusal switches the channel back off',
+  /ui\.ch\.notify = false;[\s\S]{0,60}dataset\.on = '0';/.test(CODE),
+  'a lit switch that can never fire is a lie told by the panel');
+
 console.log('\n— every raise has a clear —');
 
-for (const fn of ['titleClear', 'iconClear']) {
+for (const fn of ['titleClear', 'iconClear', 'notifyClear']) {
   check(`${fn}() exists`, CODE.includes(`const ${fn} = `), `expected const ${fn} = …`);
 }
 check('switching TITLE off puts the tab title back',
@@ -127,12 +175,15 @@ check('switching TITLE off puts the tab title back',
 check('switching ICON off puts the favicon back',
   /if \(k === 'icon' && !ui\.ch\.icon\) iconClear\(\);/.test(CODE),
   'the channel switch must restore the favicon it replaced');
-check('the tick clears both when nothing is at its level',
-  /titleClear\(\);\s*iconClear\(\);/.test(CODE),
-  'expected titleClear() and iconClear() on the else branch of the tick');
-check('...and pagehide clears both, so no tab is left marked',
-  /pagehide[\s\S]{0,80}titleClear\(\);\s*iconClear\(\);/.test(CODE),
-  'expected a pagehide listener that clears the title and the favicon');
+check('switching NOTIFY off takes the notification back',
+  /if \(k === 'notify' && !ui\.ch\.notify\) notifyClear\(\);/.test(CODE),
+  'the channel switch must close what it already raised');
+check('the tick clears all three when nothing is at its level',
+  /titleClear\(\);\s*iconClear\(\);\s*notifyClear\(\);/.test(CODE),
+  'expected titleClear(), iconClear() and notifyClear() on the else branch of the tick');
+check('...and pagehide clears all three, so nothing is left behind',
+  /pagehide[\s\S]{0,110}titleClear\(\);\s*iconClear\(\);\s*notifyClear\(\);/.test(CODE),
+  'expected a pagehide listener that clears the title, the favicon and the notification');
 check('the original title is remembered before it is overwritten',
   /if \(baseTitle === null\) baseTitle = document\.title;/.test(CODE),
   'expected the base title to be captured on the first raise');
@@ -231,13 +282,20 @@ check('no game data is persisted',
 
 console.log('\n— the disclosure matches the build —');
 
-check('the header states the four channels',
-  /PAGE\s+\(default ON\)/.test(HEADER) && /TITLE \(default OFF\)/.test(HEADER)
-    && /ICON  \(default OFF\)/.test(HEADER) && /SOUND \(default OFF\)/.test(HEADER),
+check('the header states the five channels',
+  /PAGE\s+\(default ON\)/.test(HEADER) && /TITLE\s+\(default OFF\)/.test(HEADER)
+    && /ICON\s+\(default OFF\)/.test(HEADER) && /SOUND\s+\(default OFF\)/.test(HEADER)
+    && /NOTIFY \(default OFF\)/.test(HEADER),
   'clause 6: every channel has to be named, with its default');
-check('...and says there is no desktop notification',
-  /NO desktop\/OS notification/.test(HEADER),
-  'the one thing this tool deliberately does not do has to be stated');
+check('...and names the operator decision that allowed the notification',
+  /2026-09-11/.test(HEADER) && /01-rules-envelope\.md/.test(HEADER),
+  'a channel this narrow has to say what authorised it, and where the argument lives');
+check('...and says what it is still not',
+  /no service worker, no PushManager, no push subscription/.test(HEADER),
+  'the half of the notification API that would originate a request has to be named as refused');
+check('...and warns that the permission is the game\'s too',
+  /per ORIGIN/.test(HEADER),
+  'a Block answered here switches Politiko\'s own push off');
 check('...and states zero added requests',
   /ZERO additional requests to politiko\.io/.test(HEADER),
   'clause 6: the request budget has to be stated');

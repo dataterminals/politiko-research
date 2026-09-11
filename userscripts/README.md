@@ -1313,12 +1313,51 @@ It shows on every page by default — it is a notebook, not a home-page mirror, 
 useful open beside the corporation media tab while picking a document to spin. The **all
 pages** button narrows it to the home page and Actions → Opinion Polls.
 
+## It tells you when the cooldown runs out
+
+Your memo carries `cooldown_until`. The panel has always counted it down; since 0.7.0 it
+also says something when it reaches zero.
+
+| | reaches | default |
+|---|---|---|
+| `PAGE` | the `POLL` button goes amber and a line appears at the top of the panel | **on** |
+| `NOTIFY` | a desktop notification, **only** while you are looking at something else | off |
+
+Both switches sit at the foot of the panel, and they are there on an empty panel too, so
+you can arm the channel before your first poll rather than after it.
+
+The banner stands until you dismiss it with its `×` or run another poll; opening the panel
+takes the desktop notification back but leaves the banner, because seeing it and being done
+with it are different things. A deadline that had already passed when the page loaded never
+raises anything — arriving to something you can already see is not news.
+
+**Why this is allowed to reach you in another window.** `cooldown_until` is an absolute
+timestamp handed to you inside the memo from a poll *you* ran, while you were looking at the
+page. From that moment the deadline is fully known: there is nothing more the server could
+say about it and nothing this tool could learn by asking. The alert is a comparison against
+your own clock, and this file still originates zero requests.
+
+**`NOTIFY` is still the one to read about first.** A desktop notification is the case
+Politiko's scripting clause names as its own worked example; it ships here because the
+operator asked for it on 2026-09-11 with the ban risk priced, and
+[`docs/01-rules-envelope.md`](../docs/01-rules-envelope.md) carries that decision including
+the case against it. The same boundaries apply as in **Bar Watch** above — `window.Notification`
+only, no service worker or push subscription, no `window.focus()`, never while the page has
+focus, closed on four exits, and a permission that is **shared with Politiko's own push**,
+so a `Block` answered here switches the game's own notifications off too.
+
+Timing is honest rather than precise: the check runs on the panel's existing 15-second
+timer, and browsers throttle background timers to roughly once a minute anyway, so the alert
+can land up to a minute late. That is the browser's floor, not a choice.
+
 ## What it will not do
 
 Run a poll. A poll costs 5 energy plus $500 or $1,000 and sits behind a server cooldown,
 and spending that on your behalf is exactly what this repo does not do — `test-poll-watch`
 fails the build if anything in the file can originate a request, which is why its one
-repeating timer (ageing `3m ago` and the cooldown) is safe whatever its period.
+repeating timer (ageing `3m ago`, counting the cooldown down, and deciding whether the
+cooldown alert is due) is safe whatever its period. The alert says the door is open; walking
+through it is still yours.
 
 A memo is also a snapshot of the moment you bought it. Nothing refreshes, so a stale
 reading stays visibly stale rather than quietly pretending to be current.
@@ -1356,6 +1395,12 @@ none in the 10-second `/api/user/status` heartbeat, so there is no free signal t
 makes a background notifier an added request nobody initiated (clauses 1 and 5), about a
 page you are not viewing (clause 2), raising an alert in another window (clause 4). Three
 prohibitions, one feature, and the penalty is a ban on the only account you have.
+
+**This did not change on 2026-09-11**, when the operator lifted the clause-4 refusal for
+bar-watch and poll-watch. Those two alert on deadlines that were handed to them while the
+page was in front of you — the clause-4 argument was the only one in their way. A restock
+is not that: nobody has told you when it happens, and the only way to find out is to ask.
+Clauses 1, 2 and 5 are untouched and each of them is enough on its own.
 
 **The thing actually worth doing is not a script.** The game already ships a complete Web
 Push pipeline — service worker, VAPID keys, toggles in Settings — and its preference set is
@@ -1497,9 +1542,9 @@ An alert fires **on the crossing** and re-arms when the bar drops back below the
 bar that is already full when you load the game does not fire: arriving to something you can
 already see is not news.
 
-## The four channels
+## The five channels
 
-Only the first is on by default. The other three are one click each, in the panel.
+Only the first is on by default. The other four are one click each, in the panel.
 
 | | reaches | default |
 |---|---|---|
@@ -1507,17 +1552,48 @@ Only the first is on by default. The other three are one click each, in the pane
 | `TITLE` | prefixes the tab title, so it reads `[E] Politiko` from another tab | off |
 | `ICON` | swaps the favicon for a coloured dot | off |
 | `SOUND` | one short two-note tone, synthesised — no audio file is fetched | off |
+| `NOTIFY` | a desktop notification, **only** while you are looking at something else | off |
 
-**There is no desktop notification, and that is not a gap to be filled later.** It is the
-case [`docs/01-rules-envelope.md`](../docs/01-rules-envelope.md) names outright, and the
-`Notification` API does not appear in the file at all — not disabled, not behind a flag,
-absent. `tools/test-bar-passive.js` fails the build if it ever appears.
-
-The three that can be perceived from a tab you are not looking at ship off, behind a switch
+The four that can be perceived from a tab you are not looking at ship off, behind a switch
 each, because that is a decision to make deliberately rather than a default to inherit. The
 argument for them, and its weak point, is written up in the rules envelope. Every one of
-them puts the tab back exactly as it found it — when the alert clears, when you switch the
+them puts things back exactly as it found them — when the alert clears, when you switch the
 channel off, and on `pagehide`.
+
+## `NOTIFY` is the one to read about before you switch it on
+
+A desktop notification is the case Politiko's scripting clause names as **its own worked
+example**. This tool shipped without one for that reason, and it has one now because the
+operator asked for it on 2026-09-11 with the ban risk priced — not because the argument got
+better. [`docs/01-rules-envelope.md`](../docs/01-rules-envelope.md) carries that decision in
+full, including the case against it. Read it rather than this paragraph.
+
+What the channel actually is, and is not:
+
+- **`window.Notification` only** — the page-level constructor, which hands a string to the
+  OS and puts zero bytes on any wire. The *other* way to make a notification is a service
+  worker with a push subscription, and that is a registration request plus an endpoint the
+  game knows nothing about. `serviceWorker`, `pushManager` and `showNotification` stay
+  absent from every file in this repo, this one included.
+- **It cannot fire while you are looking at the game.** `document.hasFocus()` gates it: if
+  the page has focus, `PAGE` has already told you and a popup over a window you are staring
+  at is just noise.
+- **One at a time, and always retrievable.** It is closed when the alert clears, when you
+  switch the channel off, and on `pagehide`.
+- **No `window.focus()`.** Clicking the notification dismisses it; nothing pulls a window to
+  the front.
+
+**The permission is shared with the game's own push.** Politiko ships Web Push with toggles
+in Settings, and notification permission is per *origin* — so if you already allowed those,
+no new prompt appears. If a prompt does appear and you answer **Block**, that turns
+Politiko's own notifications off too, and only your browser's site settings can undo it. The
+switch therefore asks only while the permission is still undecided, and says so on the
+button before it does. A refusal switches the channel straight back off rather than leaving
+a lit button that can never fire.
+
+**What retires it:** a `bars_full` key in Politiko's own push preferences. The vocabulary is
+four keys today and none is a bar. If staff ship one, this channel comes out — you keep the
+alert and the account stops carrying the argument.
 
 ## The countdown can be wrong, and says so
 
@@ -2305,17 +2381,27 @@ only until someone adds it back:
   arrays, which is how the tool reads a GET's listing without reading a purchase's result
   object while never looking at the request.
 - `test-bar-passive` fences bar-watch, and is the first fence in the repo whose job is
-  not purely to assert absences. Three of that tool's four alert channels are off by
-  default, and two of them can be perceived from a tab you are not looking at — so the
-  fence pins the *defaults themselves* (`PAGE` on, `TITLE`/`ICON`/`SOUND` off), pins that
+  not purely to assert absences. Four of that tool's five alert channels are off by
+  default and can be perceived from a tab you are not looking at — so the fence pins the
+  *defaults themselves* (`PAGE` on, `TITLE`/`ICON`/`SOUND`/`NOTIFY` off), pins that
   each channel checks its own switch at the point it writes rather than only where it is
   offered, and pins that every raise has a matching clear on all three exits: the alert
   ending, the switch going off, and `pagehide`. A channel that can be raised and not
-  cleared leaves a permanent mark on a browser the tool does not own. `Notification`, the
-  service worker and the push manager stay absent outright, and so does any canvas. It
-  also pins the projection to the client's own `CustomRegenRate ?? BaseRegenRate` and
-  fails on a rate hardcoded from the wiki, because a countdown that disagrees with the
-  sidebar is worse than no countdown.
+  cleared leaves a permanent mark on a browser the tool does not own. It also pins the
+  projection to the client's own `CustomRegenRate ?? BaseRegenRate` and fails on a rate
+  hardcoded from the wiki, because a countdown that disagrees with the sidebar is worse
+  than no countdown. No canvas, either.
+
+  **Since 2026-09-11 its hardest job is a width rather than an absence.** `Notification`
+  used to be banned outright here; the operator lifted that for this tool and poll-watch,
+  narrowly, with the ban risk priced (see the rules envelope). So the fence now pins the
+  *shape*: reached through `window.` every time so every use greps in one line, exactly
+  one construction, exactly one permission prompt, that prompt only from the switch click
+  and only while the permission is still `default`, a refusal switching the channel back
+  off, and refusals to fire without the switch, without permission, or while
+  `document.hasFocus()`. `serviceWorker`, `pushManager`, `showNotification` and `vapid`
+  stay banned outright — the push half would be a request — and so does `window.focus`.
+  `test-poll-watch` carries the same block for the same reason.
 - `test-raid-passive` fences raid-watch, which reads a surface whose write endpoints
   surrender wars and impose flags. It fails on any mention of those paths, any non-GET
   verb, and any timer body that touches the network — the two ways to build a poll are

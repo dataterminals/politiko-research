@@ -183,16 +183,25 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   still reads through an open button. `test-placement.js` checks all three.
 - **An alert that leaves the page is a decision, not a feature.** In-page is free — a lit
   button, a banner, a row that changes colour — and every tool may do it. Anything a
-  player can perceive while looking at another tab (`document.title`, the favicon, sound)
-  ships **off, behind its own switch**, is disclosed by name and default in the header,
-  and needs a written operator decision in `docs/01-rules-envelope.md` before it is built;
-  `bar-watch` is the only carrier and the argument for it is recorded there. A desktop
-  notification is **not** on that spectrum: clause 4 names it, so the `Notification` API
-  stays absent from every file — not disabled, not flagged, absent, with a fence test
-  saying so. Before proposing any of this, check whether the game's own Web Push covers
-  it: the vocabulary is four keys (`jail_release`, `hospital_release`, `hospitalized`,
+  player can perceive while looking at another tab (`document.title`, the favicon, sound,
+  and since 2026-09-11 an OS notification) ships **off, behind its own switch**, is
+  disclosed by name and default in the header, and needs a written operator decision in
+  `docs/01-rules-envelope.md` before it is built. **There are exactly two carriers and
+  they are named there**: `bar-watch` (a bar reaching its level) and `poll-watch` (the
+  opinion-poll cooldown expiring). A desktop notification is the case clause 4 pictures,
+  so that decision was taken on the operator's explicit instruction with the ban risk
+  priced, **not** derived from the earlier title/favicon/sound one — do not extend it to a
+  third tool or a third event without going back for another. Everywhere else the
+  `Notification` API stays absent — not disabled, not flagged, absent, with a fence test
+  saying so — and `serviceWorker`, `pushManager` and `showNotification` stay absent
+  **everywhere, including the two carriers**, because a push subscription is a request.
+  Before proposing any of this, check whether the game's own Web Push covers it: the
+  vocabulary is four keys (`jail_release`, `hospital_release`, `hospitalized`,
   `travel_arrival`), and asking staff for a fifth is always cheaper than shipping a
-  channel. Whatever writes to the tab must put it back — when the alert clears, when the
-  switch goes off, and on `pagehide`.
+  channel — a `bars_full` key retires a channel we currently carry risk for. Permission is
+  per origin and shared with the game's own push, so a switch asks only when
+  `Notification.permission` is still `default`: a **Block** on our prompt turns off
+  Politiko's push too. Whatever writes to the tab must put it back — when the alert
+  clears, when the switch goes off, and on `pagehide`.
 - Windows box: `git commit -F <file>` rather than `-m` (PowerShell mangles quoted `-m`).
   `.gitattributes` handles the CRLF situation.

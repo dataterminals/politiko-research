@@ -10,6 +10,32 @@
 // So the fence is the strong form: nothing anywhere in the file may originate a
 // request, which makes the one repeating timer it owns safe whatever its period.
 //
+// SINCE 2026-09-11 this file is also one of exactly two in the repo allowed to raise a
+// desktop notification, on exactly one event: the `cooldown_until` in the operator's own
+// memo expiring. That is an operator decision taken with the ban risk priced, written up
+// in docs/01-rules-envelope.md, and it is narrow on purpose — so the job of the section
+// below is to hold it at that width rather than to assert an absence:
+//
+//   Only `window.Notification` — the page-level constructor, which sends nothing. The
+//   OTHER way to make a notification is a service worker with a push subscription, and
+//   that is a registration request plus an endpoint the game knows nothing about.
+//   `serviceWorker`, `pushManager`, `showNotification` stay banned outright.
+//
+//   It cannot fire while you are looking at the page (`document.hasFocus()`), it cannot
+//   fire with its switch off, and it cannot fire without permission. Each of those is
+//   checked at the point of writing, not merely where the switch is offered.
+//
+//   Every raise has a clear, on four exits: the panel being opened, a new memo landing,
+//   the switch going off, and `pagehide`. A notification that can be raised and not
+//   taken back outlives the page that made it.
+//
+//   Permission is asked for from the switch click and ONLY while it is still `default`.
+//   The grant is per origin and Politiko's own Web Push shares it, so asking again after
+//   a denial is both useless and a way to turn the game's own notifications off.
+//
+//   And still: no sound, no `document.title`, no favicon, no `window.focus()`. The
+//   decision was about one channel. It is not a licence for the other four.
+//
 // The behaviour half slices the derivation and export layers straight out of the
 // shipped script and drives them, so the tests cannot drift from what installs.
 // The properties that matter there are all about not inventing data:
@@ -66,7 +92,14 @@ absent('it never injects a fetching element', /new\s+Image\(|createElement\(\s*[
 absent('it names no write verb', /method:\s*['"`](POST|PUT|PATCH|DELETE)/gi);
 absent('it never presses the game\'s own buttons', /\.click\s*\(/g);
 absent('it never hard-navigates', /location\.(assign|replace|reload)\s*\(|location\.href\s*=/g);
-absent('it raises nothing from an unfocused tab', /new\s+Notification|Notification\.requestPermission|new\s+Audio/g);
+// The notification channel is allowed (see the head of this file); the four other ways
+// to reach a tab you are not looking at are not, and neither is the push half.
+absent('it never makes a sound', /new\s+Audio|AudioContext|createOscillator/g);
+absent('it never pokes the tab title', /document\.title\s*=/g);
+absent('it never swaps the favicon', /rel~?=|['"`]icon['"`]/g);
+absent('it never registers a worker or subscribes to push',
+  /serviceWorker|pushManager|PushManager|showNotification|getSubscription|vapid/gi);
+absent('it never takes focus', /window\.focus\s*\(|\.blur\s*\(\)|(?<![.\w])alert\s*\(/g);
 
 // Every quoted /api/ string in this file is something the tap COMPARES a path
 // against. None may sit where a URL argument goes.
@@ -91,6 +124,79 @@ check('every timer body is inert', timerBodies.every((b) => !NETWORKISH.test(b))
 check('there is exactly one repeating timer', [...CODE.matchAll(/setInterval\s*\(/g)].length === 1,
   `found ${[...CODE.matchAll(/setInterval\s*\(/g)].length}; a second one needs a reason written here`);
 
+console.log('\n— the one notification channel is held at its width —');
+
+// Reached through `window.` every time. A bare `Notification` would still work in the
+// page, but the prefix is what makes every use of it greppable in one line, and this
+// check is the thing that keeps it that way.
+const bareNotif = CODE.match(/(?<!window\.)\bNotification\b/g) || [];
+check('Notification is only ever reached through window.', bareNotif.length === 0,
+  `${bareNotif.length} bare mention(s)`);
+check('exactly one notification is ever constructed',
+  (CODE.match(/new\s+window\.Notification\s*\(/g) || []).length === 1,
+  `${(CODE.match(/new\s+window\.Notification\s*\(/g) || []).length}; a second one is a second channel`);
+check('permission is requested from exactly one place',
+  (CODE.match(/requestPermission/g) || []).length === 1,
+  'one switch, one prompt');
+
+const defaults = CODE.match(/const DEFAULT_CH = \{([^}]*)\}/);
+check('there is a single defaults object', !!defaults, 'expected `const DEFAULT_CH = { … }`');
+if (defaults) {
+  check('PAGE is on', /page:\s*true/.test(defaults[1]), defaults[1].trim());
+  check('NOTIFY is off', /notify:\s*false/.test(defaults[1]), defaults[1].trim());
+}
+
+const raise = CODE.slice(CODE.indexOf('const notifyRaise = '),
+  CODE.indexOf('const notifyRaise = ') + 700);
+check('it refuses to fire when its switch is off', raise.includes('if (!ui.ch.notify'),
+  'expected an early return on ui.ch.notify inside notifyRaise()');
+check('...when permission was never granted',
+  /Notification\.permission !== 'granted'\) return;/.test(raise),
+  'expected an early return unless the permission is granted');
+check('...and when you are already looking at the page',
+  /if \(document\.hasFocus\(\)\) return;/.test(raise),
+  'a notification over a window you are looking at is noise — PAGE already said it');
+
+const arm = CODE.slice(CODE.indexOf('const notifyArm = '), CODE.indexOf('const notifyArm = ') + 500);
+check('permission is only ever asked for while it is still undecided',
+  /permission !== 'default'\) return false;/.test(arm),
+  're-asking after a denial is useless, and the grant is shared with the game\'s own push');
+check('...and only from the click that switches the channel on',
+  /if \(k === 'notify' && ui\.ch\.notify\) \{\s*notifyArm\(\)/.test(CODE),
+  'permission cannot be requested outside a user gesture');
+check('...and a refusal switches the channel back off',
+  /ui\.ch\.notify = false;[\s\S]{0,60}dataset\.on = '0';/.test(CODE),
+  'a lit switch that can never fire is a lie told by the panel');
+
+check('notifyClear() exists', CODE.includes('const notifyClear = '), 'expected const notifyClear = …');
+check('switching NOTIFY off takes it back',
+  /if \(k === 'notify' && !ui\.ch\.notify\) notifyClear\(\);/.test(CODE),
+  'the channel switch must close what it already raised');
+check('opening the panel takes it back',
+  /if \(ui\.open\) notifyClear\(\);/.test(CODE),
+  'you have seen it; the OS copy has no further job');
+check('a new deadline takes it back',
+  /cool\.ready = false;\s*notifyClear\(\);/.test(CODE),
+  'a fresh memo retires whatever the last one was still saying');
+check('...and pagehide takes it back, so none outlives the page',
+  /pagehide['"`],\s*notifyClear\)/.test(CODE),
+  'expected a pagehide listener that closes the notification');
+
+console.log('\n— the alert is a comparison, not a question —');
+
+check('the deadline is the one that arrived inside the memo',
+  /const latestCooldown = /.test(CODE) && /Date\.parse\(p\.cooldown\)/.test(CODE),
+  'cooldown_until is absolute and already in hand; nothing needs to be asked');
+check('only a deadline still in the future can be crossed',
+  /cool\.armed = !!iso && Date\.parse\(iso\) > Date\.now\(\);/.test(CODE),
+  'arriving to a cooldown that expired hours ago is not news');
+check('the alert state is evaluated whether or not the tab is visible',
+  /setInterval\(\(\) => \{\s*tick\(\);/.test(CODE),
+  'gating this on visibility switches the channel off exactly where it is wanted');
+check('...while the repaint stays gated on it',
+  /if \(!document\.hidden && ui\.open && onStage\(\)/.test(CODE),
+  'a hidden tab must not be repainted');
+
 console.log('\n— it reads only its own storage —');
 
 const lsSites = [...CODE.matchAll(/localStorage\.(getItem|setItem|removeItem|clear)\b/g)].map((m) => m[1]);
@@ -109,6 +215,19 @@ console.log('\n— it stays auditable —');
 
 check('@grant none', /@grant\s+none/.test(SRC), 'any other grant sandboxes window and blinds the tap');
 check('the disclosure block names Requests: ZERO', /Requests:\s*ZERO/.test(SRC), 'clause 6');
+const HEADER = SRC.slice(0, SRC.indexOf('(() => {'));
+check('the header states both channels, with their defaults',
+  /PAGE\s+\(default ON\)/.test(HEADER) && /NOTIFY \(default OFF\)/.test(HEADER),
+  'clause 6: every channel has to be named, with its default');
+check('...and says where the deadline came from',
+  /cooldown_until` is an absolute timestamp/.test(HEADER),
+  'the rules argument for this channel IS that sentence; it has to be in the file');
+check('...and names the operator decision that allowed it',
+  /2026-09-11/.test(HEADER) && /01-rules-envelope\.md/.test(HEADER),
+  'a channel this narrow has to say what authorised it');
+check('...and warns that the permission is the game\'s too',
+  /per ORIGIN/.test(HEADER),
+  'a Block answered here switches Politiko\'s own push off');
 check('PANEL KIT v3 is present', /PANEL KIT v3 — shared verbatim block/.test(SRC), 'panels must be movable AND resizable');
 check('FAB KIT v9 is present', /FAB KIT v9 — shared verbatim block/.test(SRC), 'the button belongs to the home row');
 check('fit() runs after render', /render\(\);\s*\n\s*drag\.fit\(\)/.test(CODE), 'an off-screen handle is unrecoverable');
@@ -139,6 +258,9 @@ const store = new Map();
 const stub = `
   const K = { data: 'pkpl:data', ui: 'pkpl:ui' };
   const log = () => {};
+  // addPoll re-arms the cooldown alert, which lives outside this slice. The fence above
+  // is what holds tick() honest; here it only has to exist.
+  const tick = () => {};
   const readJSON = (k, fallback) => (STORE.has(k) ? JSON.parse(STORE.get(k)) : fallback);
   const writeJSON = (k, v) => STORE.set(k, JSON.stringify(v));
 `;

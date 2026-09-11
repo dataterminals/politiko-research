@@ -818,6 +818,49 @@ window.HARNESS_FIXTURES = {
         },
       },
       {
+        // The fast one. Same transitions as the 20s memo below — armed, fires, clears,
+        // acknowledged — at about a tenth of the wall clock, which is what makes the
+        // reload-and-re-arm loop cheap enough to run over and over. Use this one while
+        // working; use the 20s one for the pass at the end, because a countdown only
+        // ever tested at three seconds can hide an assumption about tick granularity or
+        // about surviving more than one repaint, and the unfocused-tab path is exactly
+        // where that would bite.
+        label: 'focus group — cooldown expires in 3s (fast alert)',
+        path: '/api/actions/poll',
+        variant: 'expiring-fast',
+        body: {
+          issue: 'Pollution', method: 'focus_group', mood: 'left-leaning',
+          far_left: 14, center_left: 18, slight_left: 15, neutral: 16,
+          slight_right: 14, center_right: 13, far_right: 10,
+          volatility: 'low', salience: 'warm', popularity: 55,
+          best_target: 'Neutral', persuasion_angle: 'Jobs first, then air.',
+          get cooldown_until() { return new Date(Date.now() + 3_000).toISOString(); },
+        },
+      },
+      {
+        // The two 11-minute memos above are the real cooldown's order of magnitude and
+        // useless for watching the alert land. This one is a deadline you can sit and
+        // wait out: fire it, look away, and the POLL button should go amber and the
+        // banner appear within one 15s tick. With NOTIFY switched on and the window
+        // unfocused, the desktop notification lands with it.
+        label: 'focus group — cooldown expires in 20s (fires the alert)',
+        path: '/api/actions/poll',
+        variant: 'expiring',
+        body: {
+          issue: 'Healthcare', method: 'focus_group', mood: 'left-leaning',
+          far_left: 12, center_left: 19, slight_left: 16, neutral: 17,
+          slight_right: 14, center_right: 13, far_right: 9,
+          volatility: 'low', salience: 'hot', popularity: 63,
+          best_target: 'Neutral', persuasion_angle: 'Cost, not coverage.',
+          // A GETTER, not a value. Every other deadline in this file is computed when
+          // fixtures.js loads, which is fine at eleven minutes and useless at twenty
+          // seconds — the bench would have spent the whole window before you clicked.
+          // The cage stringifies the body when the call is answered, so this one is
+          // twenty seconds from the CLICK.
+          get cooldown_until() { return new Date(Date.now() + 20_000).toISOString(); },
+        },
+      },
+      {
         label: 'street poll — Taxes (coarse, no lean figure)',
         path: '/api/actions/poll',
         variant: 'coarse',

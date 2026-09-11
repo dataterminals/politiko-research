@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — Poll Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.6.0
-// @description  Keeps every opinion-poll memo you run — timestamped in real and game time, with the bloc spread, the per-issue trend since your last poll, and TSV/JSON export. Passive: it reads the memo the game already handed you and originates no requests.
+// @version      0.7.0
+// @description  Keeps every opinion-poll memo you run — timestamped in real and game time, with the bloc spread, the per-issue trend since your last poll, and TSV/JSON export. Tells you when the poll cooldown in your own memo runs out, in the page by default and optionally as a desktop notification. Passive: it reads the memo the game already handed you and originates no requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -47,8 +47,45 @@
  *             `pkpw:ui` — that key is still people-watch's live panel state. The
  *             reasoning is at the K declaration
  *
- *   Alerts:   none. No notifications, no sound, nothing raised from an unfocused
- *             tab; the panel only redraws while the tab is visible
+ *   Alerts:   TWO channels, on one event: the server cooldown reported by your own
+ *             most recent memo running out. Only the first is on by default.
+ *
+ *               PAGE   (default ON)   the POLL button goes hot and a line appears at
+ *                                     the top of the panel. Opening the panel is what
+ *                                     acknowledges it. Nothing leaves the page.
+ *               NOTIFY (default OFF)  an OS desktop notification, via window.Notification
+ *                                     — the page-level constructor, which puts zero
+ *                                     bytes on any wire. Fires ONLY while this page does
+ *                                     not have focus (document.hasFocus() is false).
+ *                                     Closed when you open the panel, when a new memo
+ *                                     lands, when the channel is switched off, and on
+ *                                     pagehide.
+ *
+ *             WHERE THE DEADLINE COMES FROM, because it is the whole rules argument.
+ *             `cooldown_until` is an absolute timestamp, handed to you inside the memo
+ *             returned by a poll YOU ran and paid for, while you were looking at the
+ *             page. From that moment the deadline is fully known: there is nothing more
+ *             the server could say about it and nothing this tool could learn by asking.
+ *             The alert is a comparison against your own clock. Nothing is extracted
+ *             from an unfocused page, because nothing arrives on one — this file
+ *             originates no requests at all, which tools/test-poll-watch.js pins.
+ *
+ *             NOTIFY still needed a decision of its own, and it got one: a desktop
+ *             notification is the case Politiko's scripting clause names as its own
+ *             worked example, so the argument above being coherent does not settle it.
+ *             It ships because the operator asked for it on 2026-09-11 with the ban risk
+ *             priced. docs/01-rules-envelope.md has that decision in full, including the
+ *             case against it, and the condition that retires it: a cooldown key in
+ *             Politiko's own push preferences, which is cheaper than this and would take
+ *             the channel back out.
+ *
+ *             What no switch here turns on: no service worker, no PushManager, no push
+ *             subscription, no sound, no tab-title or favicon poke, and no
+ *             window.focus(). The notification is dismissible furniture; it never pulls
+ *             a window to the front. Permission is per ORIGIN and shared with Politiko's
+ *             own Web Push, so the switch asks only while the permission is still
+ *             "default" — answering Block would switch the game's own notifications off
+ *             too, and only browser site-settings can undo that.
  *
  *   Clipboard: written ONLY when you click "copy tsv" or "copy json"
  *
@@ -224,9 +261,16 @@
     // everywhere defaults ON: this one is a notebook, not a home-page mirror — you want
     // it open beside the media tab while picking a document, and beside activism while
     // picking an issue. The pin narrows it to the two pages it is *about*.
-    { open: true, view: 'latest', everywhere: true, x: null, y: null, fab: null, size: undefined, issue: null },
+    { open: true, view: 'latest', everywhere: true, x: null, y: null, fab: null, size: undefined, issue: null, ch: {} },
     readJSON(K.ui, {}),
   );
+
+  // The two alert channels, in one object so there is one place to read the defaults
+  // and one place a mistake could be made. PAGE never leaves the page and is on. NOTIFY
+  // reaches you in another window and is off until you say otherwise — see the header,
+  // and docs/01-rules-envelope.md for why that one took an operator decision.
+  const DEFAULT_CH = { page: true, notify: false };
+  ui.ch = Object.assign({}, DEFAULT_CH, ui.ch);
 
   const save = () => writeJSON(K.data, data);
   const saveUI = () => writeJSON(K.ui, ui);
@@ -336,6 +380,9 @@
     if (data.polls.length > CAP) data.polls.splice(0, data.polls.length - CAP);
     ui.issue = row.issue; // the issue you just polled is the one you want to look at
     save(); saveUI();
+    // A fresh memo carries a fresh deadline, which re-arms the alert and retires
+    // whatever the last one was still saying.
+    tick();
     log('memo filed', row.issue, row.method, 'net', net(row).toFixed(1));
   };
 
@@ -626,6 +673,9 @@
        it, and the corner is nobody's now. Drag it anywhere; it remembers, and
        double-clicking it gives the slot back. */
     .pkpw-fab { --pk-slot: 13; z-index: 2147482000; }
+    /* Hot: the cooldown from your last memo has run out since you looked. The kit owns
+       the FILL, so an open panel still reads as open underneath this. */
+    .pkpw-fab[data-hot="1"] { border-color: #fbbf24; color: #fbbf24; }
     .pkpw-panel { position: fixed; left: 12px; top: 96px; z-index: 2147482000;
       width: min(360px, calc(100vw - 24px)); max-height: min(78vh, 780px);
       display: flex; flex-direction: column;
@@ -673,6 +723,12 @@
       color: #a1a1aa; font-size: 11px; line-height: 1.5; }
     .pkpw-spark { width: 100%; height: 34px; display: block; margin: 4px 0 2px; }
     .pkpw-tools { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+    .pkpw-hit { margin: 0 0 8px; padding: 4px 6px;
+      border: 1px solid #fbbf24; border-radius: 3px;
+      background: rgba(251,191,36,.09); color: #fcd34d;
+      font-size: 10.5px; letter-spacing: .04em;
+      display: flex; align-items: center; gap: 6px; }
+    .pkpw-hit span { flex: 1 1 auto; }
   `;
 
   const el = (tag, cls, text) => {
@@ -706,6 +762,147 @@
     if (left <= 0) return null;
     const s = Math.round(left / 1000);
     return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  };
+
+  // ---------------------------------------------------------------------------
+  // The cooldown alert
+  //
+  // One event, on one number: the deadline inside your own most recent memo passing.
+  // `cooldown_until` is absolute and arrived with that memo while you were looking at
+  // the page, so everything below is a comparison against your own clock — no request,
+  // and nothing pulled off a page nobody is viewing. The header states the rules
+  // position; docs/01-rules-envelope.md carries the NOTIFY decision and the case
+  // against it.
+  // ---------------------------------------------------------------------------
+
+  /** the newest cooldown deadline on file, as the ISO string it arrived as, or null */
+  const latestCooldown = () => {
+    let best = null, bestT = -Infinity;
+    for (const p of data.polls) {
+      if (!p.cooldown) continue;
+      const t = Date.parse(p.cooldown);
+      if (Number.isFinite(t) && t > bestT) { best = p.cooldown; bestT = t; }
+    }
+    return best;
+  };
+
+  // Runtime only, and deliberately not persisted. A deadline that had already passed
+  // when this script loaded is not news — arriving to something you can already see
+  // never raises anything — so only a crossing observed while running counts. `armed`
+  // is what encodes that: it is set only when the deadline is still in the future.
+  const cool = { seen: undefined, armed: false, ready: false };
+
+  // `window.Notification` and nothing else: the page-level constructor, which hands a
+  // string to the OS and puts zero bytes on any wire. The other way to make a
+  // notification — a service worker with a push subscription — is a registration
+  // request and an endpoint the game knows nothing about, so `serviceWorker`,
+  // `pushManager` and `showNotification` do not appear in this file, and
+  // tools/test-poll-watch.js fails the build if they do.
+  const notifyOK = () => typeof window.Notification === 'function';
+
+  let note = null;   // the one live notification, held so it can be taken back
+  const notifyClear = () => {
+    if (!note) return;
+    try { note.close(); } catch (e) { log('close failed', e); }
+    note = null;
+  };
+
+  // Asked for on the click that switches the channel on, never at load — and only while
+  // the permission is still undecided. Permission is per ORIGIN and Politiko's own Web
+  // Push shares it, so a Block answered here would silence the game's notifications too.
+  const notifyArm = async () => {
+    if (!notifyOK()) return false;
+    if (window.Notification.permission === 'granted') return true;
+    if (window.Notification.permission !== 'default') return false;
+    try { return (await window.Notification.requestPermission()) === 'granted'; }
+    catch (e) { log('permission request failed', e); return false; }
+  };
+
+  const notifyRaise = () => {
+    if (!ui.ch.notify || !notifyOK()) return;
+    if (window.Notification.permission !== 'granted') return;
+    // If this page has focus, the lit button has already said it. A desktop
+    // notification thrown over a window you are looking at is noise.
+    if (document.hasFocus()) return;
+    notifyClear();
+    try {
+      note = new window.Notification('Politiko — poll cooldown up', {
+        body: 'The cooldown from your last opinion poll has run out. Whether to spend another 5 energy is yours.',
+        tag: 'pk-poll-watch',   // one at a time: a second replaces the first
+      });
+      note.onclick = () => notifyClear();   // dismiss only — no window.focus(), on purpose
+    } catch (e) { log('notification failed', e); note = null; }
+  };
+
+  // The two channel switches. They sit at the foot of the body rather than in the
+  // header, because the header is the drag handle and a row of controls in it is a row
+  // of places a drag does not start — and they render on an EMPTY panel too, so the
+  // channel can be armed before the first poll rather than after it.
+  const CHANNELS = [
+    ['page', 'PAGE', 'Light the POLL button and show a line here when the cooldown runs out. Never leaves the page.'],
+    ['notify', 'NOTIFY', 'Raise a desktop notification when the cooldown runs out, but only while you are '
+      + 'looking at something else. Needs your browser\'s permission for politiko.io — which the game\'s own '
+      + 'push notifications share, so answering Block would switch those off too.'],
+  ];
+
+  const channelRow = () => {
+    const row = el('div', 'pkpw-tools');
+    for (const [k, word, why] of CHANNELS) {
+      const b = el('button', 'pkpw-btn', word);
+      b.dataset.on = ui.ch[k] ? '1' : '0';
+      b.title = why + (k === 'page' ? '' : ' Off by default — see the header of this file.');
+      b.addEventListener('click', () => {
+        ui.ch[k] = !ui.ch[k];
+        b.dataset.on = ui.ch[k] ? '1' : '0';
+        // Switching a channel off has to undo whatever it already did.
+        if (k === 'notify' && !ui.ch.notify) notifyClear();
+        // …and switching it on is the gesture: permission can only be asked for from
+        // one, and a switch left lit on a refusal silently never fires.
+        if (k === 'notify' && ui.ch.notify) {
+          notifyArm().then((ok) => {
+            if (ok) return;
+            ui.ch.notify = false;
+            b.dataset.on = '0';
+            saveUI();
+            log('notifications not permitted for this origin — channel switched back off');
+          });
+        }
+        saveUI();
+        tick();
+        scheduleRender();
+      });
+      row.append(b);
+    }
+    return row;
+  };
+
+  /** you have seen it: take the notification back and stop saying it */
+  const dismiss = () => {
+    cool.ready = false;
+    notifyClear();
+    if (fab) fab.dataset.hot = '0';
+    scheduleRender();
+  };
+
+  // Evaluated on every interval whether or not the tab is visible — that is the whole
+  // point of the channel — and it touches nothing but the clock and the DOM this tool
+  // owns. Running another poll is still yours: this says the door is open, never walks
+  // through it.
+  const tick = () => {
+    const iso = latestCooldown();
+    if (iso !== cool.seen) {
+      // a new memo landed, or this is the first look at the store
+      cool.seen = iso;
+      cool.armed = !!iso && Date.parse(iso) > Date.now();
+      cool.ready = false;
+      notifyClear();
+    }
+    if (cool.armed && Date.parse(cool.seen) <= Date.now()) {
+      cool.armed = false;
+      cool.ready = true;
+      notifyRaise();
+    }
+    if (fab) fab.dataset.hot = (ui.ch.page && cool.ready) ? '1' : '0';
   };
 
   /** the seven-bucket (or three-bloc) stacked bar, built from numbers only */
@@ -993,6 +1190,18 @@
     if (!body || document.hidden || !ui.open) return;
     body.textContent = '';
 
+    // The banner, built and thrown away rather than emptied, so a stale one can never
+    // sit in an unread panel. It stands until you dismiss it or run another poll.
+    if (ui.ch.page && cool.ready) {
+      const line = el('div', 'pkpw-hit');
+      line.append(el('span', '', 'Cooldown up — you can run another poll.'));
+      const x = el('button', 'pkpw-btn', '×');
+      x.title = 'Dismiss. It comes back the next time a cooldown runs out.';
+      x.addEventListener('click', dismiss);
+      line.append(x);
+      body.append(line);
+    }
+
     if (!data.polls.length) {
       body.append(el('p', 'pkpw-dim',
         'No memos yet. Run a poll from Actions → Opinion Polls and this catches the reply as it lands — '
@@ -1017,6 +1226,8 @@
       tools.append(clear);
     }
     body.append(tools);
+
+    body.append(channelRow());
   };
 
   let renderTimer = null;
@@ -1282,7 +1493,11 @@
     fab.title = 'Politiko Poll Watch (passive) — drag to move, double-click to put it back';
     fab.addEventListener('click', () => {
       if (fabDrag.dragged()) return; // that gesture was a drag, not a click
-      ui.open = !ui.open; saveUI(); sync();
+      ui.open = !ui.open; saveUI();
+      // Opening it means you have seen it: take the desktop notification back. The
+      // in-page banner stands until you dismiss it or run another poll.
+      if (ui.open) notifyClear();
+      sync();
     });
     root.append(fab);
 
@@ -1347,14 +1562,32 @@
   }
   window.addEventListener('popstate', checkRoute);
 
-  // "3m ago" and the cooldown both age; nothing else needs a clock, and this one
-  // touches only text. Visible tab only, and never while you are reading a row.
+  // Still one timer. It does two jobs now, and they have different gates.
+  //
+  // The ALERT is evaluated every time, visible tab or not. A cooldown running out while
+  // you are looking at another window is the only case the NOTIFY channel exists for, so
+  // gating this on visibility would switch the feature off exactly where it is wanted.
+  // It reaches nothing but the clock and this tool's own DOM.
+  //
+  // The REPAINT is gated as it always was: "3m ago" and the countdown both age, but
+  // nothing needs redrawing behind a hidden tab or under your pointer.
+  //
+  // 15s is not a precision claim. Browsers throttle timers in a background tab to about
+  // once a minute once it has been hidden a while, so a shorter period would buy nothing
+  // in the one case that matters — the alert can land up to a minute late, and that is
+  // the browser's floor rather than this file's choice.
   setInterval(() => {
+    tick();
     if (!document.hidden && ui.open && onStage() && !panel?.matches(':hover')) render();
   }, 15_000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleRender(); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { tick(); scheduleRender(); }
+  });
 
-  const boot = () => { mount(); checkRoute(); log('ready', `${data.polls.length} memo(s) on file`); };
+  // Never leave a notification outliving the page that raised it.
+  window.addEventListener('pagehide', notifyClear);
+
+  const boot = () => { mount(); tick(); checkRoute(); log('ready', `${data.polls.length} memo(s) on file`); };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot, { once: true });
   } else {

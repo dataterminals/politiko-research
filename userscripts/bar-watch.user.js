@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — Bar Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.3.0
-// @description  Time-to-full for Energy, Juice and HP — the one thing the game's own bars never say. Reads the attribute payload the client already fetched and projects it forward with the client's own arithmetic; adds zero requests. Alerts when a bar reaches a level you set, in the page by default, and optionally in the tab title, the favicon and a tone.
+// @version      0.4.0
+// @description  Time-to-full for Energy, Juice and HP — the one thing the game's own bars never say. Reads the attribute payload the client already fetched and projects it forward with the client's own arithmetic; adds zero requests. Alerts when a bar reaches a level you set, in the page by default, and optionally in the tab title, the favicon, a tone, or a desktop notification.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -55,36 +55,57 @@
  *             data is persisted: every number in the panel comes from the payload
  *             currently in memory and is gone on reload.
  *
- *   Alerts:   FOUR channels, and only the first is on by default.
+ *   Alerts:   FIVE channels, and only the first is on by default.
  *
- *               PAGE  (default ON)   the row lights up, the BARS button goes hot, and a
- *                                    line appears at the top of the panel. Nothing
- *                                    leaves the page you are looking at.
- *               TITLE (default OFF)  prefixes document.title, so the tab strip reads
- *                                    "[E] Politiko" while you are on another tab.
- *               ICON  (default OFF)  swaps the favicon for a coloured dot. Restored the
- *                                    moment the alert clears or the channel is switched
- *                                    off. Drawn as an inline SVG data URI — no canvas is
- *                                    used anywhere in this file, deliberately; see the
- *                                    note on X-CT-Canvas in docs/01-rules-envelope.md.
- *               SOUND (default OFF)  one short two-note tone, synthesised with WebAudio.
- *                                    No audio file is fetched from anywhere.
+ *               PAGE   (default ON)   the row lights up, the BARS button goes hot, and a
+ *                                     line appears at the top of the panel. Nothing
+ *                                     leaves the page you are looking at.
+ *               TITLE  (default OFF)  prefixes document.title, so the tab strip reads
+ *                                     "[E] Politiko" while you are on another tab.
+ *               ICON   (default OFF)  swaps the favicon for a coloured dot. Restored the
+ *                                     moment the alert clears or the channel is switched
+ *                                     off. Drawn as an inline SVG data URI — no canvas is
+ *                                     used anywhere in this file, deliberately; see the
+ *                                     note on X-CT-Canvas in docs/01-rules-envelope.md.
+ *               SOUND  (default OFF)  one short two-note tone, synthesised with WebAudio.
+ *                                     No audio file is fetched from anywhere.
+ *               NOTIFY (default OFF)  an OS desktop notification, via window.Notification
+ *                                     — the page-level constructor, which puts zero bytes
+ *                                     on any wire. Fires ONLY when this page does not
+ *                                     have focus (document.hasFocus() is false): if you
+ *                                     are looking at the game, PAGE has already told you.
+ *                                     Closed when the alert clears, when the channel is
+ *                                     switched off, and on pagehide.
  *
- *             TITLE, ICON and SOUND can be perceived while this tab is not the one you
- *             are looking at, which is the reason they ship off and behind a switch each
- *             rather than as a default. The rules position on them is argued in full in
+ *             The last four can be perceived while this tab is not the one you are
+ *             looking at, which is why they ship off and behind a switch each rather than
+ *             as a default. The rules position is argued in full in
  *             docs/01-rules-envelope.md — briefly: this tool extracts nothing from an
  *             unfocused page, because there is nothing to extract. The client's own
  *             polling stops when the tab loses focus (measured), and the projection runs
  *             on a payload captured while you were looking at the page. What crosses the
- *             tab boundary is arithmetic, not data. That is a real distinction and not a
- *             comfortable one to lean on, so it was an explicit operator decision and it
- *             is written down as one.
+ *             tab boundary is arithmetic, not data.
  *
- *             There is deliberately NO desktop/OS notification, and adding one is not a
- *             gap to be filled later. That is the case docs/01-rules-envelope.md names
- *             outright, and the Notification API does not appear in this file at all.
- *             tools/test-bar-passive.js fails the build if it ever does.
+ *             NOTIFY is on a different footing from the other three and the difference is
+ *             not hidden here. A desktop notification is the case the scripting clause
+ *             names as its own worked example, so the argument above being coherent does
+ *             not make it safe — a moderator would be entitled to read the clause the
+ *             other way. It ships because the operator asked for it with the ban risk
+ *             priced, on 2026-09-11, and that decision is written up in full — including
+ *             the case against it — in docs/01-rules-envelope.md. If Politiko ever adds a
+ *             bars_full key to its own push preferences, this channel comes out.
+ *
+ *             What NOTIFY is NOT, and what no switch in this file turns on:
+ *             no service worker, no PushManager, no push subscription, no window.focus()
+ *             — nothing here registers anything, subscribes to anything, or pulls a
+ *             window to the front. tools/test-bar-passive.js fails the build if any of
+ *             that appears, and pins the shape of what does.
+ *
+ *             Notification permission is per ORIGIN and is shared with Politiko's own Web
+ *             Push. So this switch asks for it only while the permission is still
+ *             "default", and says so on the button first: answering Block would turn off
+ *             the game's own notifications too, and only browser site-settings can undo
+ *             that.
  *
  *   Clipboard: never written.
  *
@@ -912,7 +933,7 @@
   //    After that a bar has to cross its level to fire again, and dropping back below
   //    is what re-arms it.
   // ---------------------------------------------------------------------------
-  const DEFAULT_CH = { page: true, title: false, icon: false, sound: false };
+  const DEFAULT_CH = { page: true, title: false, icon: false, sound: false, notify: false };
 
   const ui = Object.assign(
     { open: false, targets: {}, ch: {} },
@@ -949,7 +970,7 @@
   const effectsFor = (name) => state.effects.filter((e) => e.bars.includes(name));
 
   // ---------------------------------------------------------------------------
-  // 6. The four alert channels.
+  // 6. The five alert channels.
   //
   //    Each one owns exactly two functions — raise and clear — and every clear is
   //    idempotent, because they are called from the tick, from the switches, and from
@@ -1049,6 +1070,59 @@
         osc.stop(t0 + 0.14);
       }
     } catch (e) { log('tone failed', e); }
+  };
+
+  // --- NOTIFY ----------------------------------------------------------------
+  // `window.Notification` and nothing else. That constructor is page-level: it hands a
+  // string to the OS and puts zero bytes on any wire. What is NOT here, and is not an
+  // omission to be filled in later, is the other way to make a notification — a service
+  // worker with a push subscription, which is a registration request and an endpoint the
+  // game knows nothing about. `serviceWorker`, `pushManager` and `showNotification` do
+  // not appear in this file, and the fence fails the build if they do.
+  //
+  // This channel is the one thing here that needed an operator decision of its own
+  // rather than inheriting the 2026-08-27 one, because it is the case clause 4 pictures.
+  // docs/01-rules-envelope.md carries that decision, the argument, and the argument
+  // against.
+  const notifyOK = () => typeof window.Notification === 'function';
+
+  let note = null;   // the one live notification, held so it can be taken back
+  const notifyClear = () => {
+    if (!note) return;
+    try { note.close(); } catch (e) { log('close failed', e); }
+    note = null;
+  };
+
+  // Asked for on the click that switches the channel on, never at load — and only while
+  // the permission is still undecided. Permission is per ORIGIN and Politiko's own Web
+  // Push shares it, so a Block answered here would silence the game's notifications too.
+  // If it has already been answered, this returns what it was answered with rather than
+  // asking a second time.
+  const notifyArm = async () => {
+    if (!notifyOK()) return false;
+    if (window.Notification.permission === 'granted') return true;
+    if (window.Notification.permission !== 'default') return false;
+    try { return (await window.Notification.requestPermission()) === 'granted'; }
+    catch (e) { log('permission request failed', e); return false; }
+  };
+
+  const notifyRaise = (hits) => {
+    if (!ui.ch.notify || !notifyOK()) return;
+    if (window.Notification.permission !== 'granted') return;
+    // If this page has focus, PAGE has already said it. A desktop notification thrown
+    // over a window you are looking at is noise, and noise is how a channel like this
+    // one ends up switched off for the one time it mattered.
+    if (document.hasFocus()) return;
+    notifyClear();
+    try {
+      const names = hits.map((n) => LABEL[n] ?? n);
+      note = new window.Notification('Politiko — bar ready', {
+        body: `${names.join(' · ')} ${names.length > 1 ? 'are' : 'is'} at the level you set.`,
+        tag: 'pk-bar-watch',      // one at a time: a second replaces the first
+        silent: !!ui.ch.sound,    // SOUND is its own switch; don't make the noise twice
+      });
+      note.onclick = () => notifyClear();   // dismiss only — no window.focus(), on purpose
+    } catch (e) { log('notification failed', e); note = null; }
   };
 
   // ---------------------------------------------------------------------------
@@ -1151,6 +1225,9 @@
       ['title', 'TITLE', 'Prefix the browser tab title, so it reads from another tab.'],
       ['icon', 'ICON', 'Swap the favicon for a coloured dot while a bar is at its level.'],
       ['sound', 'SOUND', 'Play a short two-note tone once, when a bar reaches its level.'],
+      ['notify', 'NOTIFY', 'Raise a desktop notification, but only while you are looking at '
+        + 'something else. Needs your browser\'s permission for politiko.io — which the game\'s '
+        + 'own push notifications share, so answering Block would switch those off too.'],
     ];
     for (const [k, word, why] of CHANNELS) {
       const b = el('button', 'pkbw-btn', word);
@@ -1162,7 +1239,19 @@
         // Switching a channel off has to undo whatever it already did to the tab.
         if (k === 'title' && !ui.ch.title) titleClear();
         if (k === 'icon' && !ui.ch.icon) iconClear();
+        if (k === 'notify' && !ui.ch.notify) notifyClear();
         if (k === 'sound' && ui.ch.sound) soundArm();   // this click IS the gesture
+        // …and so is this one: permission can only be asked for from a gesture, and a
+        // switch left lit on a refusal is a switch that silently never fires.
+        if (k === 'notify' && ui.ch.notify) {
+          notifyArm().then((ok) => {
+            if (ok) return;
+            ui.ch.notify = false;
+            b.dataset.on = '0';
+            saveUI();
+            log('notifications not permitted for this origin — channel switched back off');
+          });
+        }
         saveUI();
         tick();
       });
@@ -1284,8 +1373,9 @@
     } else {
       titleClear();
       iconClear();
+      notifyClear();
     }
-    if (fresh) soundPlay();
+    if (fresh) { soundPlay(); notifyRaise(hits); }
 
     if (fab) fab.dataset.hot = hits.length ? '1' : '0';
 
@@ -1390,8 +1480,9 @@
     // difference between the TITLE channel working and not.
     document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(); });
 
-    // Never leave a mark on a tab we are done with.
-    window.addEventListener('pagehide', () => { titleClear(); iconClear(); });
+    // Never leave a mark on a tab we are done with — or a notification outliving the
+    // page that raised it.
+    window.addEventListener('pagehide', () => { titleClear(); iconClear(); notifyClear(); });
 
     tick();
     log('ready — passive; zero added requests. docs/17-attribute-surface.md');
