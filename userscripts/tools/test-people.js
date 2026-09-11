@@ -629,5 +629,77 @@ console.log('\n— column sizing, structurally —');
     /g\.addEventListener\('click', \(ev\) => ev\.stopPropagation\(\)\);/.test(SRC), true);
 }
 
+// ---------------------------------------------------------------------------
+// The clock (1.14.0): sightings in, quiet hours out.
+// ---------------------------------------------------------------------------
+console.log('\n— hours: what counts as a sighting —');
+const H_SLICE = cut('  const HOURS_CAP =', '  // ===========================================================================\n  // Ingest');
+const mkHours = () => new Function(`${H_SLICE}\nreturn { recordSighting, clockOf, HOURS_CAP, HOURS_MIN, SEEN_GAP_MS, hh, fmtWhen };`)();
+{
+  const h = mkHours();
+  const store = {};
+  const t0 = new Date(2026, 8, 11, 14, 30).getTime();   // local 14:30
+  check('a last_online stamp is a sighting', h.recordSighting(store, 'ion', t0, 'last'), true);
+  check('...the same stamp read again is not', h.recordSighting(store, 'ion', t0, 'last'), false);
+  check('...a different stamp is', h.recordSighting(store, 'ion', t0 + 1, 'last'), true);
+  check('an online flag is a sighting', h.recordSighting(store, 'ion', t0 + 60_000, 'seen'), true);
+  check('...and one four minutes later is the same session', h.recordSighting(store, 'ion', t0 + 60_000 + 4 * 60_000, 'seen'), false);
+  check('...but one five minutes later is a new sample', h.recordSighting(store, 'ion', t0 + 60_000 + h.SEEN_GAP_MS, 'seen'), true);
+  check('a stamp in between does not restart the session clock',
+    (h.recordSighting(store, 'ion', t0 + 60_000 + h.SEEN_GAP_MS + 1, 'last'),
+     h.recordSighting(store, 'ion', t0 + 60_000 + h.SEEN_GAP_MS + 2, 'seen')), false);
+  check('the list stays sorted oldest first', store.ion.every((s, i) => !i || s[0] >= store.ion[i - 1][0]), true);
+  check('an unknown kind is refused', h.recordSighting(store, 'ion', t0, 'maybe'), false);
+  check('a junk time is refused', h.recordSighting(store, 'ion', NaN, 'last'), false);
+  check('an empty name is refused', h.recordSighting(store, '', t0, 'last'), false);
+  const big = {};
+  for (let i = 0; i < h.HOURS_CAP + 25; i++) h.recordSighting(big, 'x', t0 + i * 1000, 'last');
+  check('the cap drops the oldest', [big.x.length, big.x[0][0]], [h.HOURS_CAP, t0 + 25 * 1000]);
+}
+
+console.log('\n— hours: the clock —');
+{
+  const h = mkHours();
+  const at = (day, hour, min = 0) => new Date(2026, 8, day, hour, min).getTime();
+  const store = {};
+  // ion is around 10:00–12:00 local across three days; quiet 13:00 → 10:00 wraps midnight
+  for (const d of [8, 9, 10]) for (const hr of [10, 11, 12]) h.recordSighting(store, 'ion', at(d, hr, 5), 'last');
+  const c = h.clockOf(store, ['ion']);
+  check('sightings land in their local hour', [c.counts[10], c.counts[11], c.counts[12], c.counts[9]], [3, 3, 3, 0]);
+  check('total and span', [c.total, c.days], [9, 3]);
+  check('the quiet stretch wraps midnight as one run', c.quiet, { from: 13, len: 21 });
+  check('latest is the newest five, newest first', c.latest.length === 5 && c.latest[0] === at(10, 12, 5) && c.latest[4] === at(9, 11, 5), true);
+
+  const thin = {};
+  for (const hr of [10, 11]) h.recordSighting(thin, 'y', at(8, hr), 'last');
+  check('below HOURS_MIN no quiet stretch is named', h.clockOf(thin, ['y']).quiet, null);
+
+  // a faction is the union: a member awake at 03:00 breaks the night
+  h.recordSighting(store, 'benis', at(9, 3), 'seen');
+  h.recordSighting(store, 'benis', at(10, 3, 10), 'seen');
+  const u = h.clockOf(store, ['ion', 'benis']);
+  check('a union counts every member', u.total, 11);
+  check('...and the quiet stretch shrinks to the gap they leave', u.quiet, { from: 13, len: 14 });
+
+  check('nobody known is an empty clock', h.clockOf(store, ['ghost']), { counts: new Array(24).fill(0), total: 0, days: 0, quiet: null, latest: [] });
+  check('hours print as HH:00', [h.hh(3), h.hh(23)], ['03:00', '23:00']);
+  check('a sighting prints as weekday and time', h.fmtWhen(at(11, 14, 7)), 'Fri 14:07');
+}
+
+console.log('\n— hours: wired in —');
+{
+  check('a profile records its stamp and, if online, the moment',
+    /recordSighting\(hours, data\.username, stamp, 'last'\)/.test(SRC) && /if \(data\.is_online\) recordSighting\(hours, data\.username, Date\.now\(\), 'seen'\)/.test(SRC), true);
+  check('the faction page records online members only',
+    /m\.is_online === true && recordSighting\(hours, m\.username, now, 'seen'\)/.test(SRC), true);
+  check('...and is matched on its exact path', /\\\/api\\\/factions\\\/\[\^\/\]\+\\\/public\$/.test(SRC), true);
+  check('hours are saved with the ledger and cleared with it',
+    (SRC.match(/writeJSON\(K\.hours, hours\)/g) || []).length === 2 && /clear: \(\) => \{ people = \{\}; hours = \{\};/.test(SRC), true);
+  check('the strip is built from the pinned player, else the one you stand on', /const clockName = ui\.clock \|\| here;/.test(SRC), true);
+  check('the idle cell pins and unpins', /ui\.clock = ui\.clock === r\.username \? null : r\.username;/.test(SRC), true);
+  check('the header discloses the new source and the new key',
+    /\/api\/factions\/<id>\/public/.test(SRC.slice(0, SRC.indexOf('(() => {'))) && /`pkpw:hours`/.test(SRC.slice(0, SRC.indexOf('(() => {'))), true);
+}
+
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);

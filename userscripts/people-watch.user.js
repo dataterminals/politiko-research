@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — People Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      1.13.0
-// @description  Builds a local ledger of players' last-online times, cities, ranks and combat records from the profiles you open, and sorts it least-active-first. Fully passive: it reads responses the game already made and originates nothing. Includes a next/back walk so filling the ledger by hand is one keypress per player — along the roster, or along the panel's own sorted and filtered list.
+// @version      1.14.0
+// @description  Builds a local ledger of players' last-online times, cities, ranks and combat records from the profiles you open, and sorts it least-active-first. Fully passive: it reads responses the game already made and originates nothing. Includes a next/back walk so filling the ledger by hand is one keypress per player — along the roster, or along the panel's own sorted and filtered list. Since 1.14.0 it also folds every sighting of a player onto a 24-hour clock, so their quiet hours are a bar you can read.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -20,6 +20,12 @@
  *             ones the game requested on its own, on pages you are actively viewing.
  *             Specifically /api/people (roster pages) and /api/users/<name> (profiles).
  *             No DOM scraping.
+ *
+ *             Since 1.14.0, also /api/factions/<id>/public — the page any player can
+ *             open for any faction. The game polls it every 5 seconds for as long as
+ *             you stand on that page and stops the moment you leave; this reads each
+ *             member's username and online flag off those responses, exactly the dots
+ *             the page itself draws, and nothing else from them.
  *
  *   Requests: ZERO. This script does not originate network calls to politiko.io.
  *
@@ -41,6 +47,13 @@
  *             `location_name` on roster rows when the server is unlocking that column
  *             (`locations_visible`). Neither adds a request, and nothing asks for a
  *             location that was not already in a response on screen.
+ *
+ *             As of 1.14.0 there is a second key, `pkpw:hours`: per player, the distinct
+ *             moments a reading proved them active — the `last_online` stamp itself off
+ *             a profile you opened, and the time you saw them flagged online, on a
+ *             profile or on a faction page you were standing on. Timestamps and a
+ *             one-word kind, nothing else; at most 600 per player, oldest dropped. It
+ *             is what the clock in the panel is drawn from. Cleared with the ledger.
  *
  *   Alerts:   none. No notifications, no title flashing, no sound.
  *
@@ -277,6 +290,7 @@
   const K = {
     people: 'pkpw:people',
     roster: 'pkpw:roster',
+    hours: 'pkpw:hours',
     ui: 'pkpw:ui',
   };
 
@@ -295,7 +309,9 @@
   /** @type {Record<string, any>} username -> observed profile */
   let people = readJSON(K.people, {});
   let roster = readJSON(K.roster, { total: null, totalPages: null, usernames: [], seenAt: 0, pages: {} });
-  let ui = readJSON(K.ui, { sort: 'idle', dir: 1, group: 'none', hideOnline: false, hideNpc: true, minIdleDays: 0, walk: 'roster', open: false, fab: null, panel: null, size: null, cols: null });
+  /** @type {Record<string, [number, string][]>} username -> [[t, 'last'|'seen'], …] oldest first */
+  let hours = readJSON(K.hours, {});
+  let ui = readJSON(K.ui, { sort: 'idle', dir: 1, group: 'none', hideOnline: false, hideNpc: true, minIdleDays: 0, walk: 'roster', open: false, fab: null, panel: null, size: null, cols: null, clock: null, clockFaction: false });
   if (ui.dir !== -1) ui.dir = 1;   // an older stored ui has no dir at all
   if (typeof ui.group !== 'string') ui.group = 'none';
   // there was only one walk order before 1.5.0, so that is what a stored ui without the
@@ -317,10 +333,89 @@
     saveTimer = setTimeout(() => {
       writeJSON(K.people, people);
       writeJSON(K.roster, roster);
+      writeJSON(K.hours, hours);
       writeJSON(K.ui, ui);
     }, 1_000);
   };
-  const saveNow = () => { clearTimeout(saveTimer); writeJSON(K.people, people); writeJSON(K.roster, roster); writeJSON(K.ui, ui); };
+  const saveNow = () => { clearTimeout(saveTimer); writeJSON(K.people, people); writeJSON(K.roster, roster); writeJSON(K.hours, hours); writeJSON(K.ui, ui); };
+
+  // ===========================================================================
+  // Hours — when a player is actually around, from readings you already took.
+  //
+  // Every profile you open carries `last_online`, the exact moment the server last saw
+  // that player act. Every reading of a faction's public page carries an online flag
+  // for each member, on the 5-second poll the game runs while you stand on that page.
+  // Neither is a new request. This keeps the DISTINCT moments each source proved a
+  // player active and folds them onto a 24-hour clock, so "when is X usually away"
+  // becomes a bar you can read instead of a number you keep in your head.
+  //
+  // A sighting is [t, kind]. `last` is the server's own last_online stamp — a moment
+  // they acted, whenever you happened to read it. `seen` is you observing them flagged
+  // online at t. The two are kept apart so the dedup rules can differ: a stamp is one
+  // moment and repeats exactly, so the same value is never stored twice; a flag is a
+  // condition that persists, so one is stored per SEEN_GAP_MS while it holds, which is
+  // a sample of the session rather than a record of every poll.
+  // ===========================================================================
+  const HOURS_CAP = 600;            // sightings kept per player; oldest dropped
+  const HOURS_MIN = 6;              // below this the clock will not name a quiet stretch
+  const SEEN_GAP_MS = 5 * 60_000;   // an online flag this soon after the last `seen` is the same session
+
+  /** Add one sighting. Returns true if it was new. Keeps the list sorted and capped. */
+  function recordSighting(store, username, t, kind) {
+    if (typeof username !== 'string' || !username || !Number.isFinite(t)) return false;
+    if (kind !== 'last' && kind !== 'seen') return false;
+    const list = store[username] || (store[username] = []);
+    if (kind === 'last') {
+      if (list.some(([x, k]) => k === 'last' && x === t)) return false;
+    } else {
+      // walk back to the newest `seen`; a stamp landing in between does not restart a session
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i][1] !== 'seen') continue;
+        if (t - list[i][0] < SEEN_GAP_MS && t >= list[i][0]) return false;
+        break;
+      }
+    }
+    list.push([t, kind]);
+    list.sort((a, b) => a[0] - b[0]);
+    if (list.length > HOURS_CAP) list.splice(0, list.length - HOURS_CAP);
+    return true;
+  }
+
+  /**
+   * Fold sightings onto the clock. `names` may be several players — a faction — whose
+   * sightings are unioned. Hours are this browser's LOCAL time, because the question is
+   * "when, for me". Returns { counts[24], total, days, quiet, latest }: `quiet` is the
+   * longest circular run of hours with no sighting at all, as { from, len }, or null when
+   * there are too few sightings to mean anything; `latest` is the newest five, newest first.
+   */
+  function clockOf(store, names) {
+    const pts = [];
+    for (const n of names) for (const s of (store[n] || [])) pts.push(s[0]);
+    pts.sort((a, b) => a - b);
+    const counts = new Array(24).fill(0);
+    for (const t of pts) counts[new Date(t).getHours()]++;
+    const total = pts.length;
+    const days = total ? Math.max(1, Math.ceil((pts[pts.length - 1] - pts[0]) / 86_400_000)) : 0;
+    let quiet = null;
+    if (total >= HOURS_MIN) {
+      let best = { from: 0, len: 0 }, run = 0, start = 0;
+      for (let i = 0; i < 48; i++) {           // twice round, so a run across midnight is one run
+        const h = i % 24;
+        if (counts[h] === 0) {
+          if (!run) start = h;
+          run++;
+          if (run > best.len) best = { from: start, len: Math.min(run, 24) };
+        } else run = 0;
+      }
+      quiet = best.len ? best : null;
+    }
+    return { counts, total, days, quiet, latest: pts.slice(-5).reverse() };
+  }
+  const hh = (h) => `${String(h).padStart(2, '0')}:00`;
+  const fmtWhen = (t) => {
+    const d = new Date(t);
+    return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${hh(d.getHours()).slice(0, 2)}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
 
   // ===========================================================================
   // Ingest — every record here came off a response the game made on its own.
@@ -393,8 +488,42 @@
       observedAt: Date.now(),
     };
     if (!roster.usernames.includes(data.username)) roster.usernames.push(data.username);
+    // Two sightings can come off one profile: the stamp itself, and — if the flag is
+    // up — the fact that they are on right now.
+    const stamp = Date.parse(data.last_online || '');
+    if (Number.isFinite(stamp)) recordSighting(hours, data.username, stamp, 'last');
+    if (data.is_online) recordSighting(hours, data.username, Date.now(), 'seen');
     log('profile', data.username);
     save(); paint();
+  };
+
+  /**
+   * A faction's public page. The game polls it every five seconds while you are on it,
+   * and each response lists the members with an online flag — the green dots the page
+   * draws. Only the flag is read for the clock; the username and faction name go into
+   * the ledger so the clock's faction toggle can find every member, profiled or not.
+   * A member the ledger has never profiled stays out of the table (no observedAt).
+   */
+  const ingestFactionPublic = (url, data) => {
+    const members = data && Array.isArray(data.members) ? data.members : null;
+    if (!members) return;
+    const facName = (data.faction && typeof data.faction.name === 'string' && data.faction.name)
+      || (typeof data.name === 'string' && data.name) || null;
+    const now = Date.now();
+    let changed = false;
+    for (const m of members) {
+      if (!m || typeof m.username !== 'string') continue;
+      const cur = people[m.username] || {};
+      if (facName && cur.faction_name !== facName) {
+        people[m.username] = { ...cur, username: m.username, faction_name: facName };
+        changed = true;
+      } else if (!people[m.username]) {
+        people[m.username] = { username: m.username };
+        changed = true;
+      }
+      if (m.is_online === true && recordSighting(hours, m.username, now, 'seen')) changed = true;
+    }
+    if (changed) { save(); paint(); }
   };
 
   // ===========================================================================
@@ -409,10 +538,13 @@
     const p = route(url);
     if (/\/api\/people(\?|$)/.test(p)) ingestRosterPage(url, data);
     else if (/\/api\/users\/[^/]+$/.test(p)) ingestProfile(url, data);
+    else if (/\/api\/factions\/[^/]+\/public$/.test(p)) ingestFactionPublic(url, data);
   };
 
-  // The roster and the profiles you open; nothing else the app fetches is read.
-  onApi(['/api/people', '/api/users/'], ({ url, data }) => dispatch(url, data));
+  // The roster, the profiles you open, and a faction's public page; nothing else the
+  // app fetches is read. The factions prefix also delivers raids, jobs and sleepers to
+  // dispatch(), which matches the one path and drops the rest unread.
+  onApi(['/api/people', '/api/users/', '/api/factions/'], ({ url, data }) => dispatch(url, data));
 
   // ===========================================================================
   // Roster walk — the manual replacement for a crawler.
@@ -1096,6 +1228,17 @@
     .dim { color: #71717a; }
     .transit { color: #60a5fa; font-style: italic; }
     .note { padding: 6px 8px; color: #a1a1aa; border-top: 1px solid #27272a; font-size: 11px; }
+    /* The clock: 24 bars that must read at 300px, so the grid divides whatever width
+       there is and every bar keeps at least a hairline of height even at zero. */
+    .clock { padding: 6px 8px; border-bottom: 1px solid #27272a; font-size: 11px; }
+    .clock .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .clock .bars { display: grid; grid-template-columns: repeat(24, 1fr); gap: 1px;
+      height: 28px; align-items: end; margin-top: 4px; }
+    .clock .bars i { display: block; background: #4ade80; min-height: 1px; }
+    .clock .bars i.zero { background: #27272a; }
+    .clock .bars i.now { outline: 1px solid #fafafa; outline-offset: -1px; }
+    .clock .ticks { display: grid; grid-template-columns: repeat(4, 1fr); color: #52525b; font-size: 10px; }
+    td.idle, td.live { cursor: pointer; }
     /* FAB KIT v9 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
        bump the version here and in every tool carrying a copy, so the copies can
@@ -1895,6 +2038,87 @@
     return g;
   };
 
+  /**
+   * The clock strip for one player, or for their whole faction when the toggle is on.
+   * `pinned` is a player you chose by clicking a row; the strip for the profile you are
+   * merely standing on has no × because leaving the page is how you dismiss it.
+   */
+  function buildClock(name, pinned) {
+    const r = people[name] || {};
+    const fac = r.faction_name || null;
+    const union = !!(ui.clockFaction && fac);
+    const names = union
+      ? Object.values(people).filter((p) => p.faction_name === fac).map((p) => p.username)
+      : [name];
+    const c = clockOf(hours, names);
+
+    const el = document.createElement('div');
+    el.className = 'clock';
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.append(Object.assign(document.createElement('b'), { textContent: union ? fac : `@${name}` }));
+    const info = document.createElement('span');
+    info.className = 'dim';
+    info.textContent = c.total
+      ? `${c.total} sighting${c.total === 1 ? '' : 's'} over ${c.days} d${union ? ` · ${names.length} members` : ''} · local time`
+      : 'no sightings yet — open the profile, or stand on the faction page';
+    row.append(info);
+    if (fac) {
+      const b = document.createElement('button');
+      b.textContent = union ? `☑ ${fac}` : '☐ faction';
+      if (union) b.className = 'on';
+      b.title = union
+        ? 'every ledger member of the faction folded together — click for the one player'
+        : `fold in every ledger member of ${fac}, so the quiet hours are the faction's, not one player's`;
+      b.onclick = () => { ui.clockFaction = !ui.clockFaction; save(); paint(); };
+      row.append(b);
+    }
+    if (pinned) {
+      const x = document.createElement('button');
+      x.textContent = '×';
+      x.title = 'stop following this player';
+      x.onclick = () => { ui.clock = null; save(); paint(); };
+      row.append(x);
+    }
+    el.append(row);
+    if (!c.total) return el;
+
+    const bars = document.createElement('div');
+    bars.className = 'bars';
+    const max = Math.max(...c.counts, 1);
+    const nowH = new Date().getHours();
+    c.counts.forEach((n, h) => {
+      const i = document.createElement('i');
+      i.style.height = `${Math.max(1, Math.round((n / max) * 100))}%`;
+      if (!n) i.className = 'zero';
+      if (h === nowH) i.classList.add('now');
+      i.title = `${hh(h)} — ${n} sighting${n === 1 ? '' : 's'}`;
+      bars.append(i);
+    });
+    el.append(bars);
+    const ticks = document.createElement('div');
+    ticks.className = 'ticks';
+    for (const t of ['00', '06', '12', '18']) ticks.append(Object.assign(document.createElement('span'), { textContent: t }));
+    el.append(ticks);
+
+    const q = document.createElement('div');
+    q.className = 'dim';
+    q.textContent = c.quiet
+      ? `quietest: ${hh(c.quiet.from)}–${hh((c.quiet.from + c.quiet.len) % 24)} · ${c.quiet.len} h with no sighting`
+        + (c.total < HOURS_MIN * 3 ? ' · thin evidence' : '')
+      : (c.total < HOURS_MIN ? `too few sightings to name a quiet stretch (${HOURS_MIN} needed)` : 'no empty hour yet');
+    q.title = 'The longest run of clock hours in which no sighting has ever landed. A sighting is '
+      + 'the server\'s last_online stamp off a profile you opened, or an online flag on a profile '
+      + 'or a faction page you were standing on. Hours are this browser\'s local time. "Thin '
+      + 'evidence" means fewer than eighteen sightings: an empty hour may just be one nobody looked in.';
+    el.append(q);
+    const latest = document.createElement('div');
+    latest.className = 'dim';
+    latest.textContent = `latest: ${c.latest.map(fmtWhen).join(' · ')}`;
+    el.append(latest);
+    return el;
+  }
+
   function paint() {
     if (!root) return;
     // A column drag holds the pointer capture on a divider this would throw away.
@@ -2045,6 +2269,12 @@
     bar2.append(grpSel);
     panel.append(bar2);
 
+    // The clock: the player you pinned by clicking their idle cell, else the profile you
+    // are standing on, else nothing. Pinned outranks standing so a walk does not keep
+    // swapping the strip out from under a comparison you were making.
+    const clockName = ui.clock || here;
+    if (clockName) panel.append(buildClock(clockName, !!ui.clock));
+
     const body = document.createElement('div');
     body.className = 'body';
     const table = document.createElement('table');
@@ -2093,7 +2323,9 @@
         { link: true, cls: d.neverStuck ? 'never' : '' },
         // only claim "online" where the observation is fresh enough to support it;
         // a stale online flag is shown as plain idle time instead of a green light
-        { text: d.liveNow ? '● online' : fmtDur(d.idleMs), cls: d.liveNow ? 'live' : 'idle' },
+        // ...and clicking it pins this player's clock above the table
+        { text: d.liveNow ? '● online' : fmtDur(d.idleMs), cls: d.liveNow ? 'live' : 'idle', clock: true,
+          title: `${(hours[r.username] || []).length} sighting(s) on record — click for the clock` },
         { text: cityText(d), cls: d.traveling ? 'transit' : (d.city ? '' : 'dim'), title: cityTitle(d) },
         {
           text: d.socialActs == null ? '—' : String(d.socialActs),
@@ -2112,6 +2344,7 @@
         else td.textContent = c.text;
         if (c.cls) td.className = c.cls;
         if (c.title) td.title = c.title;
+        if (c.clock) td.onclick = () => { ui.clock = ui.clock === r.username ? null : r.username; save(); paint(); };
         tr.append(td);
       }
       tr.append(Object.assign(document.createElement('td'), { className: 'fill' }));
@@ -2196,8 +2429,10 @@
     resync: () => { resyncWalk(); paint(); return walkOrder(); },
     unseen: () => roster.usernames.filter((u) => !people[u]?.observedAt),
     resetFab: () => { ui.fab = null; saveNow(); placeFab(); return fabAt(); },
-    clear: () => { people = {}; roster = { total: null, totalPages: null, usernames: [], seenAt: 0, pages: {} }; saveNow(); paint(); return 'cleared'; },
-    export: () => JSON.stringify({ people, roster }, null, 2),
+    hours: () => hours,
+    clock: (...names) => clockOf(hours, names.length ? names : [ui.clock].filter(Boolean)),
+    clear: () => { people = {}; hours = {}; roster = { total: null, totalPages: null, usernames: [], seenAt: 0, pages: {} }; saveNow(); paint(); return 'cleared'; },
+    export: () => JSON.stringify({ people, roster, hours }, null, 2),
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });

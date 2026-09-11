@@ -93,6 +93,8 @@ const mk = (over) => ({
     } } },
     'pkpw:': { tool: 'people-watch', keys: {
       roster: { total: 1, totalPages: 1, usernames: ['Alocrin', 'Benis'], seenAt: T(25), locationsVisible: true },
+      // sightings at 10:00, 11:00 and 12:00 Eastern on three days: quiet from 13:00 round to 10:00
+      hours: { Benis: [8, 9, 10].flatMap((d) => [10, 11, 12].map((hr) => [Date.parse(`2026-09-${String(d).padStart(2, '0')}T${String(hr).padStart(2, '0')}:05:00-04:00`), 'last'])), Alocrin: [[Date.parse('2026-09-10T03:00:00-04:00'), 'seen']] },
       people: {
         Alocrin: { username: 'Alocrin', status: 'active', in_city: true, last_online: '2026-07-14T08:04:32Z', is_online: false, created_at: '2026-07-14T03:37:19Z', rank_key: 'deserter', is_npc: false, age: 30, combat: { attacks_won: 0, attacks_lost: 71, mugs_won: 0, times_mugged: 66, money_mugged: 0, money_lost_to_mugs: 11416 }, relationship: { is_friend: false, is_enemy: false, blocked_by_you: false, blocked_by_them: false }, faction_name: null, corp_name: 'F1337', location: 'San Francisco' },
         Benis: { username: 'Benis', status: 'active', in_city: false, last_online: new Date(T(2)).toISOString(), is_online: true, created_at: new Date(T(48)).toISOString(), rank_key: 'boss', is_npc: false, age: 1, combat: { attacks_won: 40, attacks_lost: 3, mugs_won: 12, times_mugged: 0, money_mugged: 50000, money_lost_to_mugs: 0 }, relationship: { is_friend: true, is_enemy: false, blocked_by_you: false, blocked_by_them: false }, faction_name: 'Redefining Reality', corp_name: null, location: 'Austin' },
@@ -141,7 +143,9 @@ if (process.env.DUMP) fs.writeFileSync(process.env.DUMP, md);
 
 const has = (label, re) => check(label, re.test(md), `not found: ${re}`);
 console.log('\n— the brief carries every section —');
-for (const s of ['Clock', 'Levers', 'Government', 'Opinion', 'World', 'People', 'You', 'Faction and sleepers', 'Economy', 'Wire', 'Since the bundle of', 'Freshness per tool', 'What this bundle does not know']) has(`## ${s}`, new RegExp(`^## ${s}`, 'm'));
+for (const s of ['Clock', 'Levers', 'Government', 'Opinion', 'World', 'People', 'Hours', 'You', 'Faction and sleepers', 'Economy', 'Wire', 'Since the bundle of', 'Freshness per tool', 'What this bundle does not know']) has(`## ${s}`, new RegExp(`^## ${s}`, 'm'));
+has('hours fold sightings onto Eastern time with a quiet stretch that wraps midnight', /\| Benis \| Redefining Reality \| ··········███··········· \| 9 \| 3 \| 13:00–10:00 \(21 h\) \|/);
+has('...and too few sightings say so', /\| Alocrin \| [^|]* \| [·▁-█]{24} \| 1 \| 1 \| too few \|/);
 check('no section fell back to its guard', !/could not be read/.test(md), (md.match(/_.*could not be read.*_/g) || []).join('\n'));
 
 console.log('\n— and says the right things —');

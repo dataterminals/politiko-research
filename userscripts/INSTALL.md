@@ -21,17 +21,20 @@ mobile header has no empty band to sit in. Same slots, same order, same gestures
 Each script declares `@updateURL`, so fixes arrive on your script manager's own
 update check — no reinstall.
 
+> [!WARNING]
+> Held out of the paste blocks below — these links do not serve current code yet:
+> - **People Watch 1.14.0** — local file differs from `origin/main`; the raw link serves the older version.
+>
+> Push, re-run the generator, then post.
+
 ## Discord paste
 
 Discord's message limit is 2000 characters, so this is split into 3 messages. Copy each block and post them in order.
 
-**Message 1 of 3** — 1569 characters
+**Message 1 of 3** — 1570 characters
 
 ```
 ## Politiko userscripts — install links (1/3)
-
-**People Watch** · who you've seen: last-online, city, rank, least-active first
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js>
 
 **ALGN — Align Watch** · your political compass on the home page, with a change log
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js>
@@ -53,15 +56,15 @@ Discord's message limit is 2000 characters, so this is split into 3 messages. Co
 
 **MKT — Market Watch** · marks where you bought on the stock chart; charts market series locally
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js>
-```
-
-**Message 2 of 3** — 1552 characters
-
-```
-## Politiko userscripts — install links (2/3)
 
 **SHOP — Shop Watch** · shop fields the UI never shows, and brackets every restock
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js>
+```
+
+**Message 2 of 3** — 1546 characters
+
+```
+## Politiko userscripts — install links (2/3)
 
 **RAID — Raid Watch** · records faction raids, their event log and post-mortems
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js>
@@ -83,15 +86,15 @@ Discord's message limit is 2000 characters, so this is split into 3 messages. Co
 
 **SOCK — WS Watch** · read-only observer for the three sockets the game opens
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js>
-```
-
-**Message 3 of 3** — 697 characters
-
-```
-## Politiko userscripts — install links (3/3)
 
 **Comms Move** · adds a drag bar to the game's Comms dock so you can move it
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js>
+```
+
+**Message 3 of 3** — 515 characters
+
+```
+## Politiko userscripts — install links (3/3)
 
 **Time Bridge** · hands Time Watch's clock anchor to the Time Wire planner
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js>
@@ -103,7 +106,7 @@ Install Tampermonkey first, then click a link and confirm the prompt. Every one 
 
 | slot | button | tool | version | what it does | raw link |
 |---|---|---|---|---|---|
-| 0 | (eye) | People Watch | 1.13.0 | who you've seen: last-online, city, rank, least-active first | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| 0 | (eye) | People Watch | 1.14.0 | who you've seen: last-online, city, rank, least-active first | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
 | 1 | `ALGN` | Align Watch | 0.8.0 | your political compass on the home page, with a change log | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
 | 2 | `XP` | XP Watch | 0.8.0 | ledger of your own stat and skill changes, action by action | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 | 3 | `BARS` | Bar Watch | 0.4.0 | time to full for Energy, Juice and HP, with alerts you set | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |

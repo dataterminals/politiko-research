@@ -334,6 +334,45 @@ function brief(b, prior) {
     }
   });
 
+  // -- hours ----------------------------------------------------------------------------
+  h('Hours');
+  guard('hours', () => {
+    // people-watch 1.14.0: per player, [[t, 'last'|'seen'], …] — the distinct moments a
+    // reading proved them active. Folded here onto Eastern time, since the brief is
+    // read in it; the panel in the game uses the browser's own clock.
+    const hs = tool(b, 'pkpw:', 'hours') || {};
+    const pw = tool(b, 'pkpw:', 'people') || {};
+    const MIN = 6;
+    const hourET = (t) => Number(new Date(t).toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })) % 24;
+    const fold = (names) => {
+      const pts = [];
+      for (const n of names) for (const s of (hs[n] || [])) pts.push(s[0]);
+      pts.sort((x, y) => x - y);
+      const counts = new Array(24).fill(0);
+      for (const t of pts) counts[hourET(t)]++;
+      let quiet = null;
+      if (pts.length >= MIN) {
+        let best = { from: 0, len: 0 }, run = 0, start = 0;
+        for (let i = 0; i < 48; i++) { const hh = i % 24; if (counts[hh] === 0) { if (!run) start = hh; run++; if (run > best.len) best = { from: start, len: Math.min(run, 24) }; } else run = 0; }
+        quiet = best.len ? best : null;
+      }
+      return { counts, total: pts.length, days: pts.length ? Math.max(1, Math.ceil((pts[pts.length - 1] - pts[0]) / 86400e3)) : 0, quiet, latest: pts.slice(-3).reverse() };
+    };
+    const spark = (counts) => { const m = Math.max(...counts, 1); const g = '▁▂▃▄▅▆▇█'; return counts.map((n) => (n ? g[Math.min(7, Math.max(1, Math.round((n / m) * 7)))] : '·')).join(''); };
+    const hh = (x) => `${String(x).padStart(2, '0')}:00`;
+    const players = Object.keys(hs).filter((n) => (hs[n] || []).length).sort((x, y) => hs[y].length - hs[x].length);
+    if (!players.length) { p('_no sightings recorded yet: open profiles, or stand on a faction page_'); return; }
+    p(`Sightings for ${players.length} players; hours are Eastern, midnight at the left. A dot is an hour nothing has ever landed in.`, '');
+    table(['player', 'faction', '00 · · · · · 06 · · · · · 12 · · · · · 18 · · · · ·', 'sightings', 'days', 'quietest (ET)', 'latest'],
+      players.slice(0, 20).map((n) => { const c = fold([n]); return [n, (pw[n] && pw[n].faction_name) || '', spark(c.counts), c.total, c.days, c.quiet ? `${hh(c.quiet.from)}–${hh((c.quiet.from + c.quiet.len) % 24)} (${c.quiet.len} h)` : (c.total < MIN ? 'too few' : 'none'), c.latest.map((t) => iso(t).slice(5)).join(', ')]; }));
+    const facs = count(players.filter((n) => pw[n] && pw[n].faction_name), (n) => pw[n].faction_name).filter(([, k]) => k >= 2);
+    if (facs.length) {
+      h3('By faction (every sighted member folded together)');
+      table(['faction', 'members sighted', '00 · · · · · 06 · · · · · 12 · · · · · 18 · · · · ·', 'sightings', 'quietest (ET)'],
+        facs.map(([f]) => { const names = players.filter((n) => pw[n] && pw[n].faction_name === f); const c = fold(names); return [f, names.length, spark(c.counts), c.total, c.quiet ? `${hh(c.quiet.from)}–${hh((c.quiet.from + c.quiet.len) % 24)} (${c.quiet.len} h)` : (c.total < MIN ? 'too few' : 'none')]; }));
+    }
+  });
+
   // -- you ------------------------------------------------------------------------------
   h('You');
   guard('you', () => {

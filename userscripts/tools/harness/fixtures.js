@@ -167,6 +167,29 @@ window.HARNESS_FIXTURES = {
           path: '/api/stocks/holdings',
           body: [{ id: 1, symbol: 'CAP', qty: 40 }],
         },
+        // 1.14.0 — the clock. A profile seen ONLINE records the moment as well as the
+        // stamp; a faction's public page records every online member. Fire the faction
+        // page several times: within five minutes it must add nothing (same session).
+        {
+          label: 'mira, online right now (a `seen` sighting)',
+          path: '/api/users/mira',
+          variant: 'online',
+          body: profile('mira', { is_online: true, last_online: at(-2 * MIN), faction_name: 'RE:PUBLIC', faction_id: 3, faction_rank: 'Convenor' }),
+        },
+        {
+          label: 'faction 3 public page (5s poll while you stand there)',
+          path: '/api/factions/3/public',
+          body: {
+            faction: { id: 3, name: 'RE:PUBLIC', member_count: 4 },
+            member_count: 4,
+            members: [
+              { username: 'mira', rank: 'Convenor', is_online: true },
+              { username: NAMES[1], rank: 'Tribune', is_online: true },
+              { username: NAMES[2], rank: 'Delegate', is_online: false },
+              { username: 'nobody-profiled', rank: 'Delegate', is_online: true },
+            ],
+          },
+        },
       ];
     })(),
   },

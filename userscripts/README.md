@@ -17,7 +17,7 @@ bump; the table below is hand-kept and can drift.
 
 | tool | version | raw link |
 |---|---|---|
-| People Watch | 1.12.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
+| People Watch | 1.14.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
 | Market Watch | 1.7.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
 | Time Watch | 0.10.1 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
 | Align Watch | 0.7.1 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
@@ -298,6 +298,51 @@ yellow to say the table has moved on without you. Press it when you want those c
 folded in; ignore it and keep walking if you don't.
 
 Nothing about this is stored: a walk does not outlive a reload.
+
+## The clock
+
+Since 1.14.0 the panel can answer a question the ledger used to make you keep in your
+head: **when is this player usually away?**
+
+Every reading you already take proves a moment someone was active. A profile carries
+`last_online`, the exact stamp of the last thing the server saw them do. A profile, or a
+faction's public page, carries an online flag — and the game polls a faction's public page
+**every five seconds** for as long as you stand on it, listing every member with that flag.
+The tool keeps the distinct moments each of those proves, per player, under `pkpw:hours`,
+and folds them onto a 24-hour dial in this browser's local time.
+
+Click a player's **idle** cell to pin their clock above the table; click it again, or the
+`×`, to let go. Standing on a profile shows that player's clock unpinned. What it draws:
+
+- **24 bars**, one per local hour, height by how many sightings have ever landed in it, the
+  current hour outlined. Hover a bar for the count.
+- **quietest** — the longest run of hours in which *no* sighting has ever landed, wrapping
+  midnight, so `quietest: 02:00–09:00 · 7 h` reads as a single night. It needs six
+  sightings before it will say anything, and flags **thin evidence** below eighteen,
+  because an empty hour on a short record may only be an hour nobody looked in.
+- **latest** — the five newest sightings, weekday and time.
+- **☐ faction** — when the player has a faction, folds in every ledger member of it, so the
+  quiet hours are the *faction's* and not one player's. A faction with one member awake at
+  03:00 has no quiet night, and that is the number you wanted.
+
+Two things about the sources, because they behave differently. A `last_online` stamp is one
+moment and repeats exactly, so it is stored once however many times you read it — opening
+the same profile ten times in an hour adds nothing, and opening it once a day adds one true
+point per day they played. An online flag is a condition that persists, so while it holds
+one sighting is stored per five minutes; parked on a faction's page for an evening you get
+that evening sampled at that rate for every member who was on. The faction page is by far
+the richer source and costs nothing: the game runs that poll itself, and stops it the
+moment you leave.
+
+This is the first per-name presence record in the set, and ws-watch deliberately keeps
+none — its header refuses to store *who* is in the chat presence stream. The line between
+the two is where the reading comes from. The chat socket announces everyone, all the time,
+with no timestamp, whether or not you are looking at anything; the faction page is a page
+you chose to open, showing dots it draws for anyone who opens it, on a poll that exists only
+while you are there. Both are readings the game already made, and neither adds a request.
+
+Cleared with the ledger. `__pkpw.clock('Ion')` returns the numbers, and
+`__pkpw.clock('Ion', 'Dahnald')` the union, if you would rather read them than a bar.
 
 ## The table
 
