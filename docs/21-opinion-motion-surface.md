@@ -137,6 +137,76 @@ below): a centrist action moves people within about two steps straight to neutra
 cannot reach a bucket three steps away. If that holds, the centrist floor on a captured
 issue is a mean of about 2.2 once centre-right is empty, with the far-right bloc untouched.
 
+### The ladder test: +1 does not reach +3 either (added 2026-09-12 13:06 UTC)
+
+The reach hypothesis predicted that a +1 leaning would pull +3 down two steps the way
+centre pulled +2 to 0. One bar at slight right on Civil Rights, 26 actions and 25
+successes at a 92 % preview, jailed on the 26th:
+
+| | 12:51 UTC | 13:06 UTC |
+|---|---|---|
+| neutral | 8 | 4 |
+| slight right | 10 | 14 |
+| centre right | 8 | 8 |
+| far right | 72 | 72 |
+| mean | 2.47 | 2.51 |
+
+Only the neutral bucket moved, one step, to the leaning. Far right held at 72. **Centre
+right held too** — the people one step to the *right* of the leaning did not come down to
+it. So a rightward action never moves anyone leftward, even by one step, and combined
+with centre moving +2 → 0 but never +3, **the ±3 bucket is out of reach of every leaning**.
+Whatever put 72 % of this public at far right, disobedience cannot take them off it; it
+only ever trades the middle. The jailing carried `jailed_until` nineteen minutes after the
+action — shorter than a bar's refill, so a jail costs the unspent juice and nothing more.
+
+### Leftward, two steps out: −2 moves one step, not two (added 2026-09-12 13:38 UTC)
+
+The ratchet predicted a −2 leaning would do leftward what centre did rightward on Civil
+Rights: pull a neutral bucket two steps in one jump. One bar at −2 on LGBT, 23 actions (3 at
+Embarcadero Plaza, 20 at Pier 39), about 16 successes:
+
+| | 11:03 UTC | 13:38 UTC |
+|---|---|---|
+| centre left | 0 | 2 |
+| slight left | 2 | 0 |
+| neutral | 79 | 79 |
+| slight right | 14 | 13 |
+| far right | 2 | 2 |
+| mean | 0.186 | 0.156 |
+
+The two points at slight left moved one step into centre left. **Neutral did not drain at
+all**, with 79 % of the public sitting two steps from the leaning. Leftward bars on this
+public have now yielded two or three points each at both −1 and −2, against nine to sixteen
+for centre. At integer resolution with buckets this small, a per-success discount and a
+one-step reach for non-centre leanings are not separable; the price is the same either
+way, about four times the cost per point that centring the issue was.
+
+### Site and crowd set the stop rate, never the reach (added 2026-09-12)
+
+Every `people_moved` body on record, across leaning, issue, site and crowd:
+
+| site | authority | crowd | leaning | issue | per success |
+|---|---|---|---|---|---|
+| Pier 39 | mall security | packed | centre | LGBT | 508,633 |
+| Pier 39 | mall security | packed | −1 | LGBT | 506,498 |
+| Pier 39 | mall security | packed | centre | Civil Rights | 505,415 |
+| Pier 39 | mall security | packed | +1 | Civil Rights | 506,498 |
+| Embarcadero Plaza | private | packed | −2 | LGBT | 505,415 |
+| Pier 39 | mall security | **sparse** | −2 | LGBT | 504,332 |
+
+Half a percent of spread across all of it. The preview for −2 on LGBT at five sites read a
+success rate of 68–71 % everywhere and a stop rate from 8 % (mall security) to 55 % (the
+state): **the leaning sets the success rate, the site's authority sets the stop rate, and
+neither the site nor the crowd changes how many people a success moves.** A riskier site
+buys nothing, and a bar can be fired whenever it is full.
+
+The failure penalty is written by the server itself: a failed action's body records
+`direction: "R"` against a leftward leaning, and `people_moved: −252,708`. A hospitalisation
+(`hospitalized_until` 28 minutes after the action) still moved its 505,415 — a stop ends
+the burst, not the action — and the operator could heal out of it early. Jail ran 19
+minutes on the one timed occasion and up to about 30 in her experience; both are shorter
+than a bar's refill, so a stop costs a pause and never the juice.
+
 ### Two activity tells, read off the poll alone
 
 **Volatility.** LGBT read `stable` on every poll until the drag began to bite, then
@@ -144,7 +214,9 @@ issue is a mean of about 2.2 once centre-right is empty, with the far-right bloc
 after a bar. Overnight, untouched, both went back to `stable`. So `moderate` means *acted
 on within the last few hours* — and its absence proves nothing about last night.
 
-**Popularity decays when nobody acts, and a re-raise shows.** LGBT sat at the cap of 1000
+**Popularity decays when nobody acts, and a re-raise shows.** It is the more reliable of the
+two: a 23-action −2 bar on LGBT re-raised popularity from 780 to the cap while volatility
+stayed `stable`, so a small bar can move one tell without the other. LGBT sat at the cap of 1000
 after the drag and read 780 after 11.5 untouched hours: about 19 per hour. Civil Rights was
 at 1000 after the operator's bar; 13 hours later, untouched by her, it read **830** — higher
 than the 780 that 13 hours of decay would leave. Something re-raised it roughly nine hours
@@ -188,9 +260,11 @@ and moved 0.071 → 0.172 in a week, so it shows the same work about six times f
 
 Everything here is ours. None of it is something the client says.
 
-- **Reach.** Centre moved +2 → 0 in one jump and left +3 alone across a full bar. The simplest
-  rule that fits is "a success moves people within two steps of the leaning to the leaning";
-  it predicts that a +1 leaning would pull +3 down to +1, which is untested.
+- **Reach.** Centre moved +2 → 0 in one jump and left +3 alone; +1 moved 0 → +1 and left both
+  +2 and +3 alone. The rule that fits all three bars: a success moves people *in the
+  direction of the leaning*, up to the leaning, never back toward it from the far side —
+  and the ±3 buckets do not move for any leaning. Whether ±3 is locked outright or merely
+  out of reach is the same thing in practice: disobedience trades the middle only.
 - **The overnight push is a +1 leaning by RE:PUBLIC.** It fits the one-step shape *and* the
   popularity re-raise *and* the sighting. Contagion drift toward the dominant bloc fits the
   shape only, and LGBT — whose dominant bloc is neutral — showed no drift at all.
@@ -221,7 +295,9 @@ takes; every number here was hers to take, and the tools only remember what came
   points of the Civil Rights public and 97 successes moved sixteen points of LGBT's, which
   do not fit one population size with any simple rule. Whether people already at the
   leaning are "moved" and wasted, and whether the population differs per issue, are open.
-- **Whether +1 pulls +3.** The ladder. One bar, one poll.
+- ~~**Whether +1 pulls +3.**~~ Answered the same day: it does not, and neither does it pull
+  +2 down. See *The ladder test*. What remains unknown is what, if anything, moves a ±3
+  bucket — a protest's `forecast_shift`, a media campaign, the law itself, or nothing.
 - **The decay curve past two points**, and whether it is linear, exponential, or issue-dependent.
 - **Whether elections follow the public.** The Nov Y16 election (~2026-09-22) is the test; the
   Herald publishes `congress_alignment_swing` after it (20).
