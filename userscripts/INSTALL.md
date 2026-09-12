@@ -21,12 +21,6 @@ mobile header has no empty band to sit in. Same slots, same order, same gestures
 Each script declares `@updateURL`, so fixes arrive on your script manager's own
 update check — no reinstall.
 
-> [!WARNING]
-> Held out of the paste blocks below — these links do not serve current code yet:
-> - **Gov Watch 0.6.0** — local file differs from `origin/main`; the raw link serves the older version.
->
-> Push, re-run the generator, then post.
-
 ## Discord paste
 
 Discord's message limit is 2000 characters, so this is split into 3 messages. Copy each block and post them in order.
@@ -61,7 +55,7 @@ Discord's message limit is 2000 characters, so this is split into 3 messages. Co
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js>
 ```
 
-**Message 2 of 3** — 1546 characters
+**Message 2 of 3** — 1552 characters
 
 ```
 ## Politiko userscripts — install links (2/3)
@@ -78,6 +72,9 @@ Discord's message limit is 2000 characters, so this is split into 3 messages. Co
 **WRLD — World Watch** · plots law, opinion, street, media and citizens on one compass
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js>
 
+**GOV — Gov Watch** · change ledger for the government: what moved between readings
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js>
+
 **POLL — Poll Watch** · keeps every opinion-poll memo, with bloc spread and trends
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js>
 
@@ -86,15 +83,15 @@ Discord's message limit is 2000 characters, so this is split into 3 messages. Co
 
 **SOCK — WS Watch** · read-only observer for the three sockets the game opens
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js>
-
-**Comms Move** · adds a drag bar to the game's Comms dock so you can move it
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js>
 ```
 
-**Message 3 of 3** — 515 characters
+**Message 3 of 3** — 697 characters
 
 ```
 ## Politiko userscripts — install links (3/3)
+
+**Comms Move** · adds a drag bar to the game's Comms dock so you can move it
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js>
 
 **Time Bridge** · hands Time Watch's clock anchor to the Time Wire planner
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js>
