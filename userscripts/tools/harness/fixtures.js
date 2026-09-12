@@ -697,11 +697,57 @@ window.HARNESS_FIXTURES = {
         ],
       });
 
+      // The Herald's front page, which the sidebar card polls every 60s on every screen.
+      // Shapes from docs/20-newspaper-surface.md: a flat array, grouped by `gametime`
+      // into editions, with the vote table on the Congress entries only. The two rows
+      // that matter are the pair with opposite directions and opposite fates \u2014 that is
+      // the 2026-09-12 finding, reproduced so the BILLS tab can be read on the bench.
+      const GT = 450 * 2592000;
+      const bill = (id, over) => ({
+        id, gametime: over.gametime ?? GT,
+        metadata: Object.assign({ category: 'Congress', headline: `Bill ${id}` }, over),
+      });
+      const paper = (over = {}) => [
+        bill(814, { headline: 'Slavery Repeal Act', from_axis: 3, to_axis: 2,
+          house_yea: 253, house_nay: 182, senate_yea: 65, senate_nay: 35,
+          outcome: over.b814 === undefined ? null : over.b814 }),
+        bill(815, { headline: 'Sedition Expansion Act', from_axis: 2, to_axis: 3,
+          house_yea: 194, house_nay: 241, senate_yea: 40, senate_nay: 60,
+          outcome: over.b815 === undefined ? null : over.b815 }),
+        bill(830, { headline: 'Promote Gender Equality', from_axis: -1, to_axis: -2,
+          house_yea: 9, house_nay: 426, senate_yea: 4, senate_nay: 96,
+          outcome: 'dead in Congress' }),
+        // No vote table: the client renders `body` as prose instead, and the tool must
+        // keep the row without inventing numbers for it.
+        bill(840, { category: 'World', headline: 'Tremors reported downstate',
+          body: 'Long prose the tool has no business storing.', spin: 'liberal' }),
+        // The only published DELTA in the whole client, and it only appears after an
+        // election (docs/20).
+        ...(over.swing ? [bill(850, { category: 'Election', headline: 'Congress turns',
+          congress_alignment_swing: [{ label: 'House', delta: 25 }, { label: 'Senate', delta: -4 }] })] : []),
+      ];
+
       return [
         {
           label: 'status (who)',
           path: '/api/user/status',
           body: { username: 'you', status: 'active', current_location_id: 2 },
+        },
+        {
+          label: 'herald: front page (pending votes \u2014 BILLS tab)',
+          path: '/api/newspaper',
+          body: paper(),
+        },
+        {
+          label: '\u24ea herald: the two bills are decided \u2014 toward the centre passes, away from it dies',
+          path: '/api/newspaper',
+          variant: 'decided',
+          body: paper({ b814: 'signed', b815: 'dead in Congress', swing: true }),
+        },
+        {
+          label: 'herald: a sibling endpoint (must change NOTHING \u2014 it names a player and a city)',
+          path: '/api/newspaper/bounties',
+          body: { bounties: [{ id: 1, target_username: 'someone', target_location: 'Austin', amount: 5000 }] },
         },
         {
           label: 'government — baseline (20 policies, chambers, 9 justices)',

@@ -287,7 +287,16 @@ Everything in this section is ours. None of it is something the client does.
 
 ## What this makes buildable
 
-**`herald-watch`** — a ledger of the Congressional Record, built the way `gov-watch` and
+**Built 2026-09-12 — as `gov-watch`'s BILLS tab, not as its own tool.** Everything below
+was the design and all of it shipped; only the packaging changed, for two reasons. A
+seventeenth button would have forced `FAB KIT` to v10, and seventeen slots need a 790px
+row — which does not fit between the game's own 768px breakpoint and there, reintroducing
+exactly the overhang v9 had just fixed. And the bill ledger answers `14`'s open question
+rather than a new one: the Congressional Record belongs beside the policy ledger it
+explains, because the first thing a reader asks of a bill is what the axis was doing
+before it.
+
+A ledger of the Congressional Record, built the way `gov-watch` and
 `xp-watch` are built: read the response the app already fetched, store it, diff it, print
 the history the game refuses to keep.
 
@@ -314,8 +323,17 @@ Constraints it inherits, not negotiable:
 - **Every row is a bracket.** Same rule as `14`. A tool that only sees the array cannot
   know when inside the last 60 seconds an entry appeared, and must not print a time as
   though it does.
-- **The panel is the standard one.** `PANEL KIT v2`, `FAB KIT` slot, fixed table layout —
-  a bill table is exactly the wide-in-a-narrow-margin case the convention exists for.
+- **The panel is the standard one.** Inherited whole from gov-watch, which is the other
+  half of why it landed there: no new panel, no new button, no new kit version.
+
+**What shipping it measured, which the design did not anticipate.** The direction field
+turned out to be the finding rather than a column: every bill *toward* the centre passed
+and every bill *away from* it died, in the same chamber on the same day, with the 229
+moderates deciding and the wings voting as blocs. The public cannot be moved off a ±3
+bucket by any amount of disobedience (`21-opinion-motion-surface.md`), but the law on top
+of one can be walked back a notch by a bill this Congress will pass. That is the only
+route found so far out of a captured issue, and it was sitting in a payload the sidebar
+had been fetching every sixty seconds all along.
 
 ## Still unknown
 

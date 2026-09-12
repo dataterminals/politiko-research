@@ -223,6 +223,12 @@ takes; every number here was hers to take, and the tools only remember what came
   leaning are "moved" and wasted, and whether the population differs per issue, are open.
 - **Whether +1 pulls +3.** The ladder. One bar, one poll.
 - **The decay curve past two points**, and whether it is linear, exponential, or issue-dependent.
+- **Whether a 3 → 2 bill is the way out of a captured issue.** Measured 2026-09-12: this
+  Congress passes bills toward the centre and kills bills away from it, so the law on top
+  of an immovable public can still be walked back a notch. What is unknown is who raises
+  one, and whether the president vetoes it — see
+  [`20-newspaper-surface.md`](20-newspaper-surface.md) and gov-watch's BILLS tab, which
+  now keeps every bill the Herald prints.
 - **Whether elections follow the public.** The Nov Y16 election (~2026-09-22) is the test; the
   Herald publishes `congress_alignment_swing` after it (20).
 - **What `popularity` measures**, beyond "attention, capped, decaying".

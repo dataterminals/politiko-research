@@ -198,8 +198,23 @@ console.log('\n— the disclosure still describes the code —');
 
   const recognised = [...new Set([...literals, ...regexed].map(norm))]
     .filter((p) => p !== '/api' && p !== '');
-  check('the code recognises the endpoints we think it does', recognised.length === 3,
+  const EXPECTED = ['/api/user/status', '/api/government', '/api/factions/jobs', '/api/newspaper'];
+  check('the code recognises the endpoints we think it does, and only those',
+    recognised.length === EXPECTED.length && EXPECTED.every((e) => recognised.includes(e)),
     `${recognised.length}: ${recognised.join(', ')}`);
+
+  // The Herald's siblings are the reason the newspaper path is matched with === and not
+  // with startsWith: /newspaper/bounties prints an arbitrary player's current city, and
+  // three more carry player-authored text with an author attached. None may appear here
+  // in any form, and the match must stay exact.
+  for (const sibling of ['bounties', 'personals', 'classified-ads', 'job-listings', 'local']) {
+    check(`it never reaches /newspaper/${sibling}`, !new RegExp(`newspaper/${sibling}`).test(CODE),
+      'the disclosure says government numbers, not people');
+  }
+  check('...and the newspaper path is matched exactly, never as a prefix',
+    /path === '\/api\/newspaper'/.test(CODE)
+    && !/startsWith\(\s*['"`]\/api\/newspaper/.test(CODE),
+    'a prefix match would sweep up the four sibling endpoints above');
 
   const declared = [...HEADER.matchAll(/(\/api\/[a-z0-9/_{}<>-]*)/gi)].map((m) => norm(m[1]));
   const undeclared = recognised.filter((p) => !declared.includes(p));
