@@ -29,7 +29,7 @@ bump; the table below is hand-kept and can drift.
 | Sleeper Watch | 0.7.1 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
 | Quick Jump | 0.7.1 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 | World Watch | 0.5.1 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
-| Gov Watch | 0.4.1 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
+| Gov Watch | 0.6.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
 | Poll Watch | 0.5.1 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
 | Shop Watch | 0.4.1 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
 | Bar Watch | 0.2.1 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
@@ -1196,7 +1196,7 @@ reading the app already made and reports what changed between two of them.
 
 ## What you get
 
-Five tabs.
+Six tabs.
 
 **MOTION** — the ledger, newest first, grouped by day. One row per thing that moved: a
 policy axis, a justice, a seat, the president's approval, a lobbying job changing status, a
@@ -1208,6 +1208,13 @@ each with the seven-cell bar the Government screen draws, how far it has drifted
 ledger first saw it, and how long it has held its current value. Hover a name for its
 written position.
 
+**BILLS** — the Congressional Record, which the game fetches every sixty seconds and
+throws away. One row per entry the Herald printed: the headline, **the axis the bill was
+trying to move**, both chambers' tallies, and its fate. Above the table, the rate at which
+this Congress passes bills *toward* the centre against *away from* it — which on
+2026-09-12 was 100 % against 0 %, in the same chamber, on the same day. See *The direction
+column* below.
+
 **SEATS** — the president with approval, both chambers, the court justice by justice, and
 the next election dates.
 
@@ -1216,8 +1223,43 @@ tool has actually *witnessed* a rollover — a projection of the next boundary w
 of that observation as its error bar. It also tells you, plainly, whether anything is
 currently feeding it.
 
-**SOURCES** — the three endpoints it reads, when each last arrived, what is held, and a
+**SOURCES** — the four endpoints it reads, when each last arrived, what is held, and a
 button to copy the ledger out as TSV.
+
+## The direction column
+
+A bill carries `from_axis` and `to_axis` — where the law is and where the bill would put
+it. **The client never draws either.** You see a headline and a vote table, so a bill to
+walk slavery back from +3 and a bill to push sedition law from +2 to +3 look like the same
+kind of news, and the only way to tell them apart in the game is to read the prose and know
+the current axis by heart.
+
+Kept side by side, they stop looking alike. From one afternoon's editions:
+
+| bill | axis | House | Senate | fate |
+|---|---|---|---|---|
+| toward the centre | 3 → 2 | 253–182 | 65–35 | signed |
+| toward the centre | 1 → 0 | 241–194 | 60–40 | signed |
+| away from it | 2 → 3 | 194–241 | 40–60 | dead |
+| away from it | 2 → 3 | 182–253 | 35–65 | dead |
+| further left | −1 → −2 | 9–426 | 4–96 | dead |
+
+Every bill toward the centre passed and every bill away from it died, with the wings voting
+as blocs and the 229 moderates deciding. That is a fact about what this chamber will do
+next week, and it was sitting in a payload the sidebar was already fetching.
+
+Two things the table is careful not to claim, both of them in the hover text:
+
+- **The margin is a guide, not a verdict.** `GovernmentPage` hardcodes 218 and 51 as the
+  majorities, but the wiki says passage turns on a *weighted* count — so a bill can clear
+  218 and still fail. The outcome column is the only statement of fact.
+- **Pending is not dead.** The game renders a missing `outcome` exactly like
+  *"Dead in Congress"*; this keeps them apart, because a bill that cleared a chamber an
+  hour ago has not failed, it has simply not been decided.
+
+When an election publishes a `congress_alignment_swing`, that lands here too — the one
+place in the whole client where a *change* in the government is published as a number
+instead of left to be diffed.
 
 ## The bracket, which is the whole point
 
@@ -1274,10 +1316,18 @@ own size.
 ## What it reads
 
 Full disclosure is in the header comment at the top of
-[`gov-watch.user.js`](gov-watch.user.js). In short: three GET **responses** the game already
-made — `/api/government`, `/api/factions/{id}/jobs`, and `/api/user/status` for your name —
-stored under `pkgw:` keys in your browser, and nothing sent anywhere. It originates **zero**
-requests.
+[`gov-watch.user.js`](gov-watch.user.js). In short: four GET **responses** the game already
+made — `/api/government`, `/api/factions/{id}/jobs`, `/api/user/status` for your name, and
+(since 0.6.0) `/api/newspaper` for the Congressional Record — stored under `pkgw:` keys in
+your browser, and nothing sent anywhere. It originates **zero** requests.
+
+That last one is the sidebar's Herald card, which polls every sixty seconds on every screen
+by default — so BILLS fills on its own, and **stops filling if you hide that card**, which
+the tab says rather than showing you an empty table. The path is matched exactly and never
+as a prefix: `/newspaper/bounties` prints an arbitrary player's current city, and
+`/newspaper/personals`, `/newspaper/classified-ads` and `/newspaper/job-listings` are
+player-authored text with an author attached. This tool keeps government numbers, not
+people, and `test-gov-passive.js` fails the build if any of the five ever appears in it.
 
 The measurements behind every constant, and which parts are inferred rather than measured
 (the cycle being a *game* month is the big one):

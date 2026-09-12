@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — Gov Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.5.0
-// @description  A change ledger for the government. Records every policy axis, seat, justice, congress member and presidential number the app already fetched, and reports what moved between two readings — with the window the change happened in, never a timestamp it cannot know. Passive; zero added requests.
+// @version      0.6.0
+// @description  A change ledger for the government. Records every policy axis, seat, justice, congress member and presidential number the app already fetched, and reports what moved between two readings — with the window the change happened in, never a timestamp it cannot know. Since 0.6.0 it also keeps the Congressional Record: every bill the Herald prints, with the axis it tried to move, both chambers' tallies and its fate. Passive; zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -29,6 +29,19 @@
  *                                                are read for STATUS ONLY — see below
  *               GET  /api/user/status            polled by the app every 10 s anyway;
  *                                                used only for the clock and your name
+ *               GET  /api/newspaper              the Herald's front page, which the
+ *                                                sidebar card polls every 60 s on every
+ *                                                screen by default. Read for the
+ *                                                Congressional Record: per bill, the
+ *                                                headline, the axis it moves from and to,
+ *                                                both chambers' yea/nay and the outcome
+ *
+ *             That path is matched EXACTLY. The Herald's other endpoints are never read
+ *             and never will be: `/newspaper/bounties` prints an arbitrary player's
+ *             current city (a disclosure asymmetry noted in docs/20, not ours to widen),
+ *             and `/newspaper/personals`, `/newspaper/classified-ads` and
+ *             `/newspaper/job-listings` are player-authored text with an author attached.
+ *             This tool keeps government numbers, not people.
  *
  *             Faction data other than the government fields is ignored: no treasury, no
  *             roster, no ledger, no inventory, no raids. From the jobs payload this tool
@@ -50,7 +63,7 @@
  *             mutation shapes are deliberately absent from this file.
  *
  *   Storage:  localStorage keys prefixed `pkgw:` — the readings above, the change ledger
- *             built from them, and panel state
+ *             built from them, the bill record, and panel state
  *
  *   Alerts:   none. No notifications, no sound, nothing raised from an unfocused tab;
  *             the panel only redraws while the tab is visible
@@ -132,6 +145,25 @@
   // CYCLE tab says so wherever it uses this number.
   const ACCEL = 52.14;
   const GAME_MONTH_MS = Math.round(2592000 / ACCEL * 1000); // ≈ 13 h 48 m 32 s
+
+  // The Herald stamps every entry with `gametime`, game-seconds since the epoch, and
+  // computes its own edition number and date from it. Both are the client's arithmetic,
+  // copied rather than re-derived — docs/20-newspaper-surface.md quotes the source.
+  // Note what the client does NOT do: it clamps the month to December and lets the day
+  // run past 30, so the last five days of a game year really do print as December 31 to
+  // 35. That is reproduced here rather than corrected, because the point of this column
+  // is to say what the paper said.
+  const GS = { day: 86400, month: 2592000, year: 31536000 };
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+    'August', 'September', 'October', 'November', 'December'];
+  const editionNo = (gt) => Math.floor(gt / GS.month) + 1;
+  const gameDate = (gt) => {
+    if (!Number.isFinite(gt)) return '—';
+    const inYear = gt % GS.year;
+    const mi = Math.min(Math.floor(inYear / GS.month), 11);
+    const day = Math.floor((inYear - mi * GS.month) / GS.day) + 1;
+    return `${MONTHS[mi]} ${day}, Y${Math.floor(gt / GS.year) + 1}`;
+  };
 
   // The 20 policy names GovernmentPage renders, in its own order. Used to keep the LAW
   // tab stable when a reading arrives with fewer rows than the last one did.
@@ -278,11 +310,14 @@
     next: {},         // {cong, pres}
     cycle: null, reform: null,
     roll: null,       // the last witnessed cycle rollover event, for the projection
+    bills: {},        // bill id    -> the Congressional Record row; see takeNewspaper
+    swings: [],       // {t, gametime, label, delta} — congress_alignment_swing, the only
+                      // place the client publishes a government DELTA rather than a state
     seen: {},         // path -> t, for the SOURCES tab
     first: null,      // when this ledger started, so "no change" can be qualified
   };
 
-  const CAP = { events: 900, jobs: 200 };
+  const CAP = { events: 900, jobs: 200, bills: 400, swings: 200 };
 
   const data = Object.assign({}, BLANK, readJSON(K.data, {}));
   for (const k of Object.keys(BLANK)) if (data[k] == null) data[k] = BLANK[k];
@@ -532,6 +567,111 @@
   const pathOf = (u) => { try { return new URL(u, location.href).pathname; } catch { return ''; } };
 
   /** collapse the variable part of a path so the SOURCES table has one row per shape */
+  // ===========================================================================
+  // The Congressional Record.
+  //
+  // docs/20-newspaper-surface.md found this feed arriving on every screen and being
+  // thrown away: the sidebar's Herald card polls `/newspaper` every 60 seconds, renders
+  // three headlines, and drops the rest — including the per-chamber vote counts, the
+  // outcome, and the axis each bill was trying to move. docs/14 and 13 both close on
+  // "what moves a policy axis, and how fast"; this is the feed that answers it, and it
+  // has been on screen the whole time.
+  //
+  // What a row keeps, and why each field is worth a line:
+  //
+  //   from/to    the axis move the bill proposed. The client never draws these, so a
+  //              bill's DIRECTION is invisible in the game and is the whole finding:
+  //              on 2026-09-12 every bill toward the centre passed and every bill away
+  //              from it died, in the same chamber, on the same day.
+  //   yeas/nays  per chamber, printed raw. The wiki says passage turns on a WEIGHTED
+  //              count, so a tally is not the deciding number and the margin column
+  //              below is drawn as a guide, never as a verdict.
+  //   outcome    null and "dead in Congress" render identically in the game. They are
+  //              kept apart here, because "not decided yet" and "failed" are different
+  //              facts about a bill that cleared a chamber an hour ago.
+  //   firstSeen  when this tool first saw the row, which is NOT when the vote happened.
+  //              `gametime` is the paper's own stamp and is the honest date.
+  //
+  // Nothing player-authored is stored: the front page carries Congress, Court and World
+  // entries only, and this reads the headline of one — the prose `body` is left where it
+  // is. See the disclosure for the four sibling endpoints this never touches.
+  // ===========================================================================
+  const billRow = (e) => {
+    const m = e && e.metadata ? e.metadata : {};
+    const n = (v) => (v !== null && v !== '' && Number.isFinite(+v) ? +v : null);
+    return {
+      gametime: n(e.gametime),
+      category: typeof m.category === 'string' ? m.category : null,
+      headline: typeof m.headline === 'string' ? m.headline : null,
+      from: n(m.from_axis), to: n(m.to_axis),
+      hy: n(m.house_yea), hn: n(m.house_nay),
+      sy: n(m.senate_yea), sn: n(m.senate_nay),
+      // A missing outcome stays null. The client draws null as "Dead in Congress"; this
+      // tool refuses to, because a bill can simply not have been decided yet.
+      outcome: typeof m.outcome === 'string' ? m.outcome : null,
+    };
+  };
+
+  // The client's own success test, and it is two values rather than one: a bill can
+  // clear both chambers and still be vetoed, so "passed Congress" and "became law" are
+  // different questions and this answers the second.
+  const passed = (o) => o === 'signed' || o === 'veto overridden';
+
+  // Newest edition first. `gametime` is the paper's order; firstSeen only breaks ties
+  // inside one edition, where the paper itself gives us nothing finer.
+  const billList = () => Object.entries(data.bills)
+    .map(([id, b]) => Object.assign({ id }, b))
+    .sort((a, b) => (b.gametime ?? 0) - (a.gametime ?? 0) || (b.firstSeen ?? 0) - (a.firstSeen ?? 0));
+
+  const sameBill = (a, b) => !!a && !!b && a.outcome === b.outcome && a.hy === b.hy
+    && a.hn === b.hn && a.sy === b.sy && a.sn === b.sn && a.to === b.to && a.from === b.from;
+
+  const takeNewspaper = (body, now) => {
+    if (!Array.isArray(body)) return false;
+    let touched = false;
+    for (const e of body) {
+      if (!e || e.id == null) continue;
+      const id = String(e.id);
+      const row = billRow(e);
+      const prev = data.bills[id];
+      if (prev && sameBill(prev, row)) { prev.lastSeen = now; continue; }
+      if (prev) {
+        // A row that changes is a bill being decided between two readings — the same
+        // bracket rule the rest of this ledger runs on, so it becomes an event.
+        if (prev.outcome !== row.outcome) {
+          push('bill', { key: id, from: prev.outcome, to: row.outcome, t0: prev.lastSeen, t1: now },
+            { headline: row.headline, axisFrom: row.from, axisTo: row.to });
+        }
+        Object.assign(prev, row, { lastSeen: now });
+      } else {
+        data.bills[id] = Object.assign(row, { firstSeen: now, lastSeen: now });
+      }
+      touched = true;
+    }
+    // Oldest editions drop first. `gametime` is the paper's own order and survives a
+    // reading gap; firstSeen would re-order the whole archive after one long absence.
+    const ids = Object.keys(data.bills);
+    if (ids.length > CAP.bills) {
+      ids.sort((a, b) => (data.bills[a].gametime ?? 0) - (data.bills[b].gametime ?? 0));
+      for (const id of ids.slice(0, ids.length - CAP.bills)) delete data.bills[id];
+    }
+
+    // congress_alignment_swing — the one published DELTA in the whole client (docs/20).
+    for (const e of body) {
+      const sw = e && e.metadata && e.metadata.congress_alignment_swing;
+      if (!Array.isArray(sw) || !sw.length) continue;
+      const gt = e.gametime !== null && Number.isFinite(+e.gametime) ? +e.gametime : null;
+      for (const it of sw) {
+        if (!it || typeof it.label !== 'string' || !Number.isFinite(+it.delta)) continue;
+        if (data.swings.some((x) => x.gametime === gt && x.label === it.label && x.delta === +it.delta)) continue;
+        data.swings.push({ t: now, gametime: gt, label: it.label, delta: +it.delta });
+        touched = true;
+      }
+    }
+    if (data.swings.length > CAP.swings) data.swings.splice(0, data.swings.length - CAP.swings);
+    return touched;
+  };
+
   const seenKey = (path) => path.replace(/\/\d+/g, '/{id}');
 
   const consume = (path, url, body) => {
@@ -550,6 +690,11 @@
       touched = takeGovernment(body, now) || touched;
     } else if (/^\/api\/factions\/[^/]+\/jobs$/.test(path)) {
       touched = takeJobs(body, now) || touched;
+    } else if (path === '/api/newspaper') {
+      // Exact, not a prefix: /newspaper/bounties, /personals, /classified-ads and
+      // /job-listings all sit one segment deeper and all carry other players' text or
+      // location. A startsWith here would sweep them up by accident.
+      touched = takeNewspaper(body, now) || touched;
     } else known = false;
 
     if (!known) return;
@@ -941,7 +1086,8 @@
 
   const EVENT_GROUPS = {
     all: () => true,
-    law: (e) => e.kind === 'policy' || e.kind === 'prose' || e.kind === 'reform' || e.kind === 'job',
+    law: (e) => e.kind === 'policy' || e.kind === 'prose' || e.kind === 'reform' || e.kind === 'job'
+      || e.kind === 'bill',
     seats: (e) => e.kind === 'chamber' || e.kind === 'member' || e.kind === 'seat' || e.kind === 'court'
       || e.kind === 'court-join' || e.kind === 'court-leave',
     exec: (e) => e.kind === 'succession' || e.kind === 'president' || e.kind === 'pres-align'
@@ -972,6 +1118,11 @@
     if (k === 'court-leave') return [`Justice ${e.key} left the court`, sign1(e.from), ''];
     if (k === 'election') return [`Next ${e.which} election`, '', `${e.from} → ${e.to}`];
     if (k === 'cycle') return ['Congress cycle', `Month ${e.from} → ${e.to}`, 'a cycle resolved in this window'];
+    if (k === 'bill') {
+      const axis = e.axisFrom != null && e.axisTo != null ? `axis ${plain(e.axisFrom)} \u2192 ${plain(e.axisTo)}` : '';
+      const was = e.from == null ? 'pending' : e.from;
+      return [e.headline || `Bill #${e.key}`, `${was} \u2192 ${e.to == null ? 'pending' : e.to}`, axis];
+    }
     if (k === 'job') {
       const tail = e.outcome ? `outcome: ${String(e.outcome).replaceAll('_', ' ')}` : `cycle ${e.cycle ?? '—'}`;
       return [`Lobbying · ${e.key}`, `${e.from} → ${e.to}`, `push ${e.dir ?? '?'} · ${tail}`];
@@ -1338,6 +1489,7 @@
     ['/api/government', 'policies + prose, chambers, court, president, elections', '/government', 'Government'],
     ['/api/factions/{id}/jobs', 'policies, congress members, cycle, lobbying status', '/faction', 'Faction'],
     ['/api/user/status', 'your name only — the app polls this every 10s anyway', null, null],
+    ['/api/newspaper', 'the Congressional Record: bills, tallies, outcomes — the sidebar Herald card polls it every 60s on every screen, unless you have hidden that card', '/newspaper', 'Herald'],
   ];
 
   const renderSources = (out) => {
@@ -1423,9 +1575,142 @@
 
   // ---------------------------------------------------------------------------
 
+  // ===========================================================================
+  // BILLS — the Congressional Record, which the game fetches and never draws.
+  //
+  // Two things this table is careful about, both of them about not overclaiming:
+  //
+  //   The margin column is a GUIDE. GovernmentPage hardcodes 218 and 51 as the
+  //   majorities and the wiki says passage turns on a weighted count, so a bill can
+  //   clear 218 and still fail, or miss it and pass. The column says how far the raw
+  //   tally sat from the printed majority and nothing else; the outcome column is the
+  //   only statement of fact about what happened.
+  //
+  //   A null outcome is drawn as "pending", not as "dead". The game draws both the same
+  //   way and that is the one place its own renderer loses information.
+  // ===========================================================================
+  const OUTCOME_WORD = {
+    signed: 'signed', vetoed: 'vetoed', 'veto overridden': 'overridden',
+    'dead in Congress': 'dead',
+  };
+
+  const renderBills = (out) => {
+    const all = billList();
+    const voted = all.filter((b) => b.hy != null || b.sy != null);
+
+    if (!all.length) {
+      out.append(el('p', 'pkgw-faint',
+        'No Herald entry recorded yet. The sidebar\'s Herald card polls the front page every sixty seconds '
+        + 'on every screen \u2014 so this fills on its own, unless you have hidden that card in the sidebar '
+        + 'settings, in which case nothing here will ever arrive.'));
+      const j = el('div', 'pkgw-chips');
+      j.append(jumpBtn('Herald', '/newspaper', 'the front page, with the Congressional Record'));
+      out.append(j);
+      return;
+    }
+
+    // The finding this tab exists for: which DIRECTION the chamber is willing to vote.
+    // Toward the centre means |to| < |from|; away means |to| > |from|.
+    const dir = (b) => (b.from == null || b.to == null ? null
+      : Math.abs(b.to) < Math.abs(b.from) ? 'toward the centre'
+        : Math.abs(b.to) > Math.abs(b.from) ? 'away from the centre' : 'across');
+    const groups = new Map();
+    for (const b of voted) {
+      const d = dir(b);
+      if (!d) continue;
+      const g = groups.get(d) || { n: 0, won: 0, pending: 0 };
+      g.n++;
+      if (b.outcome == null) g.pending++;
+      else if (passed(b.outcome)) g.won++;
+      groups.set(d, g);
+    }
+    if (groups.size) {
+      out.append(h2('which way this congress votes'));
+      const t = el('table', 'pkgw-tbl');
+      for (const [d, g] of groups) {
+        const tr = document.createElement('tr');
+        const decided = g.n - g.pending;
+        const a = el('td', null, d);
+        a.title = 'The axis move the bill proposed, which the game never shows you \u2014 |to| against |from|.';
+        tr.append(a, el('td', 'n', `${g.won}/${decided || 0}`), el('td', 'n', decided ? `${Math.round((100 * g.won) / decided)}%` : '\u2014'));
+        t.append(tr);
+      }
+      out.append(t);
+      out.append(el('p', 'pkgw-faint',
+        'Decided bills only; anything still pending is left out of the rate rather than counted as a loss.'));
+    }
+
+    out.append(h2(`bills \u00b7 ${all.length}`));
+    const t = el('table', 'pkgw-tbl');
+    for (const b of all.slice(0, 120)) {
+      const tr = document.createElement('tr');
+
+      const what = el('td', null, b.headline || b.category || `#${b.id}`);
+      const move = b.from != null && b.to != null ? `${plain(b.from)} \u2192 ${plain(b.to)}` : null;
+      what.title = [
+        b.headline || '(no headline)',
+        b.gametime != null ? `${gameDate(b.gametime)} \u00b7 edition ${editionNo(b.gametime)}` : null,
+        move ? `axis ${move} \u2014 ${word(b.from)} to ${word(b.to)}` : 'no axis move on this entry',
+        `first seen ${ago(b.firstSeen)} ago`,
+      ].filter(Boolean).join('\n');
+
+      const axis = el('td', 'n', move || '\u00b7');
+      if (b.from != null && b.to != null) axis.style.color = hue(b.to);
+
+      const tally = (yea, nay, need, label) => {
+        if (yea == null) return el('td', 'n', '\u00b7');
+        const c = el('td', 'n', `${yea}\u2013${nay}`);
+        const gap = yea - need;
+        c.title = `${label}: ${yea} yea, ${nay} nay \u2014 ${gap >= 0 ? '+' : ''}${gap} against the printed majority of ${need}.\n`
+          + 'The wiki says passage turns on a WEIGHTED count, so this margin is a guide and not the deciding number.';
+        c.style.color = yea >= need ? '#4ade80' : '#f87171';
+        return c;
+      };
+
+      const fate = el('td', 'n', b.outcome == null ? 'pending' : (OUTCOME_WORD[b.outcome] || b.outcome));
+      fate.title = b.outcome == null
+        ? 'No outcome on this entry yet. The game draws this exactly like "Dead in Congress"; it is not the same thing.'
+        : `outcome: ${b.outcome}`;
+      if (b.outcome != null) fate.style.color = passed(b.outcome) ? '#4ade80' : '#f87171';
+      else fate.style.color = '#a1a1aa';
+
+      tr.append(what, axis,
+        tally(b.hy, b.hn, SEATS.house.majority, 'House'),
+        tally(b.sy, b.sn, SEATS.senate.majority, 'Senate'),
+        fate);
+      t.append(tr);
+    }
+    out.append(t);
+    if (all.length > 120) out.append(el('p', 'pkgw-faint', `${all.length - 120} older entries held but not drawn.`));
+
+    if (data.swings.length) {
+      out.append(h2('published swings'));
+      out.append(el('p', 'pkgw-faint',
+        'congress_alignment_swing \u2014 the only place the client publishes a CHANGE in the government as a '
+        + 'number rather than leaving it to be diffed. It appears after an election.'));
+      const st = el('table', 'pkgw-tbl');
+      for (const sw of data.swings.slice(-40).reverse()) {
+        const tr = document.createElement('tr');
+        const a = el('td', null, sw.label);
+        a.title = sw.gametime != null ? gameDate(sw.gametime) : 'no game date on this entry';
+        const d = el('td', 'n', `${sw.delta > 0 ? '+' : ''}${sw.delta}`);
+        d.style.color = sw.delta > 0 ? '#f87171' : '#60a5fa';
+        tr.append(a, d);
+        st.append(tr);
+      }
+      out.append(st);
+    }
+
+    out.append(el('p', 'pkgw-note',
+      'A bill is the only thing that moves a policy axis a notch, and the Herald is the only feed that names '
+      + 'one. This table is the card\'s own payload kept instead of dropped \u2014 no request is added, and if '
+      + 'the Herald card is hidden in your sidebar the game stops fetching it and this stops filling.'));
+  };
+
   const TABS = [
     ['motion', 'motion', renderMotion],
     ['law', 'law', renderLaw],
+    ['bills', 'bills', renderBills],
     ['seats', 'seats', renderSeats],
     ['cycle', 'cycle', renderCycle],
     ['sources', 'sources', renderSources],
