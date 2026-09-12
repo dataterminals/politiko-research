@@ -50,7 +50,8 @@ docs/     numbered findings + plan; 00 recon, 01 rules, 02 plan, 03 ideas,
           04 stocks, 05 people, 06 time, 07 alignment, 08 sleepers, 09 sockets,
           10 xp, 11 faction raids, 12 navigation, 13 world politics,
           14 government motion, 15 shops, 16 client cost, 17 attributes,
-          18 casino slots, 19 casino blackjack, 20 newspaper
+          18 casino slots, 19 casino blackjack, 20 newspaper,
+          21 opinion motion
 tools/    recon helpers; collect-stores.js (export half: the tools' own stores → one
           gitignored JSON in artifacts/) and read-stores.js (the brief a strategy
           conversation starts from — run it before talking strategy)
