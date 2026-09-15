@@ -78,7 +78,22 @@ const mk = (over) => ({
       court: [{ id: '2', name: 'Justice Whitmore', a: -3 }],
       now: { 'policy:Tax Structure': { v: 3, t: T(16), since: T(300) }, 'policy:Abortion Rights': { v: 0, t: T(16), since: T(300) }, 'mem:35': { chamber: 'house', seat: 35, a: 3 } },
       desc: { 'Tax Structure': 'The only tax is a poverty tax.' },
-      events: [{ kind: 'policy', key: 'Tax Structure', from: 2, to: 3, t0: T(200), t1: T(150) }, { kind: 'member', key: 'Senate 88', from: 1, to: 3, t0: T(90), t1: T(16) }],
+      events: [{ kind: 'policy', key: 'Tax Structure', from: 2, to: 3, t0: T(200), t1: T(150) }, { kind: 'member', key: 'Senate 88', from: 1, to: 3, t0: T(90), t1: T(16) },
+        // the 2026-09-12 shape: Corporate Law moves in a window that overlaps Upton's arrival,
+        // and Election Reform goes out and back in the same stretch
+        { kind: 'policy', key: 'Corporate Law', from: 0, to: -1, t0: T(26), t1: T(23) },
+        { kind: 'reform', key: 'Election Reform', from: 3, to: 2, t0: T(24.5), t1: T(24.4) }, { kind: 'reform', key: 'Election Reform', from: 2, to: 3, t0: T(24.4), t1: T(24.3) },
+        { kind: 'court', key: 'Justice Whitmore', from: -2, to: -3, t0: T(24.5), t1: T(24.1) }],
+      // gov-watch 0.7.0's Herald record. Headlines and the June 1, Y15 date are the ones seen
+      // on 2026-09-12; every body is invented for the test.
+      bills: {
+        860: { gametime: 454464000, category: 'Supreme Court', headline: 'United States v. Farrell, Corp.', from: null, to: null, hy: null, hn: null, sy: null, sn: null, outcome: null, body: null, cut: null, spin: null, firstSeen: T(80), lastSeen: T(1) },
+        861: { gametime: 454464000, category: 'Supreme Court', headline: 'United States v. Upton', from: null, to: null, hy: null, hn: null, sy: null, sn: null, outcome: null, body: `TEST FIXTURE | not the real ruling.\n\nThe Court holds ${'the charter provision void, '.repeat(20)}END-OF-BODY`, cut: 5200, spin: null, firstSeen: T(24), lastSeen: T(1), prior: T(24.02) },
+        814: { gametime: 454000000, category: 'Congress', headline: 'Slavery Repeal Act', from: 3, to: 2, hy: 253, hn: 182, sy: 65, sn: 35, outcome: 'signed', body: 'A bill.', firstSeen: T(80), lastSeen: T(1), prior: T(81) },
+        815: { gametime: 454000000, category: 'Congress', headline: 'Sedition Expansion Act', from: 2, to: 3, hy: 194, hn: 241, sy: 40, sn: 60, outcome: 'dead in Congress', body: null, proseDropped: true, firstSeen: T(80), lastSeen: T(1), prior: T(81) },
+        816: { gametime: 454000000, category: 'Congress', headline: 'Still Counting', from: 1, to: 0, hy: 240, hn: 195, sy: 60, sn: 40, outcome: null, body: null, firstSeen: T(2), lastSeen: T(1), prior: T(2.02) },
+        840: { gametime: 454000000, category: 'World', headline: 'Tremors', body: 'World prose.', spin: 'liberal', firstSeen: T(80), lastSeen: T(1), prior: T(81) },
+      },
       members: { 1: { chamber: 'house', seat: 1, a: 0, inc: false, t: T(16) }, 2: { chamber: 'house', seat: 2, a: 3, inc: true, t: T(16) } },
       jobs: { 2064: { policy: 'Gun Control', dir: 'right', status: 'resolved', cycle: '117', outcome: 'vote_pressured', t: T(16) } },
     } } },
@@ -130,6 +145,7 @@ prior.tools['pkmw:'].keys.hist['user/money::balance'] = [[T(30), 120000]];
 prior.tools['pkxp:'].keys.ledger.last = { persuasion: { v: 180, t: T(30) }, street_sense: { v: 227.5, t: T(30) }, heart: { v: 50, t: T(30) } };
 prior.tools['pkgw:'].keys.data.now['policy:Tax Structure'] = { v: 2, t: T(40), since: T(300) };
 prior.tools['pkgw:'].keys.data.cycle = '168';
+prior.tools['pkgw:'].keys.data.bills = Object.fromEntries(Object.entries(bundle.tools['pkgw:'].keys.data.bills).filter(([id]) => id !== '861'));
 prior.tools['pkpw:'].keys.people = { Alocrin: { ...bundle.tools['pkpw:'].keys.people.Alocrin, location: 'Austin' } };
 prior.tools['pksw:'].keys.sleepers = { 981: bundle.tools['pksw:'].keys.sleepers[981] };
 prior.tools['pksw:'].keys.meta = { ...bundle.tools['pksw:'].keys.meta, recruited_count: 1 };
@@ -143,7 +159,7 @@ if (process.env.DUMP) fs.writeFileSync(process.env.DUMP, md);
 
 const has = (label, re) => check(label, re.test(md), `not found: ${re}`);
 console.log('\n— the brief carries every section —');
-for (const s of ['Clock', 'Levers', 'Government', 'Opinion', 'World', 'People', 'Hours', 'You', 'Faction and sleepers', 'Economy', 'Wire', 'Since the bundle of', 'Freshness per tool', 'What this bundle does not know']) has(`## ${s}`, new RegExp(`^## ${s}`, 'm'));
+for (const s of ['Clock', 'Levers', 'Government', 'Court and the Record', 'Opinion', 'World', 'People', 'Hours', 'You', 'Faction and sleepers', 'Economy', 'Wire', 'Since the bundle of', 'Freshness per tool', 'What this bundle does not know']) has(`## ${s}`, new RegExp(`^## ${s}`, 'm'));
 has('hours fold sightings onto Eastern time with a quiet stretch that wraps midnight', /\| Benis \| Redefining Reality \| ··········███··········· \| 9 \| 3 \| 13:00–10:00 \(21 h\) \|/);
 has('...and too few sightings say so', /\| Alocrin \| [^|]* \| [·▁-█]{24} \| 1 \| 1 \| too few \|/);
 check('no section fell back to its guard', !/could not be read/.test(md), (md.match(/_.*could not be read.*_/g) || []).join('\n'));
@@ -164,6 +180,49 @@ has('players in your city exclude you', /\| players in your city \| 1 \|/);
 has('policies table reads the description', /\| Tax Structure \| 3 \| .* \| The only tax is a poverty tax\. \|/);
 has('recent policy changes are listed', /\| Tax Structure \| 2 \| 3 \|/);
 has('faction jobs are listed', /\| 2064 \| Gun Control \| right \| resolved \| 117 \| vote_pressured \|/);
+console.log('\n— court rulings, and what was observed beside them —');
+{
+  const sec = (md.split(/^## Court and the Record$/m)[1] || '').split(/^## /m)[0];
+  const hasC = (label, re) => check(label, re.test(sec), `not found: ${re}\n${sec.slice(0, 1600)}`);
+  hasC('entries are counted by category, with the prose held', /6 Herald entries kept \(Congress 3, Supreme Court 2, World 1\); [\d,]+ chars of prose held on 3, 1 dropped for the budget\./);
+  hasC('decided bills are split toward vs away from the centre', /\| toward the centre \| 1 \| 1 \| 100% \| 1 \|[\s\S]*\| away from the centre \| 1 \| 0 \| 0% \| 0 \|/);
+  check('...and pending is not counted as a loss', !/\| toward the centre \| 2 \|/.test(sec), 'a pending bill was counted as decided');
+  hasC('rulings are newest first by the paper\'s date, then first sighting', /\*\*United States v\. Upton\*\*[\s\S]*\*\*United States v\. Farrell, Corp\.\*\*/);
+  hasC('the game date uses the Herald arithmetic', /\*\*United States v\. Upton\*\* — June 1, Y15 · appeared between 2026-09-10 20:1\dZ and 2026-09-10 20:1\dZ \(1 min window\)/);
+  hasC('a 0.6.0 ruling from the first Herald reading has no lower edge', /\*\*United States v\. Farrell, Corp\.\*\* — June 1, Y15 · already on the front page at gov-watch's first Herald reading[^\n]*no lower edge/);
+  hasC('the body is quoted to ~300 chars, flattened and pipe-escaped', /> TEST FIXTURE \\\| not the real ruling\. The Court holds the charter provision void, [^\n]{150,}…/);
+  check('...and never in full', !/END-OF-BODY/.test(sec), 'the whole body reached the brief');
+  hasC('...with the stored cut disclosed', /stored cut at [\d,]+ of 5,200 chars/);
+  hasC('a ruling without text says why', /no text kept \(first seen before gov-watch 0\.7\.0, or none printed\)/);
+  hasC('the overlapping move is observed beside Upton', /observed in an overlapping window: Corporate Law 0 → -1, between 2026-09-10 18:1\dZ and 2026-09-10 21:1\dZ \(3\.0 h wide\)/);
+  hasC('...a round trip is one line, after the net move', /Corporate Law 0 → -1[^\n]*\n  observed in an overlapping window: Election Reform 3 → 3 \(2 moves\)/);
+  check('...and only policy and reform moves are considered', !/Whitmore/.test(sec) && !/Tax Structure/.test(sec), 'a non-policy or far-off event was listed');
+  hasC('Farrell, with nothing near it, says so', /no lower edge\n  _no text kept[^\n]*\n  no recorded axis move in an overlapping window \(±30 min\)/);
+  hasC('the section states adjacency is not a cause', /_Adjacency only\./);
+  check('...and never uses causal language',
+    !/\b(because|caused|causes|due to|as a result|moved by|led to|triggered|thanks to|resulted in)\b/i.test(sec.replace(/neither payload says what moved the axis/, '')),
+    (sec.match(/\b(because|caused|causes|due to|as a result|moved by|led to|triggered|thanks to|resulted in)\b/gi) || []).join(', '));
+  has('the comparison names a ruling that arrived since', /\| Herald entries \| \+1 \| ruling: United States v\. Upton \|/);
+  check('the gaps line no longer claims no newspaper text is kept', /newspaper text beyond the front page's Congress, Supreme Court and World entries/.test(md), 'stale gaps line');
+
+  // The overlap rule is copied from gov-watch, because a userscript cannot be required.
+  // If the two ever disagree the brief and the panel list different moves under one ruling.
+  const GW = fs.readFileSync(path.join(__dirname, '..', 'gov-watch.user.js'), 'utf8');
+  const nearOf = (s) => (s.match(/const NEAR_MS = ([^;]+);/) || [])[1];
+  check('NEAR_MS matches gov-watch', nearOf(GW) && nearOf(GW) === nearOf(SRC), `gov-watch ${nearOf(GW)} / read-stores ${nearOf(SRC)}`);
+  check('...and so does the passed() test and the open-window rule',
+    /o === 'signed' \|\| o === 'veto overridden'/.test(GW) && /o === 'signed' \|\| o === 'veto overridden'/.test(SRC)
+      && /r\.prior === null \|\| \(r\.prior === undefined && /.test(GW) && /r\.prior === null \|\| \(r\.prior === undefined && /.test(SRC),
+    'the success test or the open-window rule differs between gov-watch and read-stores');
+
+  // A malformed record costs nothing: junk rows and bodies survive without the guard.
+  const junk = mk({});
+  junk.tools['pkgw:'].keys.data.bills = { 1: null, 2: { category: 'Supreme Court', body: 42, gametime: 'x', firstSeen: 'y' }, 3: { category: 'Supreme Court', headline: 'A|B', body: 'ok', firstSeen: T(5), prior: T(5.1) } };
+  junk.tools['pkgw:'].keys.data.events = [null, { kind: 'policy', t0: 'x' }];
+  const mdJ = brief(junk, null);
+  check('malformed bills and events do not trip the guard', !/court: could not be read/.test(mdJ) && /\*\*A\\\|B\*\*/.test(mdJ) && /no game date/.test(mdJ), (mdJ.split(/^## Court and the Record$/m)[1] || '').slice(0, 600));
+}
+
 has('opinion has the fine distribution', /\| abortion \| 0 \| 0 \| 0 \| 82 \| 16 \| 0 \| 0 \| Neutral voters \|/);
 has('graffiti walls are read', /\| sanfrancisco \| 0 \| 25 \| 3 \|/);
 has('endpoints seen are read as last-seen stamps, newest first', /Endpoints world-watch has seen the app call: 2; most recent \/api\/time \(3 min ago\), \/api\/refresh \(30\.0 h ago\)/);

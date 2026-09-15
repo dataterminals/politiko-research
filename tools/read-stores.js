@@ -255,6 +255,82 @@ function brief(b, prior) {
     }
   });
 
+  // -- court and the record -------------------------------------------------------------
+  // gov-watch 0.6.0 keeps every Herald entry as `bills`; 0.7.0 adds the prose of Congress,
+  // Supreme Court and World entries, and `prior` — the Herald reading before an entry
+  // first appeared. Why: 2026-09-12, Corporate Law moved 0 → −1 with no bill in the Record
+  // while two rulings appeared, and nobody had kept what the rulings said
+  // (docs/20-newspaper-surface.md, "The prose is kept now").
+  //
+  // The overlap test is gov-watch's own — appearance(), adjacentMoves(), byAxis() — copied
+  // because a userscript cannot be required; test-read-stores.js fails if NEAR_MS drifts.
+  // The wording is fixed too: a move beside a ruling is "observed in an overlapping window",
+  // and the test fails if this section ever says why.
+  h('Court and the Record');
+  guard('court', () => {
+    const gw = tool(b, 'pkgw:', 'data');
+    const bills = Object.entries((gw && gw.bills) || {}).map(([id, x]) => ({ id, ...x }))
+      .filter((x) => x && typeof x === 'object')
+      .sort((a, c) => (c.gametime ?? 0) - (a.gametime ?? 0) || (c.firstSeen ?? 0) - (a.firstSeen ?? 0));
+    if (!bills.length) { p('_no Herald entries: gov-watch 0.6.0+ fills this from the sidebar Herald card_'); return; }
+    const gameDay = (gt) => { if (typeof gt !== 'number' || !Number.isFinite(gt)) return 'no game date'; const g = fromGs(gt); return `${MONTHS[g.monthIdx]} ${g.day}, Y${g.year}`; };
+    const prose = bills.filter((x) => typeof x.body === 'string');
+    const court = bills.filter((x) => x.category === 'Supreme Court');
+    p(`${bills.length} Herald entries kept (${count(bills, (x) => x.category || 'uncategorised').map(([k, n]) => `${k} ${n}`).join(', ')}); `
+      + `${num(prose.reduce((s, x) => s + x.body.length, 0))} chars of prose held on ${prose.length}`
+      + `${bills.some((x) => x.proseDropped) ? `, ${bills.filter((x) => x.proseDropped).length} dropped for the budget` : ''}.`);
+
+    // Direction: the axis move a bill proposed, which the game never draws. Toward the centre
+    // is |to| < |from|. Only decided bills count toward a rate; pending is not a loss.
+    const passed = (o) => o === 'signed' || o === 'veto overridden';
+    const dirOf = (x) => (typeof x.from !== 'number' || typeof x.to !== 'number' ? null
+      : Math.abs(x.to) < Math.abs(x.from) ? 'toward the centre' : Math.abs(x.to) > Math.abs(x.from) ? 'away from the centre' : 'across');
+    const voted = bills.filter((x) => dirOf(x));
+    if (voted.length) {
+      h3('Which way this Congress votes');
+      table(['direction', 'decided', 'passed', 'rate', 'pending'], ['toward the centre', 'away from the centre', 'across']
+        .map((d) => { const g = voted.filter((x) => dirOf(x) === d); const dec = g.filter((x) => x.outcome != null); const won = dec.filter((x) => passed(x.outcome)).length; return [d, dec.length, won, dec.length ? pct(won, dec.length) : 'n/a', g.length - dec.length]; })
+        .filter((r) => r[1] || r[4]));
+    }
+
+    h3('Supreme Court rulings');
+    if (!court.length) { p('_none kept_'); return; }
+    const NEAR_MS = 30 * 60000;
+    const firstHerald = bills.reduce((m, x) => (typeof x.firstSeen === 'number' && (m == null || x.firstSeen < m) ? x.firstSeen : m), null);
+    const appearance = (r) => {
+      if (typeof r.firstSeen !== 'number') return null;
+      if (typeof r.prior === 'number') return { t0: r.prior, t1: r.firstSeen, state: 'bracketed' };
+      if (r.prior === null || (r.prior === undefined && r.firstSeen === firstHerald)) return { t0: null, t1: r.firstSeen, state: 'open' };
+      return { t0: null, t1: r.firstSeen, state: 'unrecorded' };
+    };
+    const events = ((gw && gw.events) || []).filter((e) => e && (e.kind === 'policy' || e.kind === 'reform') && Number.isFinite(e.t0) && Number.isFinite(e.t1));
+    const byAxis = (moves) => {
+      const out = new Map();
+      for (const e of moves) { const g = out.get(e.key); if (!g) out.set(e.key, { key: e.key, from: e.from, to: e.to, t0: e.t0, t1: e.t1, n: 1 }); else { g.to = e.to; g.t0 = Math.min(g.t0, e.t0); g.t1 = Math.max(g.t1, e.t1); g.n++; } }
+      const all = [...out.values()];
+      return [...all.filter((g) => g.from !== g.to), ...all.filter((g) => g.from === g.to)];
+    };
+    const SHOW = 8, OBS = 6;
+    for (const r of court.slice(0, SHOW)) {
+      const app = appearance(r);
+      const when = !app ? 'first sighting not recorded'
+        : app.state === 'bracketed' ? `appeared between ${iso(app.t0)} and ${iso(app.t1)} (${span(app.t1 - app.t0)} window)`
+          : app.state === 'open' ? `already on the front page at gov-watch's first Herald reading, ${iso(app.t1)} — no lower edge`
+            : `first seen ${iso(app.t1)}; the reading before it was not recorded`;
+      p(`- **${cell(r.headline || `entry #${r.id}`)}** — ${gameDay(r.gametime)} · ${when}`);
+      if (typeof r.body === 'string') p(`  > ${cell(trunc(r.body.replace(/\s+/g, ' ').trim(), 300))}${r.cut ? ` _(stored cut at ${num(r.body.length)} of ${num(r.cut)} chars)_` : ''}`);
+      else p(`  _${r.proseDropped ? 'text dropped for the prose budget' : 'no text kept (first seen before gov-watch 0.7.0, or none printed)'}_`);
+      if (!app) continue;
+      const a0 = (app.t0 ?? app.t1) - NEAR_MS, a1 = app.t1 + NEAR_MS;
+      const moves = byAxis(events.filter((e) => e.t0 <= a1 && e.t1 >= a0));
+      if (!moves.length) { p(`  no recorded axis move in an overlapping window (±${span(NEAR_MS)})`); continue; }
+      for (const g of moves.slice(0, OBS)) p(`  observed in an overlapping window: ${g.key} ${g.from} → ${g.to}${g.n > 1 ? ` (${g.n} moves)` : ''}, between ${iso(g.t0)} and ${iso(g.t1)} (${span(g.t1 - g.t0)} wide)`);
+      if (moves.length > OBS) p(`  …and ${moves.length - OBS} more ${moves.length - OBS === 1 ? 'axis' : 'axes'} observed in the same stretch`);
+    }
+    if (court.length > SHOW) p('', `${court.length - SHOW} older rulings kept, not listed.`);
+    p('', `_Adjacency only. A move listed under a ruling was observed in a window that overlaps the one the ruling appeared in, widened by ${span(NEAR_MS)} either side; neither payload says what moved the axis, and a ruling, a bill, a lobbying job or drift would all read the same. An empty line means no policy reading caught a move then._`);
+  });
+
   // -- opinion --------------------------------------------------------------------------
   h('Opinion');
   guard('opinion', () => {
@@ -567,6 +643,9 @@ function brief(b, prior) {
         if (gA.cycle !== gB.cycle) rows.push(['cycle', `${gA.cycle} → ${gB.cycle}`, '']);
         if ((gA.pres && gA.pres.name) !== (gB.pres && gB.pres.name)) rows.push(['president', `${gA.pres && gA.pres.name} → ${gB.pres && gB.pres.name}`, '']);
         rows.push(['government events', `${(gA.events || []).length} → ${(gB.events || []).length}`, '']);
+        const bA = gA.bills || {}, bB = gB.bills || {};
+        const newB = Object.keys(bB).filter((id) => !bA[id]);
+        if (Object.keys(bB).length) rows.push(['Herald entries', `+${newB.length}`, newB.filter((id) => bB[id] && bB[id].category === 'Supreme Court').map((id) => `ruling: ${bB[id].headline || `#${id}`}`).join('; ')]);
       }
       const pA = tool(prior, 'pkpw:', 'people') || {}, pB = tool(b, 'pkpw:', 'people') || {};
       const newP = Object.keys(pB).filter((u) => !pA[u]);
@@ -619,10 +698,11 @@ function brief(b, prior) {
     if (!money || !money.length) gaps.push('no money reading');
     else if (last(money)[0] - money[0][0] < 2 * 86400e3) gaps.push(`money history spans only ${span(last(money)[0] - money[0][0])}`);
     if (!tool(b, 'pkgw:', 'data')) gaps.push('no gov-watch ledger');
+    else if (!Object.keys(tool(b, 'pkgw:', 'data').bills || {}).length) gaps.push('no Herald entry kept: the sidebar Herald card may be hidden, or gov-watch is older than 0.6.0');
     if (!tool(b, 'pkpw:', 'people')) gaps.push('no people ledger');
     if (!(b.tools['pksw:'] && b.tools['pksw:'].keys.meta)) gaps.push('no faction reading');
     if (!gaps.length) p('_every store carries data_'); else for (const g of gaps) p(`- ${g}`);
-    p('', '_No store carries: inventory, bank or estate balances as a series, corporation books, newspaper article text, chat, or the combat log beyond XP samples. Those are not thin readings; nothing captures them._');
+    p('', '_No store carries: inventory, bank or estate balances as a series, corporation books, newspaper text beyond the front page\'s Congress, Supreme Court and World entries (gov-watch 0.7.0+), chat, or the combat log beyond XP samples. Those are not thin readings; nothing captures them._');
   });
 
   return L.join('\n') + '\n';
