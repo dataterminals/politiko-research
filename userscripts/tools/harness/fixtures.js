@@ -703,6 +703,7 @@ window.HARNESS_FIXTURES = {
       // that matter are the pair with opposite directions and opposite fates \u2014 that is
       // the 2026-09-12 finding, reproduced so the BILLS tab can be read on the bench.
       const GT = 450 * 2592000;
+      const RULING_GT = 14 * 31536000 + 5 * 2592000; // June 1, Y15
       const bill = (id, over) => ({
         id, gametime: over.gametime ?? GT,
         metadata: Object.assign({ category: 'Congress', headline: `Bill ${id}` }, over),
@@ -718,13 +719,28 @@ window.HARNESS_FIXTURES = {
           house_yea: 9, house_nay: 426, senate_yea: 4, senate_nay: 96,
           outcome: 'dead in Congress' }),
         // No vote table: the client renders `body` as prose instead, and the tool must
-        // keep the row without inventing numbers for it.
+        // keep the row without inventing numbers for it. Since 0.7.0 World prose is kept —
+        // it is game-authored front-page text — so this body should show in the row's hover.
         bill(840, { category: 'World', headline: 'Tremors reported downstate',
-          body: 'Long prose the tool has no business storing.', spin: 'liberal' }),
+          body: 'World Report prose, kept since 0.7.0: game-authored, front page.', spin: 'liberal' }),
+        // A Supreme Court entry with its ruling text, which is what 0.7.0 exists to keep.
+        // The headline and date are the ones seen on 2026-09-12 (June 1, Y15); the prose is
+        // INVENTED for the bench — nobody has the real text, which was the whole problem.
+        bill(860, { category: 'Supreme Court', headline: 'United States v. Farrell, Corp.',
+          gametime: RULING_GT,
+          body: 'Bench fixture, not the real ruling.\n\nThe Court holds that the corporate '
+            + 'charter provisions at issue exceed the authority granted by statute, and '
+            + 'remands for proceedings consistent with this opinion.' }),
         // The only published DELTA in the whole client, and it only appears after an
-        // election (docs/20).
+        // election (docs/20). Its body must NOT be kept: Election is not a front-page
+        // prose category, and a prose list is an allow-list.
         ...(over.swing ? [bill(850, { category: 'Election', headline: 'Congress turns',
+          body: 'Election prose the tool must not store.',
           congress_alignment_swing: [{ label: 'House', delta: 25 }, { label: 'Senate', delta: -4 }] })] : []),
+        ...(over.ruling ? [bill(861, { category: 'Supreme Court', headline: 'United States v. Upton',
+          gametime: RULING_GT,
+          body: 'Bench fixture, not the real ruling.\n\nThe petition is denied; the lower court’s '
+            + 'judgment stands.' })] : []),
       ];
 
       return [
@@ -829,6 +845,23 @@ window.HARNESS_FIXTURES = {
               { alignment: 3, count: 10 },
             ],
           }),
+        },
+        {
+          // The 2026-09-12 shape, last in the story so every baseline is already laid: a
+          // second ruling arrives, and the jobs call after it moves Corporate Law in the same
+          // stretch with no bill in the Record. BILLS → court should list that move under
+          // both rulings as an OBSERVATION — overlapping windows, never a cause.
+          label: '⑨ herald: a second Supreme Court ruling arrives (BILLS → court)',
+          path: '/api/newspaper',
+          variant: 'ruling',
+          body: paper({ b814: 'signed', b815: 'dead in Congress', swing: true, ruling: true }),
+        },
+        {
+          // Same as ④ in every other respect, so Corporate Law is the only thing that moves.
+          label: '⑩ jobs: Corporate Law 2 → −1 with no bill in the Record',
+          path: '/api/factions/3/jobs',
+          variant: 'corplaw',
+          body: jobs({ cycle: '5', policies: { 'Free Speech': -1.4, Pollution: 0.5, 'Corporate Law': -1 } }),
         },
         {
           label: 'something unrelated (must be ignored)',

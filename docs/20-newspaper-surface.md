@@ -335,8 +335,67 @@ of one can be walked back a notch by a bill this Congress will pass. That is the
 route found so far out of a captured issue, and it was sitting in a payload the sidebar
 had been fetching every sixty seconds all along.
 
+## The prose is kept now — decided 2026-09-15
+
+**`gov-watch` 0.7.0 stores `metadata.body` (and `spin`) for the `Congress`, `Supreme Court`
+and `World` categories.** 0.6.0 deliberately dropped it, on the reasoning that the numbers
+were the finding and prose was bulk. That was wrong, and it was shown wrong by the first
+thing worth reading in the feed.
+
+**What happened, 2026-09-12.** Two `Supreme Court` entries appeared on the front page —
+*"United States v. Farrell, Corp."* and *"United States v. Upton"*, both `gametime` June 1,
+Y15 — in the same window that **Corporate Law moved 0 → −1 with no bill anywhere in the
+Congressional Record**. Measured: the axis move, the absence of a bill, the two headlines
+and their date. **Not measured, and now unmeasurable:** what either ruling said. The one
+field that could distinguish *"the court moves law directly"* from *"a ruling and a law
+change happened to share an afternoon"* was `body`, and no tool had kept it. The table at
+the top of this file already recorded `Supreme Court` as *precedent prose, retirements* —
+so the evidence was known to live there, and was dropped anyway.
+
+That turns the court into an open question for `14`'s *"what moves a policy axis"*, next
+to the bill ledger's answer. Until a ruling's text is read beside an axis move, **the
+Corporate Law move stays unexplained, not attributed** — to the court or to anything else.
+The June 1 date is consistent with `06-time-surface.md`'s *Supreme Court
+appointments each June*, which is a second thing the text would settle: whether these
+entries are rulings at all, or seat changes written as case names.
+
+**Why those three categories and no others.** They are the front page's own prose: text
+the *game* writes about the government and the world — a bill, a ruling, a report — with no
+author field, and nothing a player typed. Every endpoint that does carry player text or
+location (`/newspaper/personals`, `/classified-ads`, `/job-listings`, `/local`,
+`/bounties`) sits one path segment deeper and remains unread; the exact-path match and its
+fence are unchanged. Inside `/newspaper` itself, the rule is an **allow-list**: an entry of
+any other category — including the swing-bearing ones, and any category the server adds
+later — keeps its row and loses its prose, until someone has read what that category
+carries.
+
+**Inferred, and flagged as such:** that front-page prose contains nothing player-authored.
+The bundle renders `body` with no author and no byline, and all three renderers treat it as
+the paper's own copy. A bill named by its sponsor, or a ruling that quotes a player, would
+still be game-composed text about the government, but this has not been checked against a
+real capture — and is the first thing to look at when the kept text is read.
+
+**The costs, bounded.** Each body is cut at 4,000 characters, all bodies together at
+250,000, with World and Congress text dropped before court rulings; rows are never dropped
+for prose. The budget is not tidiness: localStorage is one quota per origin, shared with the
+game and every tool in this repo, and a write that fails on quota fails for the whole
+`pkgw:data` store, policy ledger included.
+
+**How the panel uses it, without overclaiming.** BILLS lists Supreme Court entries newest
+first with their text, and under each any policy move whose ledger window overlaps the
+window the ruling appeared in (the Herald reading before it, to the one it arrived on),
+widened by thirty minutes. The line reads *"observed: … moved in an overlapping window"*,
+and `test-gov.js` fails if the section ever says *because*, *caused*, *moved by* or *led
+to*. Overlap is what was seen; causation is the thing still to be found out.
+
+Zero requests were made for this section: the decision is from the 2026-09-12 observation
+already recorded above and the bundle reading this file was written from.
+
 ## Still unknown
 
+- **Whether a Supreme Court ruling moves a policy axis directly.** Open since 2026-09-12
+  (Corporate Law 0 → −1, no bill, two rulings in the window). `gov-watch` 0.7.0 keeps the
+  text that would answer it; the next ruling that lands beside a move is the measurement.
 - **What `congress_alignment_swing`'s labels are.** Chambers, parties, issues — the
   component prints whatever arrives and the bundle names nothing.
 - **How many entries `/newspaper` returns, and whether it is capped or windowed.** The

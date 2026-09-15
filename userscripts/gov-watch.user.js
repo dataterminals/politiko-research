@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — Gov Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.6.0
-// @description  A change ledger for the government. Records every policy axis, seat, justice, congress member and presidential number the app already fetched, and reports what moved between two readings — with the window the change happened in, never a timestamp it cannot know. Since 0.6.0 it also keeps the Congressional Record: every bill the Herald prints, with the axis it tried to move, both chambers' tallies and its fate. Passive; zero added requests.
+// @version      0.7.0
+// @description  A change ledger for the government. Records every policy axis, seat, justice, congress member and presidential number the app already fetched, and reports what moved between two readings — with the window the change happened in, never a timestamp it cannot know. Since 0.6.0 it also keeps the Congressional Record: every bill the Herald prints, with the axis it tried to move, both chambers' tallies and its fate. Since 0.7.0 it also keeps the text of the front page's Congress, Supreme Court and World entries, and lists each court ruling beside any policy move seen in an overlapping window — as an observation, not a cause. Passive; zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -34,14 +34,27 @@
  *                                                screen by default. Read for the
  *                                                Congressional Record: per bill, the
  *                                                headline, the axis it moves from and to,
- *                                                both chambers' yea/nay and the outcome
+ *                                                both chambers' yea/nay and the outcome;
+ *                                                and since 0.7.0 the entry's prose `body`
+ *                                                and `spin` — for the categories Congress,
+ *                                                Supreme Court and World ONLY
+ *
+ *             Why the prose, since 0.7.0: on 2026-09-12 two Supreme Court rulings arrived
+ *             in the same window that Corporate Law moved with no bill in the Record, and
+ *             the ruling text was the only evidence of whether the court moves law. 0.6.0
+ *             had dropped it. Those three front-page categories are prose the GAME writes
+ *             about the government and the world — not player text. Every other category's
+ *             prose is left unread; a category the server adds later is not kept until
+ *             someone has looked at what it carries.
  *
  *             That path is matched EXACTLY. The Herald's other endpoints are never read
  *             and never will be: `/newspaper/bounties` prints an arbitrary player's
  *             current city (a disclosure asymmetry noted in docs/20, not ours to widen),
- *             and `/newspaper/personals`, `/newspaper/classified-ads` and
- *             `/newspaper/job-listings` are player-authored text with an author attached.
- *             This tool keeps government numbers, not people.
+ *             `/newspaper/personals`, `/newspaper/classified-ads` and
+ *             `/newspaper/job-listings` are player-authored text with an author attached,
+ *             and `/newspaper/local` is the desk for the city you are standing in. Keeping
+ *             front-page prose widens none of that. This tool keeps the government, not
+ *             people.
  *
  *             Faction data other than the government fields is ignored: no treasury, no
  *             roster, no ledger, no inventory, no raids. From the jobs payload this tool
@@ -63,7 +76,12 @@
  *             mutation shapes are deliberately absent from this file.
  *
  *   Storage:  localStorage keys prefixed `pkgw:` — the readings above, the change ledger
- *             built from them, the bill record, and panel state
+ *             built from them, the bill record, and panel state. The bill record holds up
+ *             to 400 Herald entries, and since 0.7.0 the front-page prose above: each body
+ *             cut at 4,000 characters, all of them together held under 250,000 (oldest
+ *             World and Congress text dropped first, court rulings last; the row itself is
+ *             kept). The budget exists because a full localStorage fails every write,
+ *             ledger included. "forget everything" on SOURCES clears all of it.
  *
  *   Alerts:   none. No notifications, no sound, nothing raised from an unfocused tab;
  *             the panel only redraws while the tab is visible
@@ -592,16 +610,39 @@
   //   firstSeen  when this tool first saw the row, which is NOT when the vote happened.
   //              `gametime` is the paper's own stamp and is the honest date.
   //
-  // Nothing player-authored is stored: the front page carries Congress, Court and World
-  // entries only, and this reads the headline of one — the prose `body` is left where it
-  // is. See the disclosure for the four sibling endpoints this never touches.
+  //   body/spin  since 0.7.0, and for three categories only — see PROSE_CATS below.
+  //
+  // Nothing player-authored is stored. See the disclosure for the five sibling endpoints
+  // this never touches; they are where the Herald keeps other people's words.
   // ===========================================================================
+
+  // The prose, and why 0.6.0 was wrong to drop it. On 2026-09-12 two Supreme Court
+  // entries arrived in the same window that Corporate Law moved 0 → −1 with no bill
+  // anywhere in the Record, and the ruling text was the only evidence of whether the court
+  // moves law directly. No tool had kept it. docs/20-newspaper-surface.md has the finding.
+  //
+  // Kept for the front-page categories and nothing else, because those three are prose
+  // the GAME writes about the government and the world: a bill, a ruling, a report. Every
+  // other category is left where it is. That is a list of what to keep rather than of what
+  // to refuse, so a category the server invents tomorrow is dropped until someone reads it.
+  const PROSE_CATS = new Set(['Congress', 'Supreme Court', 'World']);
+  // Per entry, so one runaway body cannot eat the store; and across the whole store,
+  // because localStorage is one quota per origin shared with the game and every other tool
+  // here. A write that fails on quota fails for the WHOLE ledger, silently, so the budget
+  // is the thing protecting the policy history, not the prose.
+  const PROSE_MAX = 4000;
+  const PROSE_BUDGET = 250000;
+  const SPIN_MAX = 40;
+
   const billRow = (e) => {
-    const m = e && e.metadata ? e.metadata : {};
+    const m = e && e.metadata && typeof e.metadata === 'object' ? e.metadata : {};
     const n = (v) => (v !== null && v !== '' && Number.isFinite(+v) ? +v : null);
+    const category = typeof m.category === 'string' ? m.category : null;
+    const front = PROSE_CATS.has(category);
+    const text = front && typeof m.body === 'string' && m.body.trim() ? m.body : null;
     return {
       gametime: n(e.gametime),
-      category: typeof m.category === 'string' ? m.category : null,
+      category,
       headline: typeof m.headline === 'string' ? m.headline : null,
       from: n(m.from_axis), to: n(m.to_axis),
       hy: n(m.house_yea), hn: n(m.house_nay),
@@ -609,7 +650,29 @@
       // A missing outcome stays null. The client draws null as "Dead in Congress"; this
       // tool refuses to, because a bill can simply not have been decided yet.
       outcome: typeof m.outcome === 'string' ? m.outcome : null,
+      body: text == null ? null : text.slice(0, PROSE_MAX),
+      // the length the paper actually printed, only when it was cut, so the panel can say so
+      cut: text != null && text.length > PROSE_MAX ? text.length : null,
+      spin: front && typeof m.spin === 'string' && m.spin ? m.spin.slice(0, SPIN_MAX) : null,
     };
+  };
+
+  /**
+   * Hold the total prose under PROSE_BUDGET. Rows are never deleted here — only their
+   * body, and the row remembers that it had one. Court rulings go last, because they are
+   * the reason this is kept at all; inside each group the oldest edition goes first.
+   */
+  const trimProse = () => {
+    const held = Object.values(data.bills).filter((b) => b && typeof b.body === 'string');
+    let total = held.reduce((s, b) => s + b.body.length, 0);
+    if (total <= PROSE_BUDGET) return;
+    held.sort((a, b) => ((a.category === 'Supreme Court') - (b.category === 'Supreme Court'))
+      || (a.gametime ?? 0) - (b.gametime ?? 0));
+    for (const b of held) {
+      if (total <= PROSE_BUDGET) break;
+      total -= b.body.length;
+      b.body = null; b.cut = null; b.proseDropped = true;
+    }
   };
 
   // The client's own success test, and it is two values rather than one: a bill can
@@ -623,12 +686,20 @@
     .map(([id, b]) => Object.assign({ id }, b))
     .sort((a, b) => (b.gametime ?? 0) - (a.gametime ?? 0) || (b.firstSeen ?? 0) - (a.firstSeen ?? 0));
 
+  // Prose counts as part of the row, so a 0.6.0 row with no body is filled in on the next
+  // reading and a ruling that is re-worded is updated. A body the budget dropped is not
+  // re-added every sixty seconds only to be dropped again.
   const sameBill = (a, b) => !!a && !!b && a.outcome === b.outcome && a.hy === b.hy
-    && a.hn === b.hn && a.sy === b.sy && a.sn === b.sn && a.to === b.to && a.from === b.from;
+    && a.hn === b.hn && a.sy === b.sy && a.sn === b.sn && a.to === b.to && a.from === b.from
+    && (a.proseDropped || ((a.body ?? null) === (b.body ?? null) && (a.spin ?? null) === (b.spin ?? null)));
 
   const takeNewspaper = (body, now) => {
     if (!Array.isArray(body)) return false;
     let touched = false;
+    // The Herald reading before this one. consume() stamps `seen` only after this returns,
+    // so this is still the previous reading — the one an entry new to this reading was NOT
+    // on. null means there has never been one, and so nothing bounds an entry's arrival.
+    const prior = data.seen['/api/newspaper'] ?? null;
     for (const e of body) {
       if (!e || e.id == null) continue;
       const id = String(e.id);
@@ -642,9 +713,10 @@
           push('bill', { key: id, from: prev.outcome, to: row.outcome, t0: prev.lastSeen, t1: now },
             { headline: row.headline, axisFrom: row.from, axisTo: row.to });
         }
+        if (prev.proseDropped) { row.body = null; row.cut = null; }
         Object.assign(prev, row, { lastSeen: now });
       } else {
-        data.bills[id] = Object.assign(row, { firstSeen: now, lastSeen: now });
+        data.bills[id] = Object.assign(row, { firstSeen: now, lastSeen: now, prior });
       }
       touched = true;
     }
@@ -655,6 +727,7 @@
       ids.sort((a, b) => (data.bills[a].gametime ?? 0) - (data.bills[b].gametime ?? 0));
       for (const id of ids.slice(0, ids.length - CAP.bills)) delete data.bills[id];
     }
+    if (touched) trimProse();
 
     // congress_alignment_swing — the one published DELTA in the whole client (docs/20).
     for (const e of body) {
@@ -671,6 +744,69 @@
     if (data.swings.length > CAP.swings) data.swings.splice(0, data.swings.length - CAP.swings);
     return touched;
   };
+
+  // ===========================================================================
+  // Court rulings beside the ledger. An OBSERVATION, never a cause.
+  //
+  // What can honestly be said about a ruling is when it first appeared: after the Herald
+  // reading before it (`prior`) and by the one it arrived on (`firstSeen`). What can be
+  // said about a policy move is the same kind of window. Two windows that overlap are two
+  // things this tool saw happen in the same stretch of time, and that is all the panel
+  // says. The court may have moved the law, the law may have prompted the ruling, or a
+  // bill, a lobbying job or the server's own drift may have done it — nothing in either
+  // payload distinguishes those, so nothing here picks one.
+  //
+  // NEAR_MS widens the ruling's window on both sides, because the two feeds are read on
+  // different screens at different times: a move caught on the faction feed ten minutes
+  // after the ruling arrived is still worth a line. Thirty minutes is about one game day,
+  // the finest unit the paper itself prints a date in.
+  // ===========================================================================
+  const NEAR_MS = 30 * 60000;
+  const RULED = 'Supreme Court';
+
+  /** newest edition first, same order as the Record */
+  const courtList = () => billList().filter((b) => b.category === RULED);
+
+  /**
+   * The window a ruling arrived in. `open` means nothing bounds it from below: it was
+   * already on the front page at this tool's first Herald reading, so it may be much
+   * older than the reading. A 0.6.0 row has no `prior` at all; if it came in on the first
+   * reading it is open, and otherwise the reading before it simply was not recorded.
+   */
+  const appearance = (r, firstHerald) => {
+    const t1 = r?.firstSeen ?? null;
+    if (t1 == null) return null;
+    if (typeof r.prior === 'number') return { t0: r.prior, t1, state: 'bracketed' };
+    if (r.prior === null || (r.prior === undefined && t1 === firstHerald)) return { t0: null, t1, state: 'open' };
+    return { t0: null, t1, state: 'unrecorded' };
+  };
+
+  /** policy moves in the ledger whose own window overlaps the ruling's, widened by NEAR_MS */
+  const adjacentMoves = (app, events) => {
+    if (!app) return [];
+    const a0 = (app.t0 ?? app.t1) - NEAR_MS, a1 = app.t1 + NEAR_MS;
+    return (events || []).filter((e) => e && (e.kind === 'policy' || e.kind === 'reform')
+      && Number.isFinite(e.t0) && Number.isFinite(e.t1) && e.t0 <= a1 && e.t1 >= a0);
+  };
+
+  /**
+   * One line per axis: the net move across every overlapping event, in ledger order, and
+   * the span of their windows. A cycle boundary can move several axes at once, and a
+   * margin-width panel with a row per event under every ruling is a panel nobody reads.
+   * Axes that ended where they started sort after the ones that did not, so a round trip
+   * cannot push the one net move off the bottom of a capped list.
+   */
+  const byAxis = (moves) => {
+    const out = new Map();
+    for (const e of moves) {
+      const g = out.get(e.key);
+      if (!g) out.set(e.key, { key: e.key, from: e.from, to: e.to, t0: e.t0, t1: e.t1, n: 1 });
+      else { g.to = e.to; g.t0 = Math.min(g.t0, e.t0); g.t1 = Math.max(g.t1, e.t1); g.n++; }
+    }
+    const all = [...out.values()];
+    return [...all.filter((g) => g.from !== g.to), ...all.filter((g) => g.from === g.to)];
+  };
+  const OBS_MAX = 6;
 
   const seenKey = (path) => path.replace(/\/\d+/g, '/{id}');
 
@@ -1015,6 +1151,12 @@
     .pkgw-bar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin: 2px 0 0; }
     .pkgw-cell { height: 5px; border-radius: 2px; background: #27272a; }
     .pkgw-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; }
+    .pkgw-ev details { margin: 2px 0 0; }
+    .pkgw-ev summary { color: #a1a1aa; cursor: pointer; font-size: 10.5px; }
+    .pkgw-prose { white-space: pre-wrap; overflow-wrap: anywhere; color: #d4d4d8;
+      max-height: 18em; overflow: auto; margin: 4px 0 2px; padding: 4px 6px;
+      border-left: 1px solid #3f3f46; }
+    .pkgw-obs { color: #a1a1aa; font-size: 10.5px; margin: 3px 0 0; }
   `;
 
   const el = (tag, cls, text) => {
@@ -1489,7 +1631,7 @@
     ['/api/government', 'policies + prose, chambers, court, president, elections', '/government', 'Government'],
     ['/api/factions/{id}/jobs', 'policies, congress members, cycle, lobbying status', '/faction', 'Faction'],
     ['/api/user/status', 'your name only — the app polls this every 10s anyway', null, null],
-    ['/api/newspaper', 'the Congressional Record: bills, tallies, outcomes — the sidebar Herald card polls it every 60s on every screen, unless you have hidden that card', '/newspaper', 'Herald'],
+    ['/api/newspaper', 'the Congressional Record: bills, tallies, outcomes, and the text of Congress, Supreme Court and World entries — the sidebar Herald card polls it every 60s on every screen, unless you have hidden that card', '/newspaper', 'Herald'],
   ];
 
   const renderSources = (out) => {
@@ -1524,6 +1666,11 @@
     hr('policy axes', String(Object.keys(data.now).filter((k) => k.startsWith('policy:')).length));
     hr('congress members', String(Object.keys(data.members).length));
     hr('justices', String(data.court.length));
+    const entries = Object.values(data.bills);
+    hr('Herald entries', String(entries.length), `capped at ${CAP.bills}, oldest edition dropped first`);
+    hr('court rulings', String(entries.filter((b) => b.category === RULED).length));
+    hr('prose held', `${entries.reduce((s, b) => s + (typeof b.body === 'string' ? b.body.length : 0), 0).toLocaleString()} chars`,
+      `Congress, Supreme Court and World text only · ${PROSE_MAX.toLocaleString()} per entry · ${PROSE_BUDGET.toLocaleString()} in all, court rulings dropped last`);
     hr('lobbying jobs', String(Object.keys(data.jobs).length), 'status only — no slot, no username, no committed resources');
     hr('ledger began', data.first ? when(data.first) : '—');
     out.append(h);
@@ -1594,6 +1741,78 @@
     'dead in Congress': 'dead',
   };
 
+  // A hover is a glance, and a native tooltip that runs past the screen cannot be
+  // scrolled — so the hover gets the opening of the prose and the expander gets all of it.
+  const HOVER_MAX = 600;
+  const clip = (s, max) => (s.length > max ? `${s.slice(0, max).trimEnd()}…` : s);
+
+  // ---------------------------------------------------------------------------
+  // COURT — Supreme Court entries, newest edition first, with their prose.
+  // The adjacency line underneath each is the reason this section exists and also the
+  // part most easily over-read, so its wording is fixed here and pinned by test-gov.js:
+  // it says "moved in an overlapping window", never "moved by", "after" or "because".
+  // ---------------------------------------------------------------------------
+  const renderCourt = (out, all) => {
+    const rulings = courtList();
+    if (!rulings.length) return;
+    const firstHerald = all.reduce((m, b) => (b.firstSeen != null && (m == null || b.firstSeen < m) ? b.firstSeen : m), null);
+
+    out.append(h2(`court · ${rulings.length}`));
+    for (const r of rulings.slice(0, 40)) {
+      const n = el('div', 'pkgw-ev');
+      const top = el('div', 'pkgw-row');
+      const lab = el('span', null, r.headline || `Supreme Court entry #${r.id}`);
+      if (r.body) lab.title = clip(r.body, HOVER_MAX);
+      top.append(lab, el('span', 'pkgw-dim', r.gametime != null ? gameDate(r.gametime) : '—'));
+      n.append(top);
+
+      if (r.body) {
+        const d = el('details');
+        const len = r.cut ?? r.body.length;
+        d.append(el('summary', null, `ruling text · ${len.toLocaleString()} chars`));
+        d.append(el('div', 'pkgw-prose', r.body));
+        if (r.cut) d.append(el('div', 'pkgw-faint', `cut at ${PROSE_MAX.toLocaleString()} of ${r.cut.toLocaleString()} characters`));
+        n.append(d);
+      } else {
+        n.append(el('div', 'pkgw-faint', r.proseDropped
+          ? 'text dropped to keep the store under its prose budget — the row is kept'
+          : 'no text kept for this entry (first seen before 0.7.0, or the paper printed none)'));
+      }
+
+      const app = appearance(r, firstHerald);
+      const line = el('div', 'w', !app ? ''
+        : app.state === 'bracketed' ? `appeared between ${when(app.t0)} and ${when(app.t1)} · ${dur(app.t1 - app.t0)} window`
+          : app.state === 'open' ? `already on the front page at this tool's first Herald reading, ${when(app.t1)}`
+            : `first seen ${when(app.t1)} · the reading before it was not recorded`);
+      line.title = 'When this tool first saw the entry, which is not when the court ruled — the game date above is the paper’s own.';
+      n.append(line);
+
+      const moves = byAxis(adjacentMoves(app, data.events));
+      if (moves.length) {
+        for (const g of moves.slice(0, OBS_MAX)) {
+          const o = el('div', 'pkgw-obs',
+            `observed: ${g.key} ${plain(g.from)} → ${plain(g.to)}${g.n > 1 ? ` (${g.n} moves)` : ''} `
+            + `moved in an overlapping window (${when(g.t0)} – ${when(g.t1)}, ${dur(g.t1 - g.t0)} wide)`);
+          o.title = 'Two windows that overlap, and nothing more. Neither payload says what moved the axis — '
+            + 'a ruling, a bill, a lobbying job or the server’s own drift would all look exactly like this.';
+          n.append(o);
+        }
+        if (moves.length > OBS_MAX) n.append(el('div', 'pkgw-obs', `…and ${moves.length - OBS_MAX} more ${moves.length - OBS_MAX === 1 ? 'axis' : 'axes'} in the same stretch`));
+        if (app.state !== 'bracketed') {
+          n.append(el('div', 'pkgw-obs', 'The ruling’s own window has no lower edge, so it may be much older than any of these.'));
+        }
+      } else if (app) {
+        n.append(el('div', 'pkgw-obs', `no recorded axis move overlaps this window (±${dur(NEAR_MS)})`));
+      }
+      out.append(n);
+    }
+    if (rulings.length > 40) out.append(el('p', 'pkgw-faint', `${rulings.length - 40} older rulings held but not drawn.`));
+    out.append(el('p', 'pkgw-faint',
+      'Adjacency is an observation, not a cause: an axis move listed under a ruling happened in a window that '
+      + `overlaps the one the ruling appeared in, widened by ${dur(NEAR_MS)} either side. An empty line means only `
+      + 'that no policy reading caught a move then.'));
+  };
+
   const renderBills = (out) => {
     const all = billList();
     const voted = all.filter((b) => b.hy != null || b.sy != null);
@@ -1640,6 +1859,8 @@
         'Decided bills only; anything still pending is left out of the rate rather than counted as a loss.'));
     }
 
+    renderCourt(out, all);
+
     out.append(h2(`bills \u00b7 ${all.length}`));
     const t = el('table', 'pkgw-tbl');
     for (const b of all.slice(0, 120)) {
@@ -1649,9 +1870,12 @@
       const move = b.from != null && b.to != null ? `${plain(b.from)} \u2192 ${plain(b.to)}` : null;
       what.title = [
         b.headline || '(no headline)',
+        b.category && b.category !== 'Congress' ? b.category : null,
         b.gametime != null ? `${gameDate(b.gametime)} \u00b7 edition ${editionNo(b.gametime)}` : null,
         move ? `axis ${move} \u2014 ${word(b.from)} to ${word(b.to)}` : 'no axis move on this entry',
+        b.spin ? `spin: ${b.spin}` : null,
         `first seen ${ago(b.firstSeen)} ago`,
+        b.body ? `\n${clip(b.body, HOVER_MAX)}` : null,
       ].filter(Boolean).join('\n');
 
       const axis = el('td', 'n', move || '\u00b7');
@@ -1702,8 +1926,8 @@
     }
 
     out.append(el('p', 'pkgw-note',
-      'A bill is the only thing that moves a policy axis a notch, and the Herald is the only feed that names '
-      + 'one. This table is the card\'s own payload kept instead of dropped \u2014 no request is added, and if '
+      'A bill is the one thing known to move a policy axis a notch, and the Herald is the only feed that names '
+      + 'one — whether a ruling can too is open, which is why the court section keeps its text. This table is the card\'s own payload kept instead of dropped \u2014 no request is added, and if '
       + 'the Herald card is hidden in your sidebar the game stops fetching it and this stops filling.'));
   };
 

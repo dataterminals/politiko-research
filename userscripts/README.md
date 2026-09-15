@@ -29,7 +29,7 @@ bump; the table below is hand-kept and can drift.
 | Sleeper Watch | 0.10.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
 | Quick Jump | 0.8.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 | World Watch | 0.6.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
-| Gov Watch | 0.6.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
+| Gov Watch | 0.7.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
 | Poll Watch | 0.7.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
 | Shop Watch | 0.5.0 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
 | Bar Watch | 0.4.0 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
@@ -1334,7 +1334,8 @@ throws away. One row per entry the Herald printed: the headline, **the axis the 
 trying to move**, both chambers' tallies, and its fate. Above the table, the rate at which
 this Congress passes bills *toward* the centre against *away from* it — which on
 2026-09-12 was 100 % against 0 %, in the same chamber, on the same day. See *The direction
-column* below.
+column* below. Since 0.7.0 it also lists **Supreme Court rulings with their text**, beside
+any policy move seen in an overlapping window — see *The court* below.
 
 **SEATS** — the president with approval, both chambers, the court justice by justice, and
 the next election dates.
@@ -1381,6 +1382,48 @@ Two things the table is careful not to claim, both of them in the hover text:
 When an election publishes a `congress_alignment_swing`, that lands here too — the one
 place in the whole client where a *change* in the government is published as a number
 instead of left to be diffed.
+
+## The court, and why the text is kept now (0.7.0)
+
+0.6.0 kept a Herald entry's numbers and threw its prose away. On 2026-09-12 that cost the
+one piece of evidence that mattered: two Supreme Court entries — *United States v.
+Farrell, Corp.* and *United States v. Upton*, dated June 1, Y15 — arrived in the same
+window that **Corporate Law moved 0 → −1 with no bill anywhere in the Record**. Whether
+the court moves law directly is exactly what the ruling text would say, and no tool had
+kept it.
+
+So BILLS now opens with a **court** section: every Supreme Court entry, newest edition
+first, with its headline, the game date the paper printed, and the ruling text behind an
+expander (the opening of it is in the hover). Under each ruling, any policy axis that moved
+in the ledger in a window **overlapping** the one the ruling appeared in — widened by thirty
+minutes either side, about one game day — is listed as:
+
+```
+observed: Corporate Law 0 → -1 moved in an overlapping window (<from> – <to>, <width> wide)
+```
+
+That is an observation and nothing more. Neither payload says what moved the axis; a
+ruling, a bill, a lobbying job and the server's own drift would all look exactly like this,
+and the panel never says "because", "after" or "caused" (a test fails if it does). A ruling
+that was already on the front page at this tool's first Herald reading says so, because its
+window has no lower edge and it may be much older than any move beside it.
+
+What is kept, and what is not:
+
+- **The text of three categories only** — `Congress`, `Supreme Court` and `World`, the
+  front page's own prose, which the *game* writes about the government and the world. A
+  World entry's `spin` is kept too. Every other category keeps its row and loses its prose,
+  including any category the server adds later: it is a list of what to keep, not of what
+  to refuse.
+- **Capped.** Each body is cut at 4,000 characters (and says so if it was), and all of them
+  together are held under 250,000. Past that, the oldest World and Congress text goes first
+  and court rulings go last; the rows themselves are always kept. The budget is there
+  because localStorage is one quota shared with the game and every other tool, and a full
+  one fails *every* write — the policy ledger included.
+- **Nothing from the Herald's other five endpoints**, which is unchanged — see below.
+
+A ruling first seen by 0.6.0 has no text; the next time the front page still carries it,
+the text is filled in.
 
 ## The bracket, which is the whole point
 
@@ -1440,15 +1483,20 @@ Full disclosure is in the header comment at the top of
 [`gov-watch.user.js`](gov-watch.user.js). In short: four GET **responses** the game already
 made — `/api/government`, `/api/factions/{id}/jobs`, `/api/user/status` for your name, and
 (since 0.6.0) `/api/newspaper` for the Congressional Record — stored under `pkgw:` keys in
-your browser, and nothing sent anywhere. It originates **zero** requests.
+your browser, and nothing sent anywhere. It originates **zero** requests. Since 0.7.0 that
+store includes the **text** of Congress, Supreme Court and World entries, capped as
+described under *The court* above; the SOURCES tab shows how much prose is held, and
+*forget everything* clears it.
 
 That last one is the sidebar's Herald card, which polls every sixty seconds on every screen
 by default — so BILLS fills on its own, and **stops filling if you hide that card**, which
 the tab says rather than showing you an empty table. The path is matched exactly and never
-as a prefix: `/newspaper/bounties` prints an arbitrary player's current city, and
+as a prefix: `/newspaper/bounties` prints an arbitrary player's current city,
 `/newspaper/personals`, `/newspaper/classified-ads` and `/newspaper/job-listings` are
-player-authored text with an author attached. This tool keeps government numbers, not
-people, and `test-gov-passive.js` fails the build if any of the five ever appears in it.
+player-authored text with an author attached, and `/newspaper/local` is the desk for the
+city you are standing in. Keeping front-page prose widens none of that: this tool keeps the
+government, not people, and `test-gov-passive.js` fails the build if any of the five ever
+appears in it — or if the prose list grows past its three categories.
 
 The measurements behind every constant, and which parts are inferred rather than measured
 (the cycle being a *game* month is the big one):

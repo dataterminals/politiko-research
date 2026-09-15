@@ -216,6 +216,26 @@ console.log('\n— the disclosure still describes the code —');
     && !/startsWith\(\s*['"`]\/api\/newspaper/.test(CODE),
     'a prefix match would sweep up the four sibling endpoints above');
 
+  // 0.7.0 keeps entry prose, and the whole argument for that is WHICH prose: three
+  // categories the game writes about the government and the world. A fourth added to
+  // this set quietly would be the first player-authored text this tool stored.
+  const cats = (CODE.match(/const PROSE_CATS = new Set\(\[([^\]]*)\]\)/) || [])[1];
+  check('prose is kept for exactly Congress, Supreme Court and World',
+    cats != null && JSON.stringify(cats.split(',').map((c) => c.trim().replace(/^['"`]|['"`]$/g, '')).sort())
+      === JSON.stringify(['Congress', 'Supreme Court', 'World']),
+    `PROSE_CATS reads: ${cats}`);
+  check('...gated on that set, in the one place a row is built',
+    /const front = PROSE_CATS\.has\(category\);/.test(CODE) && /const text = front &&/.test(CODE)
+      && /spin: front &&/.test(CODE),
+    'body and spin must both be conditional on the category allow-list');
+  check('...each body is capped and the store has a prose budget',
+    /const PROSE_MAX = 4000;/.test(CODE) && /if \(touched\) trimProse\(\);/.test(CODE),
+    'expected the per-entry cap and the store-wide budget');
+  check('...and the disclosure says the prose is stored, for which categories, and why',
+    /prose `body`/.test(HEADER) && /Supreme Court and World ONLY/.test(HEADER) && /Why the prose, since 0\.7\.0/.test(HEADER)
+      && /4,000 characters/.test(HEADER),
+    'the Reads and Storage lines must disclose the kept prose');
+
   const declared = [...HEADER.matchAll(/(\/api\/[a-z0-9/_{}<>-]*)/gi)].map((m) => norm(m[1]));
   const undeclared = recognised.filter((p) => !declared.includes(p));
   check('every endpoint the code reads is named in the disclosure', undeclared.length === 0,

@@ -42,6 +42,7 @@ const mk = () => {
              isLive, tally, tallyMembers, centre, projectCycle,
              data, ui, takeGovernment, takeJobs, takeNewspaper, consume, seenKey, pathOf,
              billRow, sameBill, billList, gameDate, editionNo, passed,
+             PROSE_CATS, PROSE_MAX, PROSE_BUDGET, trimProse, courtList, appearance, adjacentMoves, byAxis, NEAR_MS,
              renderers: { bills: renderBills, law: renderLaw, motion: renderMotion } };
   `)(
     { data: 'pkgw:data', ui: 'pkgw:ui' },
@@ -461,7 +462,9 @@ console.log('\n\u2014 bills: what it refuses to keep \u2014');
   a.feed('/api/newspaper', [{ id: 900, gametime: 450000000, metadata: { category: 'World', headline: 'Weather', body: 'long prose', spin: 'liberal' } }]);
   const w = a.data.bills['900'];
   check('a prose entry keeps no tallies', [w.hy, w.hn, w.sy, w.sn, w.from, w.to], [null, null, null, null, null, null]);
-  ok('...and its prose body is not stored', !JSON.stringify(a.data).includes('long prose'));
+  // Reversed in 0.7.0 on purpose: World is front-page prose the game writes. What is still
+  // refused is prose from any OTHER category — see "bills: the prose" below.
+  check('...and since 0.7.0 a World entry keeps its body and spin', [w.body, w.spin], ['long prose', 'liberal']);
 
   // congress_alignment_swing is the one published delta in the whole client.
   a.feed('/api/newspaper', [{ id: 901, gametime: 450000000, metadata: { category: 'Election',
@@ -471,6 +474,192 @@ console.log('\n\u2014 bills: what it refuses to keep \u2014');
   a.feed('/api/newspaper', [{ id: 901, gametime: 450000000, metadata: { category: 'Election',
     congress_alignment_swing: [{ label: 'House', delta: 25 }, { label: 'Senate', delta: -4 }] } }]);
   check('...and re-reading the same edition does not duplicate it', a.data.swings.length, 2);
+}
+
+// ---------------------------------------------------------------------------
+// The prose (0.7.0). Kept because on 2026-09-12 two Supreme Court rulings landed in the
+// same window Corporate Law moved with no bill in the Record, and the ruling text was the
+// only evidence left \u2014 and 0.6.0 had dropped it. The line this guards is narrow: three
+// game-authored front-page categories, capped, and nothing else.
+// ---------------------------------------------------------------------------
+console.log('\n\u2014 bills: the prose, and only the front page\'s \u2014');
+{
+  const a = mk();
+  const GT = 450 * 2592000;
+  const e = (id, category, body, extra) => ({ id, gametime: GT, metadata: Object.assign({ category, headline: `h${id}`, body }, extra || {}) });
+
+  a.feed('/api/newspaper', [
+    e(1, 'Supreme Court', 'The court holds that the statute stands.'),
+    e(2, 'Congress', 'A bill to do a thing.', { from_axis: 1, to_axis: 0 }),
+    e(3, 'World', 'Tremors downstate.', { spin: 'conservative' }),
+  ]);
+  check('Supreme Court, Congress and World each keep their body',
+    ['1', '2', '3'].map((id) => a.data.bills[id].body),
+    ['The court holds that the statute stands.', 'A bill to do a thing.', 'Tremors downstate.']);
+  check('...and a spin where there is one', [a.data.bills['3'].spin, a.data.bills['1'].spin], ['conservative', null]);
+
+  // Every other category keeps its row and loses its prose \u2014 including the swing
+  // entries, and including a category nobody has seen yet. An allow-list, not a deny-list.
+  a.feed('/api/newspaper', [
+    e(10, 'Election', 'ELECTION PROSE', { spin: 'ELECTION SPIN' }),
+    e(11, 'Classifieds', 'PLAYER PROSE', { posted_by: 'someone' }),
+    e(12, 'supreme court', 'WRONG CASE PROSE'),
+    e(13, undefined, 'NO CATEGORY PROSE'),
+    e(14, 'Opinion', 'NEW CATEGORY PROSE'),
+  ]);
+  const s = JSON.stringify(a.data);
+  for (const t of ['ELECTION PROSE', 'ELECTION SPIN', 'PLAYER PROSE', 'WRONG CASE PROSE', 'NO CATEGORY PROSE', 'NEW CATEGORY PROSE']) {
+    ok(`not kept outside the three categories: ${t}`, !s.includes(t));
+  }
+  ok('...while those rows themselves are still kept', ['10', '11', '12', '13', '14'].every((id) => a.data.bills[id]));
+  ok('...and no author field ever reaches storage', !s.includes('someone'));
+
+  // The cap. One runaway body must not eat a localStorage quota shared with the game.
+  const huge = 'x'.repeat(a.PROSE_MAX * 3);
+  a.feed('/api/newspaper', [e(20, 'Supreme Court', huge)]);
+  check('a body is cut at PROSE_MAX', a.data.bills['20'].body.length, a.PROSE_MAX);
+  check('...and remembers how long it really was', a.data.bills['20'].cut, a.PROSE_MAX * 3);
+  check('an uncut body carries no cut length', a.data.bills['1'].cut, null);
+  ok('PROSE_MAX is the documented 4,000', a.PROSE_MAX === 4000);
+
+  // Malformed bodies: the tap runs inside the app's own promise chain, so nothing throws,
+  // and nothing that is not a non-empty string becomes a body.
+  for (const [id, body, spin] of [[30, 42, 7], [31, { html: '<b>' }, ['a']], [32, ['a', 'b'], {}], [33, '', ''], [34, '   \n ', null], [35, null, undefined], [36, undefined, 'x'.repeat(500)]]) {
+    try { a.feed('/api/newspaper', [e(id, 'Supreme Court', body, { spin })]); }
+    catch (err) { ok(`malformed body survives: ${JSON.stringify(body)}`, false, String(err)); }
+  }
+  check('a non-string or blank body is null, never "[object Object]" or ""',
+    [30, 31, 32, 33, 34, 35, 36].map((id) => a.data.bills[String(id)].body), [null, null, null, null, null, null, null]);
+  check('...a non-string spin is null', [30, 31, 32].map((id) => a.data.bills[String(id)].spin), [null, null, null]);
+  check('...and an overlong spin is cut', a.data.bills['36'].spin.length, 40);
+  for (const junk of [[{ id: 40, metadata: 'Supreme Court' }], [{ id: 41, metadata: [1, 2] }], [{ id: 42, metadata: null }]]) {
+    try { a.feed('/api/newspaper', junk); } catch (err) { ok('malformed metadata survives', false, String(err)); }
+  }
+  ok('non-object metadata survives and keeps no prose', a.data.bills['40'].body === null && a.data.bills['41'].body === null);
+
+  // A 0.6.0 row has no body. It is filled in on the next reading without logging an event,
+  // and an unchanged re-read after that churns nothing.
+  const b = mk();
+  b.data.bills['77'] = { gametime: GT, category: 'Supreme Court', headline: 'old', from: null, to: null,
+    hy: null, hn: null, sy: null, sn: null, outcome: null, firstSeen: 5, lastSeen: 5 };
+  b.feed('/api/newspaper', [{ id: 77, gametime: GT, metadata: { category: 'Supreme Court', headline: 'old', body: 'Backfilled.' } }]);
+  check('a 0.6.0 row gets its body on the next reading', b.data.bills['77'].body, 'Backfilled.');
+  check('...keeps its original first sighting', b.data.bills['77'].firstSeen, 5);
+  check('...and logs no event for it', b.data.events.length, 0);
+
+  // The store-wide budget. Rows stay; bodies go, World and Congress before the court.
+  const c = mk();
+  const per = a.PROSE_MAX;
+  const n = Math.ceil(a.PROSE_BUDGET / per) + 4;
+  const batch = [];
+  for (let i = 0; i < n; i++) batch.push({ id: 1000 + i, gametime: GT + i, metadata: { category: i < 3 ? 'Supreme Court' : 'World', headline: `w${i}`, body: String(i).padEnd(per, '.') } });
+  c.feed('/api/newspaper', batch);
+  const held = Object.values(c.data.bills).reduce((sum, r) => sum + (r.body ? r.body.length : 0), 0);
+  ok('total prose stays under PROSE_BUDGET', held <= a.PROSE_BUDGET, `${held} chars held`);
+  check('every row is still kept', Object.keys(c.data.bills).length, n);
+  check('court rulings keep their text, even the oldest', [0, 1, 2].map((i) => !!c.data.bills[String(1000 + i)].body), [true, true, true]);
+  ok('...the oldest World text went first', c.data.bills['1003'].proseDropped === true && !!c.data.bills[String(1000 + n - 1)].body);
+  const before = JSON.stringify(c.data.bills['1003']);
+  c.feed('/api/newspaper', batch);
+  check('a dropped body is not re-added on the next poll', JSON.stringify(c.data.bills['1003']).replace(/"lastSeen":\d+/, ''), before.replace(/"lastSeen":\d+/, ''));
+}
+
+console.log('\n\u2014 bills: court rulings, and what sits next to them \u2014');
+{
+  const a = mk();
+  const GT = 14 * 31536000 + 5 * 2592000; // June 1, Y15
+  const ruling = (id, headline, body) => ({ id, gametime: GT, metadata: { category: 'Supreme Court', headline, body } });
+  check('the fixture date is the one the paper printed', a.gameDate(GT), 'June 1, Y15');
+
+  // The first-ever Herald reading: nothing bounds an entry's arrival from below.
+  a.feed('/api/newspaper', [{ ...ruling(500, 'Old Precedent', 'Held long ago.'), gametime: GT - 2592000 }]);
+  check('an entry on the very first Herald reading has no prior reading', a.data.bills['500'].prior, null);
+  check('...so its window is open', a.appearance(a.data.bills['500'], a.data.bills['500'].firstSeen).state, 'open');
+
+  // Pin the clocks so the windows are exact.
+  a.data.seen['/api/newspaper'] = 1_000_000;
+  const now = 1_060_000;
+  a.takeNewspaper([ruling(501, 'United States v. Upton', 'The court finds the corporate statute void.')], now);
+  const r = a.data.bills['501'];
+  check('a later entry is bracketed by the reading before it', [r.prior, r.firstSeen], [1_000_000, now]);
+  check('...state bracketed', a.appearance(r, 0).state, 'bracketed');
+  check('a 0.6.0 row on the first reading is open, otherwise unrecorded',
+    [a.appearance({ firstSeen: 9 }, 9).state, a.appearance({ firstSeen: 12 }, 9).state], ['open', 'unrecorded']);
+  check('no first sighting, no window', a.appearance({}, 0), null);
+
+  const app = a.appearance(r, 0);
+  const NEAR = a.NEAR_MS;
+  const events = [
+    { kind: 'policy', key: 'Corporate Law', from: 0, to: -1, t0: 900_000, t1: 1_030_000 },          // overlaps
+    { kind: 'policy', key: 'Healthcare', from: 1, to: 2, t0: now + NEAR - 1, t1: now + NEAR + 5000 }, // just inside the slack
+    { kind: 'policy', key: 'Pollution', from: 1, to: 2, t0: now + NEAR + 1, t1: now + NEAR + 5000 },  // just outside
+    { kind: 'policy', key: 'Drug Law', from: 1, to: 0, t0: 0, t1: 1_000_000 - NEAR - 1 },             // before
+    { kind: 'reform', key: 'Election Reform', from: 0, to: 1, t0: 1_010_000, t1: 1_020_000 },
+    { kind: 'court', key: 'Alvarez', from: 1, to: 2, t0: 1_010_000, t1: 1_020_000 },                  // not a policy axis
+    { kind: 'policy', key: 'Broken', t0: 'x', t1: null },
+  ];
+  check('adjacency is window overlap widened by NEAR_MS, over policy and reform moves only',
+    a.adjacentMoves(app, events).map((e) => e.key), ['Corporate Law', 'Healthcare', 'Election Reform']);
+  check('...and nothing for no window', a.adjacentMoves(null, events), []);
+  check('moves collapse to one net line per axis, with the span of their windows',
+    a.byAxis([
+      { key: 'Free Speech', from: -3, to: -1.4, t0: 10, t1: 20 },
+      { key: 'Pollution', from: 1, to: 2, t0: 12, t1: 14 },
+      { key: 'Free Speech', from: -1.4, to: -3, t0: 20, t1: 30 },
+      { key: 'Free Speech', from: -3, to: -2, t0: 5, t1: 40 },
+    ]).map((g) => [g.key, g.from, g.to, g.t0, g.t1, g.n]),
+    [['Free Speech', -3, -2, 5, 40, 3], ['Pollution', 1, 2, 12, 14, 1]]);
+  check('...and an axis that came back to where it started sorts after a net move',
+    a.byAxis([
+      { key: 'Tax Structure', from: 1, to: 2, t0: 1, t1: 2 },
+      { key: 'Tax Structure', from: 2, to: 1, t0: 2, t1: 3 },
+      { key: 'Corporate Law', from: 0, to: -1, t0: 1, t1: 3 },
+    ]).map((g) => g.key), ['Corporate Law', 'Tax Structure']);
+  check('NEAR_MS is thirty minutes', NEAR, 30 * 60000);
+
+  // The tab. Newest first, headline and game date, prose expandable, and the adjacency
+  // worded as an observation.
+  a.data.events.push(events[0]);
+  a.takeNewspaper([{ id: 502, gametime: GT + 2592000, metadata: { category: 'Supreme Court', headline: 'United States v. Farrell, Corp.', body: 'x'.repeat(5000) } }], now + 60000);
+  const v = renderTab(a, 'bills');
+  ok('the court section is drawn', /court \u00b7 3/.test(v.text), v.text.slice(0, 200));
+  const heads = v.nodes.filter((nd) => nd.className === 'pkgw-ev').map((nd) => nd.children[0].children[0].textContent);
+  check('rulings are listed newest edition first', heads.slice(0, 2), ['United States v. Farrell, Corp.', 'United States v. Upton']);
+  ok('...with the game date the paper printed', v.text.includes('June 1, Y15') && v.text.includes('July 1, Y15'));
+  const details = v.nodes.filter((nd) => nd.tagName === 'DETAILS');
+  ok('the prose sits in an expander', details.some((d) => d.textContent.includes('The court finds the corporate statute void.')));
+  ok('...and the opening of it in the hover', v.titles.includes('The court finds the corporate statute void.'));
+  ok('a cut ruling says it was cut, and from how long', /cut at 4,000 of 5,000 characters/.test(v.text));
+  ok('a hover is clipped, the expander is not',
+    v.titles.some((t) => t.length === 601 && t.endsWith('\u2026')) && details.some((d) => d.textContent.includes('x'.repeat(4000))));
+
+  const obs = v.nodes.filter((nd) => nd.className === 'pkgw-obs').map((nd) => nd.textContent);
+  ok('the Corporate Law move is shown beside Upton', obs.some((t) => /^observed: Corporate Law 0 \u2192 -1 moved in an overlapping window/.test(t)), obs.join(' | '));
+  ok('...and never as a cause', !/because|caused|due to|as a result|moved by|led to|triggered/i.test(v.text), v.text);
+  ok('the section says adjacency is not causation', /Adjacency is an observation, not a cause/.test(v.text));
+  ok('an open-window ruling warns it may be much older',
+    v.nodes.some((nd) => nd.className === 'pkgw-ev' && /Old Precedent/.test(nd.textContent) && /first Herald reading/.test(nd.textContent)));
+  ok('a ruling with nothing near it says so plainly', obs.some((t) => /no recorded axis move overlaps this window/.test(t)));
+
+  // A boundary that moves many axes at once must not bury the ruling under a wall of lines.
+  for (let i = 0; i < 10; i++) {
+    a.data.events.push({ kind: 'policy', key: a.POLICIES[i], from: 0, to: 1, t0: 1_010_000, t1: 1_020_000 });
+    a.data.events.push({ kind: 'policy', key: a.POLICIES[i], from: 1, to: 0, t0: 1_020_000, t1: 1_030_000 });
+  }
+  const crowd = renderTab(a, 'bills');
+  const upton = crowd.nodes.find((nd) => nd.className === 'pkgw-ev' && /United States v\. Upton/.test(nd.textContent));
+  const lines = upton.children.filter((nd) => nd.className === 'pkgw-obs').map((nd) => nd.textContent);
+  check('a crowded window is capped at six axis lines plus a tail', lines.length, 7);
+  ok('...the tail counts what it hid', /and 5 more axes in the same stretch/.test(lines[6]), lines[6]);
+  ok('...and a repeated axis reads as one net line', lines.some((t) => /\(2 moves\) moved in an overlapping window/.test(t)), lines.join(' | '));
+  ok('...with the one net move still first, not buried by round trips', /^observed: Corporate Law 0 → -1 moved/.test(lines[0]), lines[0]);
+  ok('Record rows carry their prose in the hover too', v.titles.some((t) => t.startsWith('United States v. Upton') && t.includes('corporate statute void')));
+
+  // A 0.6.0 ruling with no text is kept and says why it is bare.
+  const b = mk();
+  b.data.bills['9'] = { gametime: GT, category: 'Supreme Court', headline: 'Bare', firstSeen: 3, lastSeen: 3 };
+  ok('a ruling kept without text says why', /no text kept for this entry/.test(renderTab(b, 'bills').text));
+  ok('no court section without a ruling', !/court \u00b7/.test(renderTab(mk(), 'bills').text));
 }
 
 console.log('\n\u2014 bills: the sibling endpoints are not this tool\'s business \u2014');
