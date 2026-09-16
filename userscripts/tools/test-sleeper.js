@@ -57,6 +57,7 @@ const mk = (opts = {}) => {
     'leads', 'sleepers', 'ledger', 'meta', 'ui', 'CFG', 'RECRUIT_PATH',
     'save', 'saveUi', 'paint', 'log', 'document', 'location',
     `${SLICE}\nreturn { isPast, canAct, leadState, leadTimer, facReady, fmtLeft,
+       pressPreview, missedInHour, planText,
        ingestRecruitment, ingestFactionSleepers, ingestMeet, ingestSleeper, readSelectedIssue,
        liveLeads, sortedLeads, facSleepers, board, sweepMissed, issueDigest, endDigest,
        unackedMissed, ackMissed, ackBacklogOnce,
@@ -242,6 +243,51 @@ console.log('\n— the two sleeper sources merge onto one row —');
   check('the board offers the advocate, not the embezzle', [b.adv.length, b.emb.length], [1, 0]);
 }
 
+// ---------------------------------------------------------------------------
+// Embezzle is a number, not an event.
+//
+// It siphons a few thousand dollars out of the faction and takes it out of that
+// sleeper's own effectiveness, so "you may now embezzle" is not news — it is pocket
+// change offered for a permanently worse asset, and the standing answer is no
+// (operator, 2026-09-16). The cooldown is still tracked and still counted down in the
+// Sleepers tab, because the reading is worth having and what drives it is still an open
+// question. What it may not do is raise the strip or light the button.
+//
+// Fenced here because the difference is one filter away, and because the same edit has a
+// second half the board cannot show: the mute key. While the embezzle timestamp was part
+// of it, any faction poll that moved that cooldown minted a new key and re-raised an
+// advocate strip you had already dismissed, for a readiness that had not changed.
+// ---------------------------------------------------------------------------
+console.log('\n— an embezzle cooldown is counted down, never announced —');
+{
+  const m = mk();
+  m.ingestFactionSleepers('/api/factions/42/sleepers', [
+    { id: 9, display_name: 'Ines Roth', can_advocate_at: iso(30 * MIN), can_embezzle_at: iso(-MIN) },
+  ]);
+  const b = m.board();
+  check('a sleeper that can only embezzle is nothing to announce', b.adv.length, 0);
+  check('...but the reading is still kept for the table', b.emb.length, 1);
+
+  // The `faction tier` option gates the ANNOUNCEMENT, not the reading. The Sleepers tab
+  // draws both columns whatever the option says, and signature() has to see them flip or
+  // a column sits at a dead countdown instead of repainting to `ready`.
+  const off = mk({ ui: { facTier: false } });
+  off.ingestFactionSleepers('/api/factions/42/sleepers', [
+    { id: 9, display_name: 'Ines Roth', can_advocate_at: iso(-MIN), can_embezzle_at: iso(-MIN) },
+  ]);
+  check('the option does not reach the board', [off.board().adv.length, off.board().emb.length], [1, 1]);
+
+  // Source-level, because the strip and the button are outside the slice. Both live
+  // between stripEvent() and signature(), and both must still ask the option.
+  const surface = SRC.slice(SRC.indexOf('const stripEvent'), SRC.indexOf('const signature'));
+  check('nothing in the strip or the button counts an embezzle', /b\.emb/.test(surface), false);
+  check('...and both still ask the faction-tier option first', (surface.match(/ui\.facTier/g) || []).length, 2);
+
+  const facKeys = [...new Set(SRC.match(/`fac:[^`]*`/g) || [])];
+  check('every fac: mute key is the advocate timestamp alone', facKeys,
+    ['`fac:${s.id}:${s.can_advocate_at ?? \'\'}`']);
+}
+
 console.log('\n— the issue question the client cannot answer —');
 {
   const m = mk({ selected: 'Housing' });
@@ -352,6 +398,52 @@ console.log('\n— installing 0.9.0 does not mourn leads you lost last month —
   const again = mk({ leads: m.leads, ledger: m.ledger, meta: m.getMeta() });
   again.ackBacklogOnce();
   check('the upgrade step never runs twice', again.unackedMissed().length, 1);
+}
+
+// ---------------------------------------------------------------------------
+// What a press right now would schedule.
+//
+// The offset is measured, not read off the client: 40 presses paired against their own
+// next_meeting_at, all 24.00 h, docs/08-sleeper-surface.md. So the arithmetic is cheap
+// and the thing worth fencing is the second half — which hour a loss belongs to.
+//
+// A missed window has TWO instants and they can be a day apart: `expires_at`, the
+// server's own, and the ledger's `at`, which is merely when the poll next looked and
+// found the lead gone. Bucket the count off `at` and the panel files last night's loss
+// under whatever hour the page happened to be reopened — which is exactly the hour it
+// would then advise you to avoid, on evidence about your browsing rather than the game.
+// ---------------------------------------------------------------------------
+console.log('\n— a press now, and what this hour has cost before —');
+{
+  const m = mk({ meta: { window_minutes: 60 } });
+  const now = Date.now();
+  const pp = m.pressPreview(now);
+  check('the appointment is press + 24 h', pp.opens - now, 24 * HOUR);
+  check('...and the window is as long as the header says', pp.closes - pp.opens, 60 * MIN);
+
+  const m45 = mk({ meta: { window_minutes: 45 } });
+  const p45 = m45.pressPreview(now);
+  check('a server that says 45 minutes is believed, not overridden', p45.closes - p45.opens, 45 * MIN);
+
+  const m0 = mk();
+  check('...and with no header yet, the hour the badge hardcodes is assumed',
+    m0.pressPreview(now).closes - m0.pressPreview(now).opens, 60 * MIN);
+
+  // 26 h ago: the window closed two clock-hours before this one, and the poll that
+  // noticed is running now. The hour it belongs to is the first, not the second.
+  const closed = new Date(Date.now() - 26 * HOUR);
+  const m2 = mk();
+  m2.ingestRecruitment(payload([lead({ id: 1, next_meeting_at: iso(-27 * HOUR), expires_at: closed.toISOString() })]));
+  m2.ingestRecruitment(payload([]));
+  check('the loss is counted in the hour its window closed', m2.missedInHour(closed.getHours()), 1);
+  check('...and not in the hour the poll noticed it', m2.missedInHour(new Date().getHours()), 0);
+
+  // 24 h ago is the same clock hour as the window a press right now would open.
+  const m3 = mk();
+  m3.ingestRecruitment(payload([lead({ id: 7, next_meeting_at: iso(-25 * HOUR), expires_at: iso(-24 * HOUR) })]));
+  check('so the plan line warns about the hour it is about to book', /1 already lost in this hour/.test(m3.planText()), true);
+  check('...and says nothing extra about a clean hour', /already lost/.test(m.planText()), false);
+  check('either way it leads with the window', /^window /.test(m.planText()), true);
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

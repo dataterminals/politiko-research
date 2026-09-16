@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — Sleeper Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.9.0
-// @description  Keeps the sleeper-recruitment timers alive after you leave the page. Reads the poll the recruitment screen already makes, remembers when each lead's meeting window opens, counts it down on every Politiko page, and hands you a one-click jump back with that lead's own issue pre-selected. Since 0.9.0 a window that closed unattended says so on the strip and on the button, instead of only inside the panel. Also counts down the faction advocate/embezzle cooldowns. Passive — zero added requests, and it never meets, canvasses, drops, advocates or embezzles.
+// @version      0.10.0
+// @description  Keeps the sleeper-recruitment timers alive after you leave the page. Reads the poll the recruitment screen already makes, remembers when each lead's meeting window opens, counts it down on every Politiko page, and hands you a one-click jump back with that lead's own issue pre-selected. Since 0.9.0 a window that closed unattended says so on the strip and on the button, instead of only inside the panel. Also counts down the faction advocate and embezzle cooldowns — since 0.10.0 only the advocate one is ever announced, because embezzling buys a few thousand dollars with that sleeper's own effectiveness. Passive — zero added requests, and it never meets, canvasses, drops, advocates or embezzles.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -90,7 +90,7 @@
   'use strict';
 
   const TAG = '[pksw]';
-  const VERSION = '0.9.0';
+  const VERSION = '0.10.0';
   const log = (...a) => console.debug(TAG, ...a);
 
   // ===========================================================================
@@ -325,7 +325,7 @@
     size: null,         // {w, h} once you have dragged the panel's corner
     strip: true,        // show the actionable strip over the game
     strip_pos: null,    // where you dragged it to
-    facTier: true,      // include faction advocate/embezzle cooldowns in the strip
+    facTier: true,      // announce a sleeper whose advocate cooldown is up
     muted: {},          // event key -> true; dismissed strips, per window
   }, readJSON(K.ui, {}));
 
@@ -432,6 +432,58 @@
   // The faction panel's own readiness test, which is isPast by another name: a null
   // cooldown means ready, and so does one in the past.
   const facReady = (iso) => isPast(iso);
+
+  // ===========================================================================
+  // What a press right now would schedule — the only part of this mechanic that is
+  // still a choice by the time you are looking at it.
+  //
+  // MEASURED, and not read off the client. Pairing every `meet` row carrying
+  // outcome:'scheduled' against that lead's next_meeting_at — 40 presses, five cohorts,
+  // three weeks — gives exactly 24.00 h every time, and the press hour equals the
+  // appointment hour in 37 of 40 (the three are one lead re-paired against a later
+  // appointment). docs/08-sleeper-surface.md, 2026-09-16. The client states the constant
+  // nowhere, so this is behaviour watched rather than a rule quoted: if it ever moves,
+  // that pairing is the thing to re-run.
+  //
+  // Why it is worth a line of panel. The game offers no way to pick when a window opens
+  // — it mirrors the clock at the instant you press. So the hour you press IS the hour
+  // you will have to be free a day later, and that is a fact about your day, not about
+  // the game. It is also self-replicating: all 40 presses on record fell in a band under
+  // three hours wide (10:14 PM – 1:08 AM Eastern, the zone read-stores.js buckets in),
+  // so every window reopened inside that same band, and twelve leads were lost inside it.
+  // Why nobody was there for those hours is not measured anywhere — presses are recorded,
+  // sessions are not — so the loop is the finding and the cause is not. Hence a line that
+  // states the hour and leaves the judgement to whoever is reading it.
+  // ===========================================================================
+  const PRESS_OFFSET_MS = 24 * 3600_000;
+
+  const pressPreview = (now = Date.now()) => {
+    const opens = now + PRESS_OFFSET_MS;
+    const mins = Number.isFinite(meta.window_minutes) ? meta.window_minutes : 60;
+    return { opens, closes: opens + mins * 60_000 };
+  };
+
+  /**
+   * How many windows this tool has already watched close unattended in a given hour.
+   *
+   * Counted off each lead's own `expires_at`, which is the server's instant, and never
+   * off a ledger `at` — that is only when the poll next looked, and using it here would
+   * bucket a loss into whatever hour you happened to reopen the page (see recordEnd).
+   */
+  const missedInHour = (hour, now = Date.now()) => Object.values(leads).filter((l) => {
+    const st = l.gone ? l.goneState : leadState(l, now);
+    if (st !== 'missed') return false;
+    const t = ms(l.expires_at);
+    return t != null && new Date(t).getHours() === hour;
+  }).length;
+
+  /** One line: what pressing now buys, and whether this hour has a record. */
+  const planText = (now = Date.now()) => {
+    const pp = pressPreview(now);
+    const lost = missedInHour(new Date(pp.opens).getHours(), now);
+    return `window ${when(pp.opens)} – ${clock(pp.closes)}`
+      + (lost ? `  ·  ${lost} already lost in this hour` : '');
+  };
 
   // ===========================================================================
   // Ingest — every record here came off a response the game made on its own.
@@ -675,8 +727,23 @@
     const fresh = rows.filter((r) => r.st === 'new');
     const waiting = rows.filter((r) => r.st === 'waiting');
     const missed = rows.filter((r) => r.st === 'missed');
-    const adv = ui.facTier ? facSleepers().filter((s) => facReady(s.can_advocate_at)) : [];
-    const emb = ui.facTier ? facSleepers().filter((s) => facReady(s.can_embezzle_at)) : [];
+    // Two faction readings, and only ONE of them is ever announced.
+    //
+    // `emb` is a number to read, not an event to be told about: embezzling siphons a
+    // few thousand dollars out of the faction and takes it out of that sleeper's own
+    // effectiveness, so it buys pocket change with a permanently worse asset. Nobody
+    // needs to be interrupted the moment that becomes possible. It stays here, and in
+    // the Sleepers table, because the cooldown itself is still worth reading and is
+    // still an open research question (docs/08-sleeper-surface.md). Operator's call,
+    // 2026-09-16, recorded there.
+    //
+    // Neither is gated on ui.facTier any more. That option gates the ANNOUNCEMENT, so
+    // it belongs where announcements are made — stripEvent() and paintFab(). Gating it
+    // here also quietly froze the table: with the option off both lists were empty, so
+    // signature() never saw a cooldown flip and a column sat at a dead countdown
+    // instead of repainting to `ready`.
+    const adv = facSleepers().filter((s) => facReady(s.can_advocate_at));
+    const emb = facSleepers().filter((s) => facReady(s.can_embezzle_at));
     return { rows, open, fresh, waiting, missed, adv, emb, next: waiting[0] ?? null };
   };
 
@@ -1414,6 +1481,14 @@
     .badge.unknown { background: #27272a; color: #71717a; }
     .note { padding: 6px 10px; border-top: 1px solid #27272a; font-size: 10px; color: #71717a; line-height: 1.5; }
     .empty { padding: 18px 6px; text-align: center; color: #52525b; font-size: 11px; line-height: 1.6; }
+    /* Wraps rather than scrolls: this panel lives in a margin strip a few hundred px
+       wide, and a line that forces a horizontal scrollbar to read is a line nobody
+       reads. */
+    .plan { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
+            margin-bottom: 8px; padding: 6px 8px; border: 1px solid #3f3f46;
+            background: rgba(255,255,255,.02); border-radius: 3px; font-size: 11px; }
+    .plan .k { color: #71717a; white-space: nowrap; }
+    .plan .v { color: #e4e4e7; }
     .lost { margin-bottom: 8px; padding: 6px 8px; border: 1px solid rgba(248,113,113,.3);
             background: rgba(248,113,113,.05); color: #fca5a5; border-radius: 3px; font-size: 11px; line-height: 1.5; }
     .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 11px; margin-bottom: 10px; }
@@ -1475,6 +1550,16 @@
   function renderLeads(body) {
     const now = Date.now();
     const b = board(now);
+
+    // Above everything, because it is the only thing on this tab you can still decide.
+    // Every row below reports a window someone else's clock already set.
+    const plan = el('div', 'plan');
+    plan.append(el('span', 'k', 'press now →'));
+    const planV = el('span', 'v');
+    planV.dataset.pressPreview = '1';
+    planV.textContent = planText(now);
+    plan.append(planV);
+    body.append(plan);
 
     const lost = unackedMissed(now);
     if (lost.length) {
@@ -1585,7 +1670,10 @@
         + 'whole recruitment loop and never see the button that makes it pay.'));
     } else {
       foot.append(el('div', null,
-        `cooldowns as of ${fmtAgo(meta.facPolledAt)} · advocate generates power, embezzle siphons cash`));
+        `cooldowns as of ${fmtAgo(meta.facPolledAt)} · advocate generates faction power, and is the only `
+        + 'one of the two that ever lights the strip or the button. Embezzle siphons cash out of that '
+        + "sleeper's own effectiveness — pocket change for a permanently worse asset — so it is counted "
+        + 'down here and never announced.'));
       const go = btn('faction →', 'go', () => jumpToFaction());
       go.style.marginTop = '6px';
       foot.append(go);
@@ -1712,17 +1800,20 @@
       };
     }
 
+    // Advocate only — see board() for why the embezzle cooldown is never an event.
+    // The mute key narrowed with it, and that was a bug as much as a rename: while the
+    // embezzle timestamp was part of the key, embezzling (or any faction poll that
+    // moved that cooldown) minted a new key and re-raised an advocate strip you had
+    // already dismissed, for a readiness that had not changed at all.
     if (ui.facTier) {
-      const ready = [...new Set([...b.adv, ...b.emb])].filter((s) => !ui.muted[`fac:${s.id}:${s.can_advocate_at ?? ''}:${s.can_embezzle_at ?? ''}`]);
+      const ready = b.adv.filter((s) => !ui.muted[`fac:${s.id}:${s.can_advocate_at ?? ''}`]);
       if (ready.length) {
         const s = ready[0];
-        const what = [b.adv.includes(s) ? 'advocate' : null, b.emb.includes(s) ? 'embezzle' : null]
-          .filter(Boolean).join(' + ');
         return {
-          key: `fac:${s.id}:${s.can_advocate_at ?? ''}:${s.can_embezzle_at ?? ''}`,
+          key: `fac:${s.id}:${s.can_advocate_at ?? ''}`,
           tone: 'go',
-          head: ready.length > 1 ? `${ready.length} SLEEPERS READY` : 'SLEEPER READY',
-          sub: `${s.display_name ?? s.id} · ${what}`,
+          head: ready.length > 1 ? `${ready.length} SLEEPERS CAN ADVOCATE` : 'SLEEPER CAN ADVOCATE',
+          sub: `${s.display_name ?? s.id} · advocate generates faction power`,
           deadline: null,
           act: ['faction →', () => jumpToFaction()],
         };
@@ -1754,7 +1845,9 @@
       live.add(`soon:${l.id}:${l.next_meeting_at ?? ''}`);
     }
     for (const s of Object.values(sleepers)) {
-      live.add(`fac:${s.id}:${s.can_advocate_at ?? ''}:${s.can_embezzle_at ?? ''}`);
+      // Two parts since 0.10.0. A 0.9.0 store's three-part keys name an event that can
+      // no longer fire, so they are dropped on the first paint — which is the job.
+      live.add(`fac:${s.id}:${s.can_advocate_at ?? ''}`);
     }
     let changed = false;
     for (const k of Object.keys(ui.muted)) if (!live.has(k)) { delete ui.muted[k]; changed = true; }
@@ -1793,7 +1886,7 @@
   function paintFab() {
     if (!fab) return;
     const b = board();
-    const hot = b.open.length + b.fresh.length + (ui.facTier ? new Set([...b.adv, ...b.emb]).size : 0);
+    const hot = b.open.length + b.fresh.length + (ui.facTier ? b.adv.length : 0);
     // A loss lights the button too, or the fix stops at the strip: the strip is one
     // event at a time and is dismissable, the button is the thing still on screen an
     // hour later. `hot` still wins the box — act on what is live, then read what is not.
@@ -1932,7 +2025,7 @@
       return w;
     };
     opts.append(opt('strip', 'strip', 'show the actionable strip over the game'));
-    opts.append(opt('faction tier', 'facTier', 'include advocate/embezzle cooldowns in the strip and the count'));
+    opts.append(opt('faction tier', 'facTier', 'announce a sleeper whose advocate cooldown is up, on the strip and in the count — embezzle is counted down in the Sleepers tab and never announced'));
     note.append(opts);
 
     const bar = el('div');
@@ -1992,6 +2085,10 @@
     for (const n of root.querySelectorAll('[data-deadline]')) {
       n.textContent = fmtLeft(Number(n.dataset.deadline) - now);
     }
+    // Same treatment as a countdown, and for the same reason: it is a clock, so it goes
+    // stale on its own. Repainting the panel once a minute to move it would throw away
+    // the scroll position for a line of text.
+    for (const n of root.querySelectorAll('[data-press-preview]')) n.textContent = planText(now);
   };
 
   // ---------------------------------------------------------------------------

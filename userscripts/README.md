@@ -26,7 +26,7 @@ bump; the table below is hand-kept and can drift.
 | WS Watch | 0.9.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
 | XP Watch | 0.8.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 | Raid Watch | 0.8.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
-| Sleeper Watch | 0.9.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
+| Sleeper Watch | 0.10.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
 | Quick Jump | 0.8.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 | World Watch | 0.6.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
 | Gov Watch | 0.6.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
@@ -863,8 +863,8 @@ all.** One visit to the recruitment screen is enough; the clock runs from there.
 ```
 
 It appears for an open window, for a new lead with no appointment yet, for a faction
-sleeper whose cooldown is up, in amber fifteen minutes before a window opens, and — since
-0.9.0, in red — for a window that **already closed**:
+sleeper whose **advocate** cooldown is up, in amber fifteen minutes before a window opens,
+and — since 0.9.0, in red — for a window that **already closed**:
 
 ```
 ● WINDOW CLOSED
@@ -934,6 +934,46 @@ This changes what the strip can **say**, not where it can say it. It is still in
 still only while you are looking at the page — nothing here reaches an unfocused tab, and
 `bar-watch` and `poll-watch` remain the only two tools that may (`docs/01-rules-envelope.md`).
 
+### What 0.10.0 added: the one part of this that is still a choice
+
+Every countdown in this tool reports a clock somebody else already set. There is exactly
+one instant where the hour is yours, and it is the press: **the meeting window opens 24 h
+after you strike up the conversation, to the second**, and the game offers no way to pick
+it. Measured over 40 presses across five cohorts and three weeks —
+`docs/08-sleeper-surface.md`.
+
+So the leads tab opens with what a press *right now* would buy:
+
+```
+press now →  window Thu 02:22 AM – 03:22 AM  ·  2 already lost in this hour
+```
+
+It ticks with the countdowns. The second half appears only when this tool's own record has
+losses in that hour, and it is counted off each lead's `expires_at` — the server's own
+instant — never off when a poll noticed the lead was gone, or it would file last night's
+loss under whatever hour you next opened the page.
+
+Why it is worth a line: every press in the record landed between 10:14 PM and 1:08 AM
+Eastern — the zone `read-stores.js` buckets the bundle in — median 11:23 PM. Forty presses
+inside a band under three hours wide.
+
+Put that together with the offset and the mechanism is self-replicating: **the hour you
+play is the hour you are summoned back to.** An appointment set inside that band reopens
+inside the same band a day later, so the band never widens on its own — it can only be
+moved, by pressing at a different hour. **Twelve leads have been lost inside it** — the
+nine above among them — and every one of the twelve closed at hour 23 or hour 00. Nothing
+has ever been lost outside the band; `docs/08-sleeper-surface.md` has the cohort table.
+*Why* nobody was at the keyboard for those particular hours is not something the bundle
+measures — it records the instants of presses and nothing else — so the loop is the finding
+and the cause is not.
+
+The lever is free, because the window is a copy of the press: move the press and the window
+moves with it, one for one, to the minute. Which hour is the good one is the player's to
+know and not this file's to guess; the only claim here is that **the choice exists and is
+exact**. Same action, same energy, same clause. The expensive answers were all reached for
+first — a title flash, a sound, a desktop notification, a fifth Web Push key from staff.
+None were needed, because nobody had measured the offset.
+
 ## The panel
 
 **Alt+S**, or the `SLP` button. Drag either anywhere; they remember. The button turns green
@@ -941,8 +981,8 @@ with a count when something is actionable, amber when something is about to be.
 
 | tab | what it shows |
 |---|---|
-| leads | every live lead, urgency-ordered — open and closing soonest first, then new, then waiting, then missed. Countdown, wall-clock window, meeting count, issue (hover for the clue), `go →` per row |
-| sleepers | recruited sleepers with effect %, plus **advocate and embezzle cooldowns as countdowns** instead of the bare clock time the faction page prints |
+| leads | what a press right now would schedule, then every live lead, urgency-ordered — open and closing soonest first, then new, then waiting, then missed. Countdown, wall-clock window, meeting count, issue (hover for the clue), `go →` per row |
+| sleepers | recruited sleepers with effect %, plus **advocate and embezzle cooldowns as countdowns** instead of the bare clock time the faction page prints. Only the advocate one is ever announced — see below |
 | research | what the ledger can say about the two questions the client cannot answer |
 
 The header carries `recruited/cap` and the energy cost per canvass, both straight from the
@@ -959,6 +999,16 @@ Recruiting a sleeper and *using* one are different pages, and the second sits be
 `can_manage_sleepers` rank permission — so a player without that rank can run the whole
 recruitment loop forever and never see the button that makes it pay. `advocate` generates
 power, `embezzle` siphons cash, and each has its own cooldown.
+
+**Only one of the two is ever announced, and since 0.10.0 that is deliberate.** Embezzling
+pays a few thousand dollars and takes it out of that sleeper's own effectiveness — pocket
+change for a permanently worse asset — so `can_embezzle_at` reaching zero is an offer, not
+an event. It is counted down in the Sleepers tab and nowhere else: it never raises the
+strip and never adds to the button's count, and the strip's faction event reads `SLEEPER
+CAN ADVOCATE` rather than `SLEEPER READY`. The cooldown is still read and still stored,
+because the reading costs nothing and what embezzling actually pays is still an open
+question (`docs/08-sleeper-surface.md`). What went away is the interruption, not the
+number.
 
 The faction page renders those as `advocate ready 3:45:12 PM` — a bare local time, no date,
 no countdown, and only on that page. Sleeper Watch counts them down beside the leads and

@@ -154,7 +154,8 @@ has('the election is placed on the real calendar', /\| congressional election \|
 has('the registration windows are listed', /registration window opens \| (January|September) 1, Y\d+/);
 has('money is a lever', /\| money \| \$154,054 \|/);
 has('the sleeper who can advocate is named, and the next one dated', /sleepers able to advocate \| 1 of 2 \| Riley Klein \(Abortion\); next Sam Other in/);
-has('embezzle readiness is counted', /sleepers able to embezzle \| 1 of 2 \| Sam Other/);
+has('embezzle readiness is counted, and the price is printed beside it',
+  /sleepers able to embezzle \| 1 of 2 \| Sam Other · pays cash out of that sleeper's own effectiveness/);
 has('the poll cooldown is read against collection time', /\| opinion poll \| available \|/);
 has('chambers are summarised with a lean, in the game\'s words', /\| house \| mean a=1\.4\d \(Moderate Right\) \| 346 seats: left \(a<0\) 58 \(17%\), centre 106, right \(a>0\) 182 \(53%\)/);
 has('the president gets the same words', /\| president \| President Bechtelar \(a=0, Moderate\) \|/);

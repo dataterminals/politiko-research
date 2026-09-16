@@ -174,8 +174,15 @@ function brief(b, prior) {
       const ready = sl.filter((s) => s.can_advocate_at && ms(s.can_advocate_at) <= now);
       const soon = sl.filter((s) => s.can_advocate_at && ms(s.can_advocate_at) > now).sort((a, c) => ms(a.can_advocate_at) - ms(c.can_advocate_at));
       rows.push(['sleepers able to advocate', `${ready.length} of ${sl.length}`, ready.map((s) => `${s.display_name} (${s.issue})`).join(', ') + (soon.length ? `; next ${soon[0].display_name} ${rel(soon[0].can_advocate_at, now)}` : '')]);
+      // A reading, not a lever, and the row says so. Embezzling pays a few thousand
+      // dollars out of that sleeper's own effectiveness (docs/08-sleeper-surface.md,
+      // 2026-09-16), so a brief that prints the count without the price invites the
+      // strategy talk to spend an asset for pocket money. sleeper-watch 0.10.0 stopped
+      // announcing the same fact for the same reason.
       const emb = sl.filter((s) => s.can_embezzle_at && ms(s.can_embezzle_at) <= now);
-      rows.push(['sleepers able to embezzle', `${emb.length} of ${sl.length}`, emb.map((s) => s.display_name).join(', ')]);
+      rows.push(['sleepers able to embezzle', `${emb.length} of ${sl.length}`,
+        [emb.map((s) => s.display_name).join(', '),
+          "pays cash out of that sleeper's own effectiveness — a reading, not a lever"].filter(Boolean).join(' · ')]);
       const leads = Object.values(sw.leads || {}).filter((l) => !l.gone);
       const meetings = leads.filter((l) => l.next_meeting_at).sort((a, c) => ms(a.next_meeting_at) - ms(c.next_meeting_at));
       rows.push(['open leads', `${leads.length}`, meetings.slice(0, 3).map((l) => `${l.display_name} ${rel(l.next_meeting_at, now)}`).join('; ')]);

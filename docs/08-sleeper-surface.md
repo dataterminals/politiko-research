@@ -129,6 +129,8 @@ other than 60, the badge is wrong and the chip is right. Noted so nobody re-deri
   some combination.
 - What sets `effectiveness`, and whether `archetype_name` or site type feeds it.
 - Whether `advocate` / `embezzle` scale with `effectiveness`, and what the cooldowns are.
+  (Half-answered 2026-09-16: embezzle *costs* effectiveness — see the last part of this
+  file. What either one pays, and whether the payout scales, is still open.)
 - What "arrests siphon power" means mechanically — presumably sleepers can be caught, but
   nothing client-side describes the risk or what triggers it.
 - Whether meeting a lead requires being at its site, its district, or neither.
@@ -229,8 +231,154 @@ both are free once the leads are being tracked: it pairs each meeting's `outcome
 issue that was showing in the selector when the reply landed, and it records the state a
 lead was last in when it left the list.
 
+---
+
+# The appointment is press + 24 h, which is what makes the window yours
+
+Measured **2026-09-16**, from sleeper-watch's own ledger and lead store in the bundle
+`politiko-stores-2026-09-16_06-07-48.json`. No request was made to produce it: every
+number below was already sitting in `pksw:ledger` and `pksw:leads` from ordinary play.
+
+## Measured
+
+**The meeting window opens exactly 24 h after you strike up the conversation, and lasts the
+hour the header already advertises.** Pairing each `meet` ledger row carrying
+`outcome: 'scheduled'` against that lead's `next_meeting_at`:
+
+- **n = 40 presses. Every direct pair is `24.00 h`.** Not approximately — the minute and
+  second match. (Rows reading 48 h or 72 h are the same lead re-paired against a *later*
+  appointment, an artifact of matching on lead id rather than a different behaviour.)
+- **Press hour == appointment hour in 37 of 40**, the three exceptions being those
+  multi-day pairings.
+
+So the appointment is not scheduled by the server in any sense the player has to accept.
+**It is a mirror of the clock at the moment you press**, and the game offers no way to
+choose it directly — which means the only control anyone has over when a window opens is
+*when they press*, and that control is total.
+
+## The finding that follows, and it is not about the game
+
+Every one of those 40 presses landed between **10:14 PM and 1:08 AM Eastern** — the zone
+`read-stores.js` buckets the bundle in, named because the next sentence rests on it —
+median **11:23 PM**. Forty presses inside a band under three hours wide.
+
+Combine that with the offset and the mechanism is self-replicating: **the hour you play is
+the hour you are summoned back to.** Every appointment set inside that band reopens inside
+that same band a day later, so the band never widens on its own — it can only be moved, by
+pressing at a different hour.
+
+Twelve leads have been lost inside it, in the four cohorts tabled below — every one of the
+twelve, with no loss recorded anywhere outside it. *Why* the player was absent for those
+particular hours is not something this bundle measures: a session's start and end are not
+recorded anywhere, only the instants of presses. So the loop is the finding and the cause
+is not. What matters is that the loop closes without anyone choosing it, and that one press
+at a different hour opens it.
+
+Every cohort on record, from each lead's own `expires_at` — the server's instant, never a
+ledger `at`:
+
+| cohort | window closed (ET) | hour | lost |
+|---|---|---|---|
+| Women's Rights ×3 | Aug 28, 12:30 AM | 00 | yes |
+| Abortion ×3 | Sep 3, 12:38 AM | 00 | yes |
+| LGBT Rights ×3 | Sep 14, 12:56 AM | 00 | yes |
+| Civil Rights ×3 | Sep 15, 11:14 PM | 23 | yes |
+| **12 lost** | | | |
+| Civil Rights ×3 | Sep 17, 2:07 AM | 02 | *not yet due* |
+
+The last row is **not** part of the twelve and must not be added to it — at the time of
+writing its window is still a day away. It was pressed at 1:07 AM, *before* the offset was
+measured, so its hour was not chosen either; it is the old pattern's last cohort, not the
+new one's first. What makes it worth listing is that 02 falls just outside the band all
+twelve losses sit in, which makes it an accident that happens to test the band. Its outcome
+belongs in this file once it is known, whichever way it goes.
+
+**The lever is free.** Because the window is a copy of the press, moving the press moves
+the window — one for one, to the minute. Pressing an hour into a session rather than on the
+way out of it buys that whole session's remaining length as slack, every day, forever,
+for no energy and no extra action. Which hour is the good one is the player's to know and
+not this file's to guess; the only claim here is that **the choice exists and is exact**.
+
+Same action, same energy, same clause. The difference is entirely in the hour it was taken.
+
+This is worth stating plainly because the expensive answers were all reached for first: a
+title flash, a sound, a desktop notification, a fifth Web Push key from staff. None of them
+were needed. The mechanic was already controllable and nobody had measured the offset.
+
+## Inferred
+
+- **The 24 h offset is probably fixed rather than derived.** Forty pairs at exactly
+  `24.00 h` across five separate cohorts and three weeks is hard to produce from a formula
+  with any input in it, but nothing client-side states the constant, so it is observation
+  and not a read of the rule.
+- **Nothing suggests the offset can be influenced.** No field in the recruitment response
+  looks like a scheduling parameter, and the UI offers no choice. If some stat or faction
+  perk shortens it, no evidence here would show it.
+
+## Still unknown
+
+- Whether the offset changes with faction rank, sleeper cap, or anything else. One account
+  cannot answer this, and `docs/01-rules-envelope.md` rules out acquiring a second.
+- Whether an unattended window costs the lead immediately at `expires_at`, or whether the
+  server prunes later — `missed` is what the client renders, but the pruning that removes
+  it from the list has only ever been observed on a subsequent poll.
+
+## What was built from this
+
+sleeper-watch **0.10.0** puts the number in front of the decision: the leads tab shows what
+a press *right now* would schedule, live, and — where its own record supports it — how many
+windows have already been lost in that hour. Local arithmetic on the clock; zero requests.
+
 ## Method disclosure
 
 Local grep and de-minification of bundles pulled once on 2026-08-03, extended 2026-08-23
 against the 2026-08-10 pull. No new pull, no requests of any kind, no in-game recruitment
 performed to test any of it.
+
+The 2026-09-16 section above is a different method and should be read as such: it is a
+statistical read of one player's own stored observations, produced by ordinary play, not a
+read of the client's code. The 24 h offset is therefore **measured behaviour, not a quoted
+rule** — the client never states it.
+---
+
+# Embezzle is a price list, not an action
+
+Recorded **2026-09-16**, from the operator's own play. **Not measured here** — nothing in
+the bundles prices either faction action, and no embezzle was performed to find out. It is
+in this file because it settled a design question, and a design question answered off the
+record is one nobody can re-check.
+
+**Embezzling pays a few thousand dollars, and takes it out of the sleeper's own
+effectiveness.** The sleeper stays recruited and stays listed; it is permanently worse at
+the thing it was recruited for. `advocate` has no such cost — it generates faction power on
+its own cooldown and leaves the asset alone.
+
+So the two timestamps on a faction sleeper row are not two halves of one decision.
+`can_advocate_at` is a thing to do when it comes up. `can_embezzle_at` is an offer, the
+answer is standing, and the answer is no.
+
+That is also why the faction panel's own line — *advocate generates power · embezzle
+siphons cash · arrests siphon power* — is not the whole sentence. It names what each one
+gives and omits what one of them charges.
+
+## What was built from this
+
+sleeper-watch **0.10.0** stops announcing it. An embezzle cooldown reaching zero no longer
+raises the strip and no longer counts toward the `SLP` button, and the strip's faction
+event says `SLEEPER CAN ADVOCATE` rather than `SLEEPER READY`, because only one of the two
+was ever worth interrupting for. The cooldown is still read, still stored, and still
+counted down in the Sleepers tab — the reading is free, it costs no request, and the
+questions below are still open. What went away is the interruption, not the number.
+
+## Still unknown
+
+- **The actual numbers.** "A couple of thousand" and "it goes down" is a player's reading of
+  playing, not a measured pair. The faction panel's own `embezzled · 30d` figure renders
+  `—` in this build, so the client does not show the payout either.
+- **Whether the effectiveness cost is per use, scales with the payout, or recovers.** If it
+  recovers, the standing answer above is a default rather than a rule. Nothing observed
+  says it does, and watching one is free: `effectiveness` is already stored per sleeper by
+  sleeper-watch, so a before/after pair would fall out of ordinary play if an embezzle ever
+  happened.
+- Whether `advocate` scales with `effectiveness` — unchanged from the 2026-08-07 part above,
+  and now the more interesting half of that question, since it is the side with no cost.
