@@ -460,7 +460,25 @@ function brief(b, prior) {
     if (open.length) { h3('Open leads'); table(['name', 'archetype', 'site', 'issue', 'status', 'meetings', 'next meeting', 'expires'], open.map((l) => [l.display_name, l.archetype_name, l.site_name, l.issue, l.status, l.meeting_count, l.next_meeting_at ? rel(l.next_meeting_at, now) : '', l.expires_at ? rel(l.expires_at, now) : ''])); }
     if (leads.length) p('', `${leads.length} leads ever seen; ${leads.length - open.length} gone (${count(leads.filter((l) => l.gone), (l) => l.goneState || 'unknown').map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}).`);
     const ledger = (sw && sw.ledger) || [];
-    if (ledger.length) { h3('Sleeper ledger (latest)'); table(['when', 'kind', 'lead', 'issue', 'outcome'], ledger.slice(-8).reverse().map((e) => [rel(e.at, now), e.kind, e.name, e.chosenIssue || e.leadIssue || '', e.outcome || e.state || ''])); }
+    if (ledger.length) {
+      h3('Sleeper ledger (latest)');
+      // `at` is when sleeper-watch NOTICED a lead was gone, which is only ever an upper
+      // bound: the recruitment poll is the one thing that can report an absence, so a
+      // lead that ran out while you were elsewhere is stamped whenever you next stood on
+      // that page. sleeper-watch 0.9.0 carries the server's own `expiresAt` beside it —
+      // prefer that where it exists, and say which one is being shown, because the gap
+      // has been as wide as ten days.
+      table(['when', 'basis', 'kind', 'lead', 'issue', 'outcome'], ledger.slice(-8).reverse().map((e) => {
+        const exact = e.kind === 'end' && e.expiresAt != null;
+        return [
+          rel(exact ? e.expiresAt : e.at, now),
+          exact ? 'expired' : (e.kind === 'end' ? 'noticed' : 'acted'),
+          e.kind, e.name, e.chosenIssue || e.leadIssue || '', e.outcome || e.state || '',
+        ];
+      }));
+      const blind = ledger.filter((e) => e.kind === 'end' && e.expiresAt == null).length;
+      if (blind) p('', `_${blind} older end row(s) predate sleeper-watch 0.9.0 and carry only a notice time._`);
+    }
     const fac = Object.entries(mw).filter(([k]) => k.startsWith('factions/')).map(([k, s]) => [k, last(s)]).filter(([, v]) => v);
     if (fac.length) { h3('Faction numbers market-watch has tracked'); table(['series', 'last', 'read'], fac.slice(0, 20).map(([k, v]) => [k, num(v[1]), rel(v[0], now)])); }
     if (rw) {

@@ -18,22 +18,22 @@ bump; the table below is hand-kept and can drift.
 | tool | version | raw link |
 |---|---|---|
 | People Watch | 1.14.0 | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
-| Market Watch | 1.7.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
-| Time Watch | 0.10.1 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
-| Align Watch | 0.7.1 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
+| Market Watch | 1.9.0 | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
+| Time Watch | 0.11.0 | [`time-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-watch.user.js) |
+| Align Watch | 0.8.0 | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
 | Comms Move | 0.1.2 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
-| WS Watch | 0.8.1 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.7.1 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
-| Raid Watch | 0.7.1 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
-| Sleeper Watch | 0.7.1 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
-| Quick Jump | 0.7.1 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
-| World Watch | 0.5.1 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
+| WS Watch | 0.9.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
+| XP Watch | 0.8.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| Raid Watch | 0.8.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
+| Sleeper Watch | 0.9.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
+| Quick Jump | 0.8.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
+| World Watch | 0.6.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
 | Gov Watch | 0.6.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
-| Poll Watch | 0.5.1 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
-| Shop Watch | 0.4.1 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
-| Bar Watch | 0.2.1 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
-| Slot Watch | 0.2.1 | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
+| Poll Watch | 0.7.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
+| Shop Watch | 0.5.0 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
+| Bar Watch | 0.4.0 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
+| Slot Watch | 0.3.0 | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
 | Jack Watch | 0.12.0 | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
@@ -863,9 +863,20 @@ all.** One visit to the recruitment screen is enough; the clock runs from there.
 ```
 
 It appears for an open window, for a new lead with no appointment yet, for a faction
-sleeper whose cooldown is up, and — in amber — fifteen minutes before a window opens. Drag
-it anywhere; it remembers. `×` dismisses that one event and nothing else, and a fresh
-appointment brings it back.
+sleeper whose cooldown is up, in amber fifteen minutes before a window opens, and — since
+0.9.0, in red — for a window that **already closed**:
+
+```
+● WINDOW CLOSED
+  Rae Okonkwo · missed, and cannot be re-opened      [dismiss]  [×]
+```
+
+Drag it anywhere; it remembers. `×` dismisses that one event and nothing else, and a fresh
+appointment brings it back. The red one is the exception: `×` and `dismiss` do the same
+thing, because there is no later window for it to come back for.
+
+An open window still outranks a loss — it is the only thing here still winnable, and it is
+on a clock. Everything else yields to the loss.
 
 **`go →` is the part that matters.** It navigates to the recruitment screen exactly as
 clicking Actions → Recruit Sleepers would, then does two things the game cannot: it sets
@@ -880,8 +891,48 @@ about issue**, in the game's own UI. Nothing here presses anything.
 **And when you come back to the tab** it says once, plainly, what closed while you were
 gone rather than leaving you to notice:
 
-> ⚠ 1 window closed while you were away: Rae Okonkwo
+> ⚠ 1 window closed while you were away:
+> · Rae Okonkwo (Housing) — closed Tue 11:20 PM
 > A missed lead cannot be re-opened — the action stays disabled and only Drop is left.
+
+### What 0.9.0 changed about that, and why
+
+Through 0.8.0 the sentence above was the **only** place a loss was ever reported, and it
+lived inside the panel body, behind the `ui.open` gate. The button counted open windows,
+new leads and ready sleepers; a missed one contributed nothing, so it sat there looking
+idle. `stripEvent()` had no `missed` case at all, so once the hour was up it returned
+`null` and the strip went quiet. You found out by pressing Alt+S — which you only do if
+something already told you to.
+
+Worse, the notice could not survive the one thing that reliably follows an absence. It was
+accumulated into a session variable, so a reload emptied it, and the flag marking a lead
+already-announced was persisted — so after a reload the loss was neither pending nor
+reportable. It was simply gone.
+
+And it was watching the wrong half of the problem. A lead dies two ways:
+
+| | how it ends | who noticed, before 0.9.0 |
+|---|---|---|
+| **a** | expires while still listed | `sweepMissed()` — but only with the tab visible |
+| **b** | expires while you are away, then is **gone** from the next poll | nobody: `sweepMissed()` skips `l.gone` |
+
+**(b) is the common one**, and it is what cost nine leads between 2026-08-26 and
+2026-09-16. On 09-15 three LGBT Rights leads that had run out 21 hours earlier were
+noticed and buried in the same poll; nothing outside a closed panel ever said so, and
+three Civil Rights leads went the same way the following night.
+
+So 0.9.0 derives the pending set from the store instead — covering both endings, keyed off
+an acknowledgement persisted on the lead — and reports it on the strip and on the button as
+well as in the panel. One dismissal clears all three. Fenced by `tools/test-sleeper.js`,
+which drives both endings and the reload.
+
+Installing it does **not** open with a strip mourning everything you already lost: a
+one-time baseline marks what is already dead as history, and only losses from there on are
+announced.
+
+This changes what the strip can **say**, not where it can say it. It is still in-page, and
+still only while you are looking at the page — nothing here reaches an unfocused tab, and
+`bar-watch` and `poll-watch` remain the only two tools that may (`docs/01-rules-envelope.md`).
 
 ## The panel
 
@@ -934,6 +985,26 @@ the leads are being tracked:
   mid-window most likely converted, one that vanished after expiring was pruned — with the
   average meeting count for each. The server never says which, so that state is the last
   one observed, not a verdict.
+
+### An ending has two timestamps, and only one of them is the ending
+
+This bit the analysis before it bit anyone's leads. An `end` row carries `at` — and through
+0.8.0 that was all it carried. But `at` is when **this tool next looked**, not when the
+lead ended: the recruitment poll is the only response that can report an absence, so a lead
+that runs out while you are elsewhere is stamped whenever you next stand on that page.
+
+In the bundle of 2026-09-16 the gap was not a rounding error:
+
+| lead | actually expired | `at` said | off by |
+|---|---|---|---|
+| Alex Nash, Frankie Price, Jordan Price | `09-14 04:56Z` | `09-15 02:14Z` | 21.3 h |
+| Frankie Price (Abortion) | `09-03 04:38Z` | `09-13 03:55Z` | **10 days** |
+
+Since 0.9.0 the row also carries `expiresAt`, the server's own instant, which for a missed
+lead *is* the ending — plus `noticedAt`, so `at` is never the only name for the other
+thing. `tools/read-stores.js` prefers `expiresAt` and labels every row `expired` or
+`noticed`, and footnotes how many older rows can only offer the latter. Rows written before
+0.9.0 cannot be repaired; the field simply was not kept.
 
 `copy digest` is the shareable output: counts only, no NPC names, no usernames.
 

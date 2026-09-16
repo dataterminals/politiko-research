@@ -59,6 +59,7 @@ const mk = (opts = {}) => {
     `${SLICE}\nreturn { isPast, canAct, leadState, leadTimer, facReady, fmtLeft,
        ingestRecruitment, ingestFactionSleepers, ingestMeet, ingestSleeper, readSelectedIssue,
        liveLeads, sortedLeads, facSleepers, board, sweepMissed, issueDigest, endDigest,
+       unackedMissed, ackMissed, ackBacklogOnce,
        getMeta: () => meta };`,
   )(leads, sleepers, ledger, meta, ui, CFG, '/actions/sleeper-recruitment',
     () => {}, () => {}, () => {}, () => {}, doc, loc);
@@ -264,6 +265,93 @@ console.log('\n— with no page to read, the meeting is still recorded —');
   check('the row survives', m.ledger.length, 1);
   check('...with the issue unknown rather than guessed', m.ledger[0].chosenIssue, null);
   check('and the digest buckets it as unknown', m.issueDigest().unknown.n, 1);
+}
+
+// ---------------------------------------------------------------------------
+// The ledger's `end` row records TWO instants, and conflating them is the bug this
+// fences. `at`/`noticedAt` is when the recruitment poll next ran and found the lead
+// gone; `expiresAt` is the server's own instant, which for a missed lead IS the ending.
+// In the bundle that prompted 0.9.0 the two were 21 h apart for one cohort and ten days
+// apart for another, and the ledger only carried the later one.
+// ---------------------------------------------------------------------------
+console.log('\n— an ending is stamped with when it happened, not when we looked —');
+{
+  const m = mk();
+  const expired = iso(-26 * HOUR);
+  m.ingestRecruitment(payload([lead({ next_meeting_at: iso(-27 * HOUR), expires_at: expired })]));
+  m.ingestRecruitment(payload([]));           // noticed a day later, on the next visit
+
+  const end = m.ledger.find((e) => e.kind === 'end');
+  check('the end row carries the server’s expiry', end.expiresAt, expired);
+  check('...and the moment we noticed, under its own name', end.noticedAt, end.at);
+  check('...which is strictly later than the expiry',
+    end.noticedAt > Date.parse(end.expiresAt), true);
+  check('the ending is still classified as missed', end.state, 'missed');
+}
+
+// ---------------------------------------------------------------------------
+// A lead dies two ways, and before 0.9.0 the reporting only covered the rarer one.
+// ---------------------------------------------------------------------------
+console.log('\n— both ways a window can close are reported —');
+{
+  // (a) expired and STILL listed: sweepMissed's path.
+  const m = mk();
+  m.ingestRecruitment(payload([lead({ next_meeting_at: iso(-2 * HOUR), expires_at: iso(-HOUR) })]));
+  check('expired-but-listed is an unacknowledged loss', m.unackedMissed().length, 1);
+
+  // (b) expired while you were away, then GONE from the next poll. sweepMissed() skips
+  // `l.gone` and never sees this one — it is the path that cost nine leads.
+  const n = mk();
+  n.ingestRecruitment(payload([lead({ next_meeting_at: iso(-2 * HOUR), expires_at: iso(-HOUR) })]));
+  n.ingestRecruitment(payload([]));
+  check('sweepMissed alone cannot see the gone lead', n.sweepMissed().length, 0);
+  check('...but it is still an unacknowledged loss', n.unackedMissed().length, 1);
+  check('...named, so the strip can say which one',
+    n.unackedMissed()[0].display_name, 'Ariel Voss');
+
+  // A lead that ended INSIDE its window is not a missed window.
+  const o = mk();
+  o.ingestRecruitment(payload([lead({ next_meeting_at: iso(-10 * MIN), expires_at: iso(50 * MIN) })]));
+  o.ingestRecruitment(payload([]));
+  check('a lead that ended while open is not reported as missed', o.unackedMissed().length, 0);
+}
+
+console.log('\n— dismissal is remembered, so a reload cannot swallow it —');
+{
+  const m = mk();
+  m.ingestRecruitment(payload([lead({ next_meeting_at: iso(-2 * HOUR), expires_at: iso(-HOUR) })]));
+  m.ingestRecruitment(payload([]));
+  check('the loss is pending', m.unackedMissed().length, 1);
+
+  m.ackMissed();
+  check('dismissing clears it', m.unackedMissed().length, 0);
+  check('...by writing to the lead, not to a variable', m.leads['1'].missedAck, true);
+
+  // Same store, fresh script context — what a page reload actually is.
+  const again = mk({ leads: m.leads, ledger: m.ledger, meta: m.getMeta() });
+  check('and it stays dismissed across a reload', again.unackedMissed().length, 0);
+}
+
+console.log('\n— installing 0.9.0 does not mourn leads you lost last month —');
+{
+  const m = mk();
+  m.ingestRecruitment(payload([
+    lead({ id: 1, next_meeting_at: iso(-40 * HOUR), expires_at: iso(-39 * HOUR) }),
+    lead({ id: 2, next_meeting_at: iso(-30 * HOUR), expires_at: iso(-29 * HOUR) }),
+  ]));
+  check('two losses are pending before the upgrade step', m.unackedMissed().length, 2);
+
+  m.ackBacklogOnce();
+  check('the backlog is acknowledged once', m.unackedMissed().length, 0);
+  check('...and a baseline is recorded', typeof m.getMeta().missedAckBaseline, 'number');
+
+  // Anything that dies AFTER the baseline is news again.
+  m.ingestRecruitment(payload([lead({ id: 3, next_meeting_at: iso(-2 * HOUR), expires_at: iso(-HOUR) })]));
+  check('a fresh loss still reports', m.unackedMissed().length, 1);
+
+  const again = mk({ leads: m.leads, ledger: m.ledger, meta: m.getMeta() });
+  again.ackBacklogOnce();
+  check('the upgrade step never runs twice', again.unackedMissed().length, 1);
 }
 
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');

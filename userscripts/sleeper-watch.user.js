@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — Sleeper Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.8.0
-// @description  Keeps the sleeper-recruitment timers alive after you leave the page. Reads the poll the recruitment screen already makes, remembers when each lead's meeting window opens, counts it down on every Politiko page, and hands you a one-click jump back with that lead's own issue pre-selected. Also counts down the faction advocate/embezzle cooldowns. Passive — zero added requests, and it never meets, canvasses, drops, advocates or embezzles.
+// @version      0.9.0
+// @description  Keeps the sleeper-recruitment timers alive after you leave the page. Reads the poll the recruitment screen already makes, remembers when each lead's meeting window opens, counts it down on every Politiko page, and hands you a one-click jump back with that lead's own issue pre-selected. Since 0.9.0 a window that closed unattended says so on the strip and on the button, instead of only inside the panel. Also counts down the faction advocate/embezzle cooldowns. Passive — zero added requests, and it never meets, canvasses, drops, advocates or embezzles.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -60,6 +60,13 @@
  *             page you are already looking at, and that is the whole of it. The
  *             countdown redraw stops entirely while the tab is hidden.
  *
+ *             Since 0.9.0 a window that CLOSED unattended is reported the same way, on
+ *             the same strip and on the button, until you dismiss it. That is still
+ *             in-page and still only while you are looking: it changes what the strip
+ *             can say, not where it can say it. Nothing here reaches an unfocused tab,
+ *             and the two tools that are allowed to — bar-watch and poll-watch, named
+ *             in docs/01-rules-envelope.md — remain the only two.
+ *
  *   Exports:  two buttons, neither ever automatic. `copy digest` puts a counts-only
  *             summary on your clipboard — scrubbed of NPC names and usernames by
  *             construction. `export` saves the raw local store as a JSON file. Both
@@ -83,7 +90,7 @@
   'use strict';
 
   const TAG = '[pksw]';
-  const VERSION = '0.5.0';
+  const VERSION = '0.9.0';
   const log = (...a) => console.debug(TAG, ...a);
 
   // ===========================================================================
@@ -569,11 +576,27 @@
     trimLedger(); save();
   };
 
-  /** How a lead left the list, as far as its last reading can honestly support. */
+  /**
+   * How a lead left the list, as far as its last reading can honestly support.
+   *
+   * `at` is when THIS TOOL NOTICED, not when the lead ended, and the two are not close.
+   * The only poll that can report an absence is the recruitment screen's own, so a lead
+   * that expires while you are elsewhere is not recorded until the next time you stand
+   * on that page — which in the bundle of 2026-09-16 was 21.3 h later for one cohort and
+   * ten days for a lead that expired on 09-03 and was stamped 09-13.
+   *
+   * So `expiresAt` goes in beside it. For a lead that ran out of time that IS the event
+   * instant, server-issued, and it is the field any timing analysis wants; `at` is only
+   * ever an upper bound. Reading `at` as the ending is how a finding gets poisoned six
+   * weeks later, which is the whole reason docs/ insists on measured vs inferred.
+   * Fenced by tools/test-sleeper.js.
+   */
   const recordEnd = (l) => {
     ledger.push({
       kind: 'end',
       at: l.goneAt,
+      noticedAt: l.goneAt,      // explicit, so `at` is never the only name for it
+      expiresAt: l.expires_at ?? null,
       leadId: l.id,
       name: l.display_name ?? null,
       clue: l.clue ?? null,
@@ -673,6 +696,50 @@
     }
     if (fresh.length) save();
     return fresh;
+  };
+
+  /**
+   * Missed windows you have not been shown yet — the thing the strip and the button
+   * report, and the reason 0.9.0 exists.
+   *
+   * It is DERIVED from the store rather than accumulated in a variable, because the
+   * variable it replaces could not see either of the two ways a lead actually dies:
+   *
+   *   a) it expires and is still listed  -> sweepMissed() catches it, but only while the
+   *      tab is visible, since tick() returns early when it is not.
+   *   b) it expires while you are away and is GONE from the next poll -> ingestRecruitment
+   *      marks it `gone` and records the end. sweepMissed() skips `l.gone`, so it never
+   *      sees it at all.
+   *
+   * (b) is the common one and the one that cost nine leads before this was written: on
+   * 2026-09-15 three LGBT Rights leads that had expired 21 h earlier were noticed and
+   * buried in the same poll, and nothing outside the panel ever said so.
+   *
+   * Acknowledgement is persisted on the lead, so a reload cannot silently swallow the
+   * notice the way a session variable did.
+   */
+  const unackedMissed = (now = Date.now()) => Object.values(leads)
+    .filter((l) => !l.missedAck
+      && (l.gone ? l.goneState === 'missed' : leadState(l, now) === 'missed'))
+    .sort((a, b) => (ms(b.expires_at) ?? 0) - (ms(a.expires_at) ?? 0));
+
+  /** Dismiss: acknowledge every currently-unacked miss, and remember that. */
+  const ackMissed = () => {
+    for (const l of unackedMissed()) leads[l.id] = { ...l, missedAck: true };
+    save();
+  };
+
+  /**
+   * One-time upgrade step. Every lead already dead when 0.9.0 first loads is marked
+   * acknowledged, so installing this does not open with a strip mourning twelve leads
+   * you lost over the last three weeks and cannot do anything about. Only losses from
+   * here on are announced.
+   */
+  const ackBacklogOnce = () => {
+    if (meta.missedAckBaseline) return;
+    for (const l of unackedMissed()) leads[l.id] = { ...l, missedAck: true };
+    meta = { ...meta, missedAckBaseline: Date.now() };
+    save();
   };
 
   /**
@@ -1027,7 +1094,6 @@
   const tabBtn = {};
   let panelDrag = null, fabDrag = null, stripDrag = null, panelResize = null, placed = false;
   let lastSig = null;          // board signature; a change means a full repaint is due
-  let missedThisSession = [];  // what closed while nobody was looking
 
   const CSS = `
     :host { all: initial; }
@@ -1269,6 +1335,8 @@
     .pk-fab svg { width: 24px; height: 24px; display: block; }
     .fab { --pk-slot: 10; z-index: 2147483000; }
     .fab.hot { border-color: #22c55e; color: #4ade80; }
+    /* Border and text only — the kit owns the fill, so .pk-open still reads through. */
+    .fab.lost { border-color: #f87171; color: #f87171; }
     .fab.soon { border-color: #f59e0b; color: #fbbf24; }
     .fab .dot {
       position: absolute; top: -5px; right: -5px; min-width: 15px; height: 15px; padding: 0 3px;
@@ -1276,6 +1344,7 @@
       display: none; place-items: center; line-height: 15px; text-align: center;
     }
     .fab.hot .dot { display: block; }
+    .fab.lost .dot { display: block; background: #f87171; color: #450a0a; }
     .fab.soon .dot { display: block; background: #f59e0b; color: #451a03; }
 
     /* The strip. In-page only, and it never appears anywhere but the page you are
@@ -1289,6 +1358,8 @@
     }
     .strip.on { display: flex; }
     .strip.warn { border-left-color: #f59e0b; }
+    .strip.lost { border-left-color: #f87171; }
+    .strip.lost .h { color: #f87171; }
     .strip .txt { min-width: 0; }
     .strip .h { font-weight: 600; letter-spacing: .04em; }
     .strip .s { color: #a1a1aa; font-size: 11px; margin-top: 2px; }
@@ -1405,14 +1476,21 @@
     const now = Date.now();
     const b = board(now);
 
-    if (missedThisSession.length) {
+    const lost = unackedMissed(now);
+    if (lost.length) {
       const box = el('div', 'lost');
       box.append(el('div', null,
-        `${missedThisSession.length} window${missedThisSession.length > 1 ? 's' : ''} closed while you were away: `
-        + missedThisSession.map((l) => l.display_name ?? l.id).join(', ')));
+        `${lost.length} window${lost.length > 1 ? 's' : ''} closed while you were away:`));
+      // Each one with the instant it actually ran out, which is the server's own
+      // expires_at. The ledger used to be able to say only when this tool next looked,
+      // and that was wrong by a day for the cohort that prompted 0.9.0.
+      for (const l of lost) {
+        box.append(el('div', 'dim',
+          `· ${l.display_name ?? l.id}${l.issue ? ` (${l.issue})` : ''} — closed ${when(ms(l.expires_at))}`));
+      }
       box.append(el('div', 'dim',
         'A missed lead cannot be re-opened — the action stays disabled and only Drop is left.'));
-      const clear = btn('dismiss', null, () => { missedThisSession = []; paint(); });
+      const clear = btn('dismiss', null, () => { ackMissed(); paint(); });
       clear.style.marginTop = '6px';
       box.append(clear);
       body.append(box);
@@ -1599,6 +1677,28 @@
       };
     }
 
+    // Second, above everything that is merely upcoming. A loss outranks a new lead and a
+    // heads-up because it is the one thing here you can still get WRONG by not knowing:
+    // the card is dead, its action never re-enables, and Drop is all that is left. It
+    // sits below an open window because that one is still winnable and is on a clock.
+    //
+    // `onMute` replaces the strip's ordinary per-window mute. Muting the key alone would
+    // hide this strip and leave the panel box listing the same losses and the button lit
+    // for them, so × acknowledges instead — one dismissal, all three surfaces.
+    const lost = unackedMissed(now);
+    if (lost.length) {
+      const l = lost[0];
+      return {
+        key: `missed:${l.id}:${l.expires_at ?? ''}`,
+        tone: 'lost',
+        head: lost.length > 1 ? `${lost.length} WINDOWS CLOSED` : 'WINDOW CLOSED',
+        sub: `${lost.map((x) => x.display_name ?? x.id).join(', ')} · missed, and cannot be re-opened`,
+        deadline: null,
+        act: ['dismiss', () => { ackMissed(); paint(); }],
+        onMute: () => { ackMissed(); paint(); },
+      };
+    }
+
     const fresh = b.fresh.filter(({ l }) => !ui.muted[`new:${l.id}`]);
     if (fresh.length) {
       const { l } = fresh[0];
@@ -1665,7 +1765,9 @@
     if (!stripEl) return;
     const ev = ui.strip ? stripEvent() : null;
     stripEl.replaceChildren();
-    stripEl.className = `strip${ev ? ' on' : ''}${ev && ev.tone === 'warn' ? ' warn' : ''}`;
+    // The tone IS the class now. It was a single `warn` ternary while there were two
+    // tones; a third ('lost') made that shape wrong rather than merely long.
+    stripEl.className = `strip${ev ? ' on' : ''}${ev && ev.tone !== 'go' ? ` ${ev.tone}` : ''}`;
     if (!ev) return;
 
     const txt = el('div', 'txt');
@@ -1680,7 +1782,10 @@
     // on a button inside the handle, so `moved` is whatever the last strip drag left it
     // as — guarding on it would swallow the first click after you move the strip.
     stripEl.append(btn(ev.act[0], 'go', () => ev.act[1]()));
-    stripEl.append(btn('×', null, () => { ui.muted[ev.key] = 1; saveUi(); paintStrip(); paintFab(); }));
+    stripEl.append(btn('×', null, () => {
+      if (ev.onMute) { ev.onMute(); return; }
+      ui.muted[ev.key] = 1; saveUi(); paintStrip(); paintFab();
+    }));
 
     if (stripDrag) { stripDrag.apply(ui.strip_pos); stripDrag.fit(); }
   }
@@ -1689,16 +1794,21 @@
     if (!fab) return;
     const b = board();
     const hot = b.open.length + b.fresh.length + (ui.facTier ? new Set([...b.adv, ...b.emb]).size : 0);
-    const soon = !hot && b.next && b.next.t.left != null && b.next.t.left <= CFG.HEADS_UP_MS;
+    // A loss lights the button too, or the fix stops at the strip: the strip is one
+    // event at a time and is dismissable, the button is the thing still on screen an
+    // hour later. `hot` still wins the box — act on what is live, then read what is not.
+    const lost = !hot ? unackedMissed().length : 0;
+    const soon = !hot && !lost && b.next && b.next.t.left != null && b.next.t.left <= CFG.HEADS_UP_MS;
     // toggle(), never assign. Rebuilding className here is what shipped in 0.3.0, and
     // it dropped `pk-fab` on the first repaint — the button kept its position and its
     // click handler and lost the entire FAB KIT box, so it went invisible rather than
     // broken. Nothing throws when that happens, which is why it got out.
     fab.classList.toggle('hot', !!hot);
-    fab.classList.toggle('soon', !hot && !!soon);
+    fab.classList.toggle('lost', !hot && !!lost);
+    fab.classList.toggle('soon', !hot && !lost && !!soon);
     fab.classList.toggle('pk-open', ui.open);   // the button says which window is up
     fab.replaceChildren(document.createTextNode('SLP'), fabDot);
-    fabDot.textContent = hot ? String(hot) : soon ? '!' : '';
+    fabDot.textContent = hot ? String(hot) : lost ? String(lost) : soon ? '!' : '';
   }
 
   // ---------------------------------------------------------------------------
@@ -1831,7 +1941,7 @@
       ['copy digest', (bt) => copyText(buildDigest(), bt)],
       ['export', () => download(`sleeper-watch-${VERSION}.json`, JSON.stringify({ leads, sleepers, ledger, meta }, null, 2))],
       ['clear', () => {
-        leads = {}; sleepers = {}; ledger = []; meta = {}; ui.muted = {}; missedThisSession = [];
+        leads = {}; sleepers = {}; ledger = []; meta = {}; ui.muted = {};
         writeJSON(K.leads, leads); writeJSON(K.sleepers, sleepers);
         writeJSON(K.ledger, ledger); writeJSON(K.meta, meta); saveUi();
         paint();
@@ -1876,7 +1986,7 @@
   const tick = () => {
     if (document.visibilityState !== 'visible' || !root) return;
     const missed = sweepMissed();
-    if (missed.length) { missedThisSession.push(...missed); paint(); return; }
+    if (missed.length) { paint(); return; }
     if (signature() !== lastSig) { paint(); return; }
     const now = Date.now();
     for (const n of root.querySelectorAll('[data-deadline]')) {
@@ -1945,13 +2055,14 @@
   // you were gone is reported once, here, and never chased into another window.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
-    missedThisSession.push(...sweepMissed());
+    sweepMissed();
     paint();
   });
 
   const boot = () => {
     mount();
-    missedThisSession = sweepMissed();
+    ackBacklogOnce();   // 0.9.0 upgrade: today's dead leads are history, not news
+    sweepMissed();
     paint();
     setInterval(tick, CFG.TICK_MS);
     log(`ready ${VERSION} — passive; the recruitment screen's own 30s poll feeds this`);
@@ -1974,7 +2085,7 @@
     digest: () => buildDigest(),
     export: () => ({ leads, sleepers, ledger, meta }),
     clear: () => {
-      leads = {}; sleepers = {}; ledger = []; meta = {}; ui.muted = {}; missedThisSession = [];
+      leads = {}; sleepers = {}; ledger = []; meta = {}; ui.muted = {};
       writeJSON(K.leads, {}); writeJSON(K.sleepers, {}); writeJSON(K.ledger, []); writeJSON(K.meta, {});
       saveUi(); paint();
     },

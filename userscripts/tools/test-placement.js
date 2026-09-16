@@ -1364,5 +1364,60 @@ console.log('\n— no two tools write the same storage key —');
   }
   check('no migration deletes a key another tool still writes', unsafe, []);
 }
+
+// ---------------------------------------------------------------------------
+// A tool states its version in up to three places, and they drifted.
+//
+// Found 2026-09-16: four tools — quick-jump, raid-watch, sleeper-watch, xp-watch —
+// carried `const VERSION = '0.5.0'` while their headers had reached 0.8.0, and the
+// README's install table was stale on thirteen of nineteen rows. The constant is not
+// decorative: it names the export file and heads the digest, so a bundle collected from
+// 0.8.0 landed on disk called `sleeper-watch-0.5.0.json`. In a repo whose findings are
+// only as good as their provenance, evidence stamped with the wrong build is worse than
+// evidence with no stamp, because it reads as true.
+//
+// The header is the one that ships — `@updateURL` means the script manager compares it —
+// so it is the authority here and the other two must agree with it.
+// ---------------------------------------------------------------------------
+console.log('\n— every tool states one version, in every place it states one —');
+{
+  const dir = path.join(__dirname, '..');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.user.js')).sort();
+  const README = fs.readFileSync(path.join(dir, 'README.md'), 'utf8');
+
+  const headerOf = (src) => (src.match(/^\/\/ @version\s+(\S+)/m) || [])[1] || null;
+  const constOf = (src) => (src.match(/^\s*const VERSION = '([^']+)';/m) || [])[1] || null;
+
+  const noHeader = files.filter((f) => !headerOf(fs.readFileSync(path.join(dir, f), 'utf8')));
+  check('every userscript declares @version', noHeader, []);
+
+  const drifted = files.filter((f) => {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const c = constOf(src);
+    return c !== null && c !== headerOf(src);
+  });
+  check('...and its VERSION constant, where it has one, agrees', drifted, []);
+
+  // The two install tables are how anyone else learns which build they are on. They are
+  // laid out differently — README is `| name | version | link |`, INSTALL is the row
+  // table with a slot and a glyph in front — so both are matched on what they share: the
+  // version cell immediately before the link to that file.
+  const INSTALL = fs.readFileSync(path.join(dir, 'INSTALL.md'), 'utf8');
+  const tableCheck = (label, doc, docName) => {
+    const stale = [];
+    for (const f of files) {
+      if (f === '_template.user.js') continue;    // not installable, in no table
+      const want = headerOf(fs.readFileSync(path.join(dir, f), 'utf8'));
+      // Zero intervening cells in README, one (the blurb) in INSTALL — hence the `*`.
+      const row = new RegExp(`\\| (\\d+\\.\\d+\\.\\d+) \\|(?:[^|\\n]*\\|)* \\[\`${f.replace('.', '\\.')}\``).exec(doc);
+      if (!row) { stale.push(`${f} missing from ${docName}`); continue; }
+      if (row[1] !== want) stale.push(`${f}: ${docName} says ${row[1]}, file says ${want}`);
+    }
+    check(label, stale, []);
+  };
+  tableCheck('...and so does the README install table', README, 'README');
+  tableCheck('...and INSTALL.md, which is the one people actually read', INSTALL, 'INSTALL');
+}
+
 console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
 process.exit(fail ? 1 : 0);

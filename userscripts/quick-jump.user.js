@@ -71,7 +71,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '0.5.0';
+  const VERSION = '0.8.0';
   const TAG = '[pk-quick-jump]';
   const log = (...a) => console.debug(TAG, ...a);
 

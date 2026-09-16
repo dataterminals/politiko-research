@@ -95,7 +95,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.5.0';
+  const VERSION = '0.8.0';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
