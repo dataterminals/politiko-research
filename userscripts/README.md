@@ -30,7 +30,7 @@ bump; the table below is hand-kept and can drift.
 | Quick Jump | 0.8.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 | World Watch | 0.6.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
 | Gov Watch | 0.7.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
-| Poll Watch | 0.7.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
+| Poll Watch | 0.8.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
 | Shop Watch | 0.5.0 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
 | Bar Watch | 0.4.0 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
 | Slot Watch | 0.3.0 | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
@@ -1555,13 +1555,50 @@ Both are arithmetic on what arrived, not a model:
 Sides are always named (`R+22`, `L+1`, `even`) instead of shown as a bare sign, because a
 signed number on a screen full of −3…+3 axes reads as the wrong scale.
 
+## The window between two memos (0.8.0)
+
+A single memo says where the public stands. It cannot say what *moved*, and that is the
+question a campaign actually asks. Two memos of the same issue can, so every bucket now
+carries its own `+n` / `−n` against your previous poll of that issue, with the length of the
+window under the spread and the change in **lean** beside the change in net.
+
+This is not a refinement. Both of the significant opinion findings of the week beginning
+2026-09-12 were sitting in the store the whole time and were found by diffing the JSON by
+hand, because the panel showed each memo standing alone:
+
+| issue | window | what the buckets did |
+|---|---|---|
+| Civil Rights | 09-12 → 09-15 | far right **72 → 53**, centre right 8 → 0, slight right 14 → **45** |
+| LGBT Rights | 09-12 → 09-17 | far right **2 → 0** *and* centre left **2 → 0** |
+
+Twenty-seven points left a bloc the working model of the day said could only ever fill; and
+on the other issue both tails moved inward at once, which no single push explains. Neither
+is visible in either memo alone. Both are obvious in a delta column.
+
+A delta still does not say *who* moved it — but there is one confounder the panel can rule
+out for free, and it is you. If xp-watch is installed, its action log is read (never
+written) to count how many of your own actions fall inside the window:
+
+| the line reads | what it means |
+|---|---|
+| `no actions of yours` | you did not move this. Whatever did is the world |
+| `4 actions of yours` | a count, across **every** issue — the log does not record which issue an action was aimed at, so this never claims a cause |
+| `log starts mid-window` | xp-watch's oldest entry is newer than your previous poll; the window outruns the evidence, so nothing is counted |
+| `Δ vs your last poll` | xp-watch is not installed. No line is drawn, because zero would be a claim |
+
+Running the poll itself is excluded — a poll is a reading, not an act on the world, and the
+memo that closes a window is logged inside it, so counting it would mean `no actions of
+yours` could never once be true.
+
 ## The panel
 
 Three tabs, and it remembers which one you left it on.
 
 - **latest** — the pinned issue's newest memo drawn the way the game draws it, plus the
-  delta against your previous poll on that issue, a trend sparkline, and the cooldown
-  counting down. Filled dots on the sparkline are professional or focus-group readings;
+  per-bucket delta against your previous poll **of that issue** (never simply the previous
+  memo — with nothing pinned that used to be whatever you last looked at, so a delta could
+  be drawn between two different publics), the window those deltas span, a trend sparkline,
+  and the cooldown counting down. Filled dots on the sparkline are professional or focus-group readings;
   hollow ones are street or online, and the panel says so rather than drawing a confident
   line through noisy points.
 - **issues** — one row per issue you have polled: where it sits now, and how far it has
@@ -1630,10 +1667,16 @@ reading stays visibly stale rather than quietly pretending to be current.
 Full disclosure is in the header comment at the top of
 [`poll-watch.user.js`](poll-watch.user.js). In short: the memo from a poll you ran, the
 issue list the poll screen loads, and the `/api/time` responses the sidebar already makes.
-Everything is kept under `pkpl:` keys in your browser, nothing is sent anywhere, and it
-originates **zero** requests. Through 0.4.0 those keys were `pkpw:` — which people-watch
-also writes — and 0.5.0 carries the old ones across once on first run. See **The prefix
-collision** near the end of this file.
+Everything it *writes* is kept under `pkpl:` keys in your browser, nothing is sent anywhere,
+and it originates **zero** requests. Through 0.4.0 those keys were `pkpw:` — which
+people-watch also writes — and 0.5.0 carries the old ones across once on first run. See
+**The prefix collision** near the end of this file.
+
+Since 0.8.0 it also *reads* one key that is not its own: `pkxp:ledger`, xp-watch's action
+log, for the window line above. Read, never written, never removed — `test-placement.js`
+finds the constant it binds that key to and fails the build if it appears beside a writing
+verb, the same way it holds time-bridge to reading `pktw:samples`. Without xp-watch the key
+is absent and the line simply does not appear.
 
 Every field it knows about was read off `OpinionPollPage` in the 2026-08-03 bundle pull,
 not off the wire.

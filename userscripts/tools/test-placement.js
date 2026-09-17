@@ -1297,19 +1297,43 @@ console.log('\n— every helper a render path calls exists —');
 // collision FAB KIT's fixed slots exist to prevent, arriving through the back door.
 //
 // So the key names are read out of every shipped tool and two owners is a build
-// failure. Reads are not the problem and are not checked — time-bridge reads
-// `pktw:samples` on purpose, which is the entire reason that tool exists — so the one
-// deliberate share is named below the way the placement exceptions are.
+// failure. Reads are not the problem — time-bridge reads `pktw:samples` on purpose,
+// which is the entire reason that tool exists, and poll-watch reads `pkxp:ledger` to
+// say whether you were acting between two of your own polls. Both are named below the
+// way the placement exceptions are.
+//
+// What changed when the second one arrived: a name on that list used to be a promise
+// that the sharer only reads. Two entries is where a promise stops being worth having,
+// so it is now a claim this file checks — the reader's binding for the key is found and
+// must appear beside no writing verb. Getting that wrong is the original bug with one
+// extra step, and it would be just as quiet.
 // ---------------------------------------------------------------------------
 console.log('\n— no two tools write the same storage key —');
 {
   const dir = path.join(__dirname, '..');
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.user.js')).sort();
 
-  // key -> the tools allowed to name it together, and why.
+  // key -> who owns it, and who is allowed to read it without owning it.
   const SHARED = {
-    'pktw:samples': ['time-bridge.user.js', 'time-watch.user.js'],  // the bridge only reads it
+    'pktw:samples': { owner: 'time-watch.user.js', readers: ['time-bridge.user.js'] },
+    'pkxp:ledger': { owner: 'xp-watch.user.js', readers: ['poll-watch.user.js'] },
   };
+
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  /** every identifier a file binds a key literal to: `const N = 'k'` and `const H = { f: 'k' }` */
+  const bindingsFor = (code, key) => {
+    const k = esc(key);
+    const out = [];
+    for (const m of code.matchAll(new RegExp(`const\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*['"\`]${k}['"\`]`, 'g'))) out.push(m[1]);
+    for (const m of code.matchAll(new RegExp(`const\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*\\{[^}]*?([A-Za-z_$][\\w$]*)\\s*:\\s*['"\`]${k}['"\`]`, 'g'))) out.push(`${m[1]}.${m[2]}`);
+    return out;
+  };
+
+  const WRITE = '(?:setItem|removeItem|writeJSON)';
+  const writesKey = (code, key, names) =>
+    new RegExp(`${WRITE}\\(\\s*['"\`]${esc(key)}['"\`]`).test(code)
+    || names.some((n) => new RegExp(`${WRITE}\\(\\s*${esc(n)}\\b`).test(code));
 
   const owners = new Map();
   const migrating = [];
@@ -1334,14 +1358,30 @@ console.log('\n— no two tools write the same storage key —');
     }
   }
 
+  const src = new Map(files.map((f) => [f, fs.readFileSync(path.join(dir, f), 'utf8')]));
   const clashes = [...owners.entries()]
     .filter(([k, set]) => set.size > 1)
     .filter(([k, set]) => {
       const allowed = SHARED[k];
-      return !allowed || [...set].sort().join() !== allowed.slice().sort().join();
+      if (!allowed) return true;
+      const named = [allowed.owner, ...allowed.readers].sort().join();
+      return [...set].sort().join() !== named;
     })
     .map(([k, set]) => `${k} <- ${[...set].sort().join(' + ')}`);
   check('no key has two owners', clashes, []);
+
+  // …and a declared reader has to actually be one.
+  const pretenders = [];
+  for (const [key, { readers }] of Object.entries(SHARED)) {
+    for (const r of readers) {
+      const code = src.get(r);
+      if (!code) { pretenders.push(`${r} is not a shipped tool`); continue; }
+      const names = bindingsFor(code, key);
+      if (!names.length) { pretenders.push(`${r} does not bind ${key} to a named constant`); continue; }
+      if (writesKey(code, key, names)) pretenders.push(`${r} WRITES ${key} (${names.join(', ')})`);
+    }
+  }
+  check('every declared reader of a shared key only reads it', pretenders, []);
 
   // A regex that quietly stopped matching would pass the row above by finding nothing.
   check('the scan is actually finding keys', owners.size >= 30, true);

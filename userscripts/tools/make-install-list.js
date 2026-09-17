@@ -44,7 +44,7 @@ const TOOLS = {
   'time-watch': { word: 'TIME', blurb: 'real to game clock, month schedule, next-registration countdown' },
   'world-watch': { word: 'WRLD', blurb: 'plots law, opinion, street, media and citizens on one compass' },
   'xp-watch': { word: 'XP', blurb: 'ledger of your own stat and skill changes, action by action' },
-  'poll-watch': { word: 'POLL', blurb: 'keeps every opinion-poll memo, with bloc spread and trends' },
+  'poll-watch': { word: 'POLL', blurb: 'files every opinion-poll memo, bucket-by-bucket delta against your last one' },
   'shop-watch': { word: 'SHOP', blurb: 'shop fields the UI never shows, and brackets every restock' },
   'bar-watch': { word: 'BARS', blurb: 'time to full for Energy, Juice and HP, with alerts you set' },
   'slot-watch': { word: 'SLOT', blurb: 'slots bankroll against the house edge, and what a run really costs' },

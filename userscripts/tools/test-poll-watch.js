@@ -197,15 +197,37 @@ check('...while the repaint stays gated on it',
   /if \(!document\.hidden && ui\.open && onStage\(\)/.test(CODE),
   'a hidden tab must not be repainted');
 
-console.log('\n— it reads only its own storage —');
+// Through 0.7.0 this section could say "it reads only its own storage" and mean it.
+// 0.8.0 reads one key that is not its own — `pkxp:ledger`, xp-watch's action log — to
+// answer the one question a poll delta cannot answer for itself: whether the operator
+// was acting inside the window. So the property being fenced changes shape. It is no
+// longer "nothing foreign is touched"; it is:
+//
+//   every key is a named constant, never a literal at the call site
+//   the foreign family is READ and appears beside no writing verb anywhere
+//   what gets written is this tool's own two keys and nothing else
+//
+// The last one is the one that matters. A tool that reads a neighbour's store is a
+// convenience; a tool that writes one is a tool that can corrupt another's data from
+// a bug it will never see, because nobody debugging xp-watch would think to look here.
+console.log('\n— it writes only its own storage, and reads one key that is not —');
 
 const lsSites = [...CODE.matchAll(/localStorage\.(getItem|setItem|removeItem|clear)\b/g)].map((m) => m[1]);
 eq('localStorage is touched by three verbs and never cleared',
   [...new Set(lsSites)].sort(), ['getItem', 'removeItem', 'setItem']);
 const helperArgs = [...CODE.matchAll(/\b(?:readJSON|writeJSON)\(\s*([A-Za-z.]+)/g)].map((m) => m[1]);
-check('every key handed to them is a K.* or OLD.* constant',
-  helperArgs.length >= 4 && helperArgs.every((a) => /^(K|OLD)\./.test(a)),
+check('every key handed to them is a K.*, OLD.* or FOREIGN.* constant',
+  helperArgs.length >= 4 && helperArgs.every((a) => /^(K|OLD|FOREIGN)\./.test(a)),
   `args: ${helperArgs.join(' | ')}`);
+const written = [...CODE.matchAll(/\bwriteJSON\(\s*([A-Za-z.]+)/g)].map((m) => m[1]);
+check('everything written is one of this tool\'s own two keys',
+  written.length >= 2 && written.every((a) => /^K\./.test(a)),
+  `written: ${written.join(' | ')}`);
+check('the foreign family is one key, and it is somebody else\'s',
+  /const FOREIGN = \{ xpLedger: 'pkxp:ledger' \};/.test(CODE),
+  'expected exactly `const FOREIGN = { xpLedger: \'pkxp:ledger\' };`');
+absent('FOREIGN never appears beside a writing verb',
+  /(?:writeJSON|setItem|removeItem)\(\s*FOREIGN\./g);
 absent('it never reads the game\'s auth blob', /getItem\(\s*['"`]auth/g);
 check('both live key names sit under this tool\'s own prefix',
   (CODE.match(/'pkpl:[a-z]+'/g) || []).length === 2,
@@ -257,6 +279,7 @@ const exportLayer = cut('const COLS = [', '  const copyBtn = ');
 const store = new Map();
 const stub = `
   const K = { data: 'pkpl:data', ui: 'pkpl:ui' };
+  const FOREIGN = { xpLedger: 'pkxp:ledger' };
   const log = () => {};
   // addPoll re-arms the cooldown alert, which lives outside this slice. The fence above
   // is what holds tick() honest; here it only has to exist.
@@ -267,6 +290,7 @@ const stub = `
 // eslint-disable-next-line no-new-func
 const layer = new Function('STORE', `${stub}\n${derive}\n${exportLayer}\n return {
   METHOD, BUCKETS, data, ui, toRow, blocs, net, lean, exact, sideText, addPoll,
+  bucketDeltas, windowActions,
   issuesSeen, nowGS, parseGameDatetime, gameLabel, tsv, COLS };`)(store);
 
 const FINE = {
@@ -335,6 +359,80 @@ layer.data.polls.length = 0;
 for (let i = 0; i < 420; i++) layer.addPoll(layer.toRow({ ...FINE, issue: `I${i}` }));
 check('the store is capped', layer.data.polls.length === 400, `kept ${layer.data.polls.length}`);
 eq('and it drops the oldest, not the newest', layer.data.polls[399].issue, 'I419');
+
+// ---------------------------------------------------------------------------
+// The window between two memos (0.8.0). The fixture is the real thing: Civil Rights
+// as the operator's own store recorded it on 2026-09-12 and again on 2026-09-15,
+// which is the move that went unnoticed for three days because the panel showed each
+// memo standing alone. Twenty-seven points left the right-hand blocs — out of a
+// far-right bucket the working model of the time said could only ever fill.
+// ---------------------------------------------------------------------------
+console.log('\n— a window between two memos of the same issue —');
+
+const CIVIL = (fine) => layer.toRow({ issue: 'Civil Rights', method: 'focus_group', ...fine });
+const sep12 = CIVIL({
+  far_left: 0, center_left: 0, slight_left: 0, neutral: 4,
+  slight_right: 14, center_right: 8, far_right: 72,
+});
+const sep15 = CIVIL({
+  far_left: 0, center_left: 0, slight_left: 0, neutral: 1,
+  slight_right: 45, center_right: 0, far_right: 53,
+});
+
+eq('each bucket carries its own change', layer.bucketDeltas(sep15, sep12), {
+  far_left: 0, center_left: 0, slight_left: 0, neutral: -3,
+  slight_right: 31, center_right: -8, far_right: -19,
+});
+eq('a first memo has nothing to be measured against', layer.bucketDeltas(sep12, null), null);
+eq('a coarse memo has no buckets to difference', layer.bucketDeltas(sep15, layer.toRow(COARSE)), null);
+eq('...in either position', layer.bucketDeltas(layer.toRow(COARSE), sep15), null);
+check('but net still crosses the two shapes, which is what net is for',
+  Number.isFinite(layer.net(sep15) - layer.net(layer.toRow(COARSE))),
+  'net is defined for both shapes');
+
+console.log('\n— ...and who was acting inside it —');
+
+const T0 = Date.parse('2026-09-12T13:06:00Z');
+const T1 = Date.parse('2026-09-15T11:40:00Z');
+const ledger = (events) => store.set('pkxp:ledger', JSON.stringify({ events }));
+const act = (t, ep = '/disobedience') => ({ t, kind: 'action', ep });
+
+store.delete('pkxp:ledger');
+eq('no xp-watch installed is not a claim of zero', layer.windowActions(T0, T1), null);
+ledger([]);
+eq('nor is an empty log', layer.windowActions(T0, T1), null);
+
+ledger([
+  act(T0 - 20 * 86_400_000),      // long before: proves the log reaches back
+  act(T0),                        // the boundary itself belongs to the earlier window
+  act(T0 + 60_000),
+  act(T0 + 120_000, '/actions/poll'),
+  { t: T0 + 180_000, kind: 'status', from: 'jailed', to: 'active' },
+  act(T1),                        // the closing edge is inside
+  act(T1 + 60_000),               // after the second memo
+]);
+eq('actions strictly inside the window are counted', layer.windowActions(T0, T1).n, 2);
+check('...and the count is marked as trustworthy', layer.windowActions(T0, T1).covered === true,
+  'the log reaches back past the window start');
+eq('the poll that closed the window is a reading, not an act',
+  layer.windowActions(T0, T0 + 130_000).n, 1);
+eq('a status change is not an action either',
+  layer.windowActions(T0 + 150_000, T0 + 200_000).n, 0);
+
+// The failure that would matter most: xp-watch keeps a bounded log, so a window older
+// than its oldest entry has no evidence in it at all. Counting zero there would read
+// as "you did nothing" when the truth is "nobody knows" — the one mistake this line
+// exists to avoid.
+ledger([act(T0 + 60_000), act(T1 - 60_000)]);
+const short = layer.windowActions(T0, T1);
+eq('a log that starts mid-window refuses to count', [short.covered, short.n], [false, null]);
+ledger([act(T0), act(T1 - 60_000)]);
+check('a log starting exactly at the window edge does cover it',
+  layer.windowActions(T0, T1).covered === true, 'oldest === fromT is covered');
+ledger([{ kind: 'action', ep: '/disobedience' }, act(T0 - 1000), act(T0 + 1000)]);
+eq('an entry with no timestamp is skipped, not counted as now',
+  layer.windowActions(T0, T1).n, 1);
+store.delete('pkxp:ledger');
 
 console.log('\n— the game clock stamps a memo when the app has supplied one —');
 

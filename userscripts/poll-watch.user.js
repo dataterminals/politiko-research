@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — Poll Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.7.0
-// @description  Keeps every opinion-poll memo you run — timestamped in real and game time, with the bloc spread, the per-issue trend since your last poll, and TSV/JSON export. Tells you when the poll cooldown in your own memo runs out, in the page by default and optionally as a desktop notification. Passive: it reads the memo the game already handed you and originates no requests.
+// @version      0.8.0
+// @description  Keeps every opinion-poll memo you run — timestamped in real and game time, with the bloc spread, a bucket-by-bucket delta against your last poll of that issue, the per-issue trend, and TSV/JSON export. Says whether you ran any disobedience inside that window, so a move you did not cause reads as one. Tells you when the poll cooldown in your own memo runs out, in the page by default and optionally as a desktop notification. Passive: it reads the memo the game already handed you and originates no requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -30,6 +30,18 @@
  *             Nothing else is read off the wire. No request body is inspected, no
  *             other page's traffic is touched, and the `auth` localStorage key
  *             (your tokens) is never read.
+ *
+ *             Since 0.8.0, ONE key belonging to another of this repo's tools:
+ *               `pkxp:ledger`               — xp-watch's own action log, which that
+ *                                             script wrote from responses the game
+ *                                             handed it. Read, never written, never
+ *                                             removed. It supplies one fact and one
+ *                                             only: how many of YOUR OWN actions fall
+ *                                             between two of your polls. Without
+ *                                             xp-watch installed the key is absent and
+ *                                             the line simply does not appear.
+ *             Nothing outside `pkpl:` and that one key is read. Why it is worth a
+ *             foreign key at all is under WHAT THE NUMBERS ARE, below.
  *
  *   Sends:    nothing, to anyone
  *
@@ -118,10 +130,45 @@
  *         game's own policy axes use. Fine memos only — a coarse one has nowhere to
  *         put the weights, and inventing them would fabricate precision.
  *
+ * THE WINDOW BETWEEN TWO MEMOS, which is what 0.8.0 adds and why it reads a foreign key
+ *
+ * A single memo says where the public stands. It cannot say what moved, and that is the
+ * question every campaign actually asks. Two memos of the same issue can, because the
+ * difference between them is arithmetic — so each bucket now carries `+n` / `−n` against
+ * your previous poll of that issue, alongside how long the window was.
+ *
+ * What that would have caught, and did not, because the panel showed each memo alone
+ * (the numbers are from the operator's own store, 2026-09-17):
+ *
+ *   Civil Rights, 09-12 → 09-15   far right 72 → 53, center right 8 → 0,
+ *                                 slight right 14 → 45
+ *   LGBT Rights,  09-12 → 09-17   far right 2 → 0 AND center left 2 → 0
+ *
+ * The first is twenty-seven points leaving a bloc that was believed to be a one-way
+ * sink. The second is both tails moving inward at once, which no single push explains.
+ * Both sat in the store for days, visible only to someone diffing the JSON by hand.
+ *
+ * A delta alone still does not say who moved it — but there is one confounder this
+ * panel can rule out for free, and it is the operator herself. xp-watch already logs
+ * every action she takes, with a timestamp. If NONE of her actions fall inside the
+ * window, whatever moved is the world and not her, and the panel says so. If some do,
+ * it says how many and stops there: the log is not per-issue, so actions inside the
+ * window prove nothing either way and are reported as a count, never as a cause.
+ *
+ * Two silences that are deliberate, because a flag that cannot be wrong is worth more
+ * than a flag that is usually right:
+ *
+ *   no xp-watch        the key is absent, so no line is drawn. Not "zero actions" —
+ *                      zero is a claim, and nothing here is entitled to make it.
+ *   log too short      xp-watch keeps a bounded log. If its oldest entry is NEWER than
+ *                      your previous poll, the window reaches back further than the
+ *                      evidence does, and the panel says that instead of counting.
+ *
  * The honest limitation: a memo is a snapshot of the moment you bought it. Nothing
  * here refreshes, because refreshing means running a poll, and running a poll is
  * yours to decide. A trend across two street polls is two noisy points, and the
- * panel says so rather than drawing a confident line through them.
+ * panel says so rather than drawing a confident line through them. A delta between two
+ * of them carries both their errors, and gets a warning saying exactly that.
  */
 
 (() => {
@@ -144,6 +191,12 @@
   // Of the two, poll-watch is the younger, so poll-watch is the one that moves.
   const K = { data: 'pkpl:data', ui: 'pkpl:ui' };
   const OLD = { data: 'pkpw:data', ui: 'pkpw:ui' };
+
+  // Somebody else's key, held in its own object so that "ours" and "not ours" can never
+  // be confused at a call site — and so the fence test can say the thing that matters
+  // about it in one line: FOREIGN is read, and appears beside no writing verb anywhere
+  // in this file. `pkxp:ledger` is xp-watch's action log. See the disclosure block.
+  const FOREIGN = { xpLedger: 'pkxp:ledger' };
 
   // Five of the eight fields in the old panel blob were only ever written here, and
   // those five are the ones that come across. `open`, `fab` and `size` deliberately do
@@ -357,6 +410,59 @@
     const m = Math.abs(n).toFixed(digits);
     if (Math.abs(n) < (digits ? 0.05 : 0.5)) return 'even';
     return `${n > 0 ? 'R' : 'L'}+${m}`;
+  };
+
+  // ---------------------------------------------------------------------------
+  // The window between two memos of the same issue
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Per-bucket change from `prev` to `p`. Null when the pair cannot carry one: a fine
+   * memo and a coarse one share no buckets, and lining them up would invent four
+   * numbers out of thin air. The bloc-level `net` delta still works across the two,
+   * which is the whole reason that series exists.
+   */
+  const bucketDeltas = (p, prev) => {
+    if (!p || !prev || !p.fine || !prev.fine) return null;
+    const out = {};
+    for (const [k] of BUCKETS) out[k] = p.fine[k] - prev.fine[k];
+    return out;
+  };
+
+  // A poll is a reading, not an act on the world — this panel's whole thesis — and it
+  // is also the one endpoint guaranteed to appear in every window, since the memo that
+  // closes the window is itself logged. Counting it would mean the "nobody touched
+  // this" line could never once be true.
+  const READING = /^\/actions\/poll/;
+
+  /**
+   * How many of YOUR OWN actions xp-watch logged inside a window, and whether its log
+   * reaches far enough back for that number to mean anything.
+   *
+   *   null                  xp-watch is not installed, or its log is empty. No line is
+   *                         drawn. Absence of evidence is not a zero.
+   *   { covered: false }    the log's oldest entry is NEWER than the window's start, so
+   *                         the window outruns the evidence. Says so; counts nothing.
+   *   { covered: true, n }  n actions of yours fall in the window. The log is not
+   *                         per-issue, so n > 0 only rules the question open again —
+   *                         it is never reported as a cause.
+   */
+  const windowActions = (fromT, toT) => {
+    const led = readJSON(FOREIGN.xpLedger, null);
+    const events = led && Array.isArray(led.events) ? led.events : null;
+    if (!events || !events.length) return null;
+
+    let oldest = Infinity, n = 0;
+    for (const e of events) {
+      const t = e && Number(e.t);
+      if (!Number.isFinite(t)) continue;
+      if (t < oldest) oldest = t;
+      if (e.kind !== 'action') continue;
+      if (READING.test(String(e.ep || ''))) continue;
+      if (t > fromT && t <= toT) n++;
+    }
+    if (!Number.isFinite(oldest)) return null;
+    return oldest > fromT ? { covered: false, n: null, oldest } : { covered: true, n, oldest };
   };
 
   const issuesSeen = () => {
@@ -713,6 +819,20 @@
     .pkpw-bar i > span { display: block; height: 100%; }
     .pkpw-bar u { flex: 0 0 34px; text-align: right; text-decoration: none;
       color: #d4d4d8; font-size: 10.5px; }
+    /* The delta cell. Fixed basis and no growth, like the other two text cells: these
+       panels live in the strip beside the game, a few hundred pixels wide, and the one
+       thing that must never happen there is a row wider than its body. The bar is the
+       only cell that flexes, so as the panel narrows the numbers stay put and the bar
+       goes thin — which is the right way round, because the numbers are the reading.
+       Measured on the bench: 82 + 34 + 30 of fixed cells, three 6px gaps and the body's
+       20px of padding put the floor at a 200px panel, where the bar has reached zero.
+       resizable() below will not go under 260px, so there are 60px of headroom; a
+       fourth fixed cell would eat most of it. */
+    .pkpw-bar em { flex: 0 0 30px; text-align: right; font-style: normal;
+      font-size: 10px; color: #71717a; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; }
+    .pkpw-bar em[data-d="up"] { color: #e4e4e7; }
+    .pkpw-bar em[data-d="flat"] { color: #3f3f46; }
     .pkpw-list { margin: 0; padding: 0; list-style: none; }
     .pkpw-list li { display: flex; justify-content: space-between; gap: 8px;
       padding: 3px 0; border-bottom: 1px solid #18181b; cursor: pointer; }
@@ -746,6 +866,17 @@
     const h = Math.floor(m / 60);
     if (h < 24) return `${h}h ${m % 60}m ago`;
     return `${Math.floor(h / 24)}d ${h % 24}h ago`;
+  };
+
+  /** the same scale as ago(), for a span between two fixed points rather than to now */
+  const dur = (ms) => {
+    const s = Math.max(0, Math.round(ms / 1000));
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ${m % 60}m`;
+    return `${Math.floor(h / 24)}d ${h % 24}h`;
   };
 
   const stamp = (p) => {
@@ -921,7 +1052,16 @@
     return wrap;
   };
 
-  const barRow = (label, pct, hex) => {
+  /**
+   * One bucket. `d` is its change since your previous poll of this issue, or null when
+   * there is no comparable previous one — in which case no cell is drawn at all, rather
+   * than a zero that would read as "unmoved".
+   *
+   * The delta is coloured by sign only: bright grew, dim shrank, near-black for no
+   * change so the eye skips it. Not by side — which bloc gaining is good news is a
+   * judgement about the campaign, and the panel is not entitled to make it.
+   */
+  const barRow = (label, pct, hex, d = null) => {
     const row = el('div', 'pkpw-bar');
     row.append(el('b', '', label));
     const track = el('i');
@@ -930,6 +1070,12 @@
     fill.style.background = hex;
     track.append(fill);
     row.append(track, el('u', '', `${Math.round(pct)}%`));
+    if (d != null) {
+      const n = Math.round(d);
+      const cell = el('em', '', n === 0 ? '·' : `${n > 0 ? '+' : '−'}${Math.abs(n)}`);
+      cell.dataset.d = n === 0 ? 'flat' : (n > 0 ? 'up' : 'down');
+      row.append(cell);
+    }
     return row;
   };
 
@@ -962,6 +1108,42 @@
   // Views
   // ---------------------------------------------------------------------------
 
+  /**
+   * The line under the spread: how long the window was, and — when xp-watch is there to
+   * say — whether any of the operator's own actions fall inside it.
+   *
+   * The wording is chosen so that each state claims exactly what it knows. "no actions
+   * of yours" is a fact about her; it is never upgraded to a fact about the world, and
+   * "N of yours" is never downgraded to a cause, because the log is not per-issue.
+   */
+  const windowLine = (p, prev, fine) => {
+    const row = el('div', 'pkpw-row');
+    row.style.marginTop = '5px';
+    row.append(el('span', 'pkpw-faint', `window · ${dur(p.t - prev.t)}`));
+
+    const w = windowActions(prev.t, p.t);
+    const right = el('span', 'pkpw-faint', '');
+    if (!w) {
+      // No xp-watch, or nothing logged yet. Say what the deltas are against and stop.
+      right.textContent = fine ? 'Δ vs your last poll' : 'Δ blocs only';
+    } else if (!w.covered) {
+      right.textContent = 'log starts mid-window';
+      right.title = 'xp-watch\'s oldest entry is newer than your previous poll, so it cannot '
+        + 'speak for the whole window. Nothing is counted rather than under-counted.';
+    } else if (w.n === 0) {
+      right.textContent = 'no actions of yours';
+      right.style.color = '#34d399';
+      right.title = 'xp-watch logged none of your actions in this window, so whatever moved '
+        + 'here, you did not move it.';
+    } else {
+      right.textContent = `${w.n} action${w.n === 1 ? '' : 's'} of yours`;
+      right.title = 'Your own actions in this window, across every issue — xp-watch\'s log '
+        + 'does not record which issue an action was aimed at, so this is a count, not a cause.';
+    }
+    row.append(right);
+    return row;
+  };
+
   const renderMemo = (p, prev) => {
     const frag = document.createDocumentFragment();
 
@@ -987,14 +1169,22 @@
 
     frag.append(stackOf(p));
 
-    // the spread itself
+    // the spread itself, each bucket carrying its change since your previous poll of
+    // this issue. Fine memos get all seven; a pair that is not two fine memos falls
+    // back to the three blocs, which `blocs()` defines for both shapes and which
+    // therefore survive switching method mid-campaign.
+    const db = bucketDeltas(p, prev);
+    const dBloc = prev ? (() => { const a = blocs(p), b = blocs(prev); return { l: a.l - b.l, c: a.c - b.c, r: a.r - b.r }; })() : null;
     if (p.fine) {
-      for (const [k, label, , hex] of BUCKETS) frag.append(barRow(label, p.fine[k], hex));
+      for (const [k, label, , hex] of BUCKETS) frag.append(barRow(label, p.fine[k], hex, db ? db[k] : null));
     } else {
-      frag.append(barRow('Left Bloc', p.coarse.left_bloc, '#60a5fa'));
-      frag.append(barRow('Neutral', p.coarse.center, '#71717a'));
-      frag.append(barRow('Right Bloc', p.coarse.right_bloc, '#f87171'));
+      frag.append(barRow('Left Bloc', p.coarse.left_bloc, '#60a5fa', dBloc ? dBloc.l : null));
+      frag.append(barRow('Neutral', p.coarse.center, '#71717a', dBloc ? dBloc.c : null));
+      frag.append(barRow('Right Bloc', p.coarse.right_bloc, '#f87171', dBloc ? dBloc.r : null));
     }
+
+    // …and, under it, what the window those deltas span actually was.
+    if (prev) frag.append(windowLine(p, prev, !!db));
 
     // the derived pair, with the delta against your previous poll on this issue
     frag.append(el('div', 'pkpw-h2', 'where it sits'));
@@ -1013,11 +1203,30 @@
     if (prev) {
       const d = net(p) - net(prev);
       const dRow = el('div', 'pkpw-row');
-      dRow.append(el('span', 'pkpw-dim', `since your last (${ago(prev.t)})`));
+      // "net moved", not "since your last (41s ago)": the window line under the spread
+      // now says how long the span was, and that label wrapped onto two lines in a
+      // 270px panel — which is the width these things actually get parked at.
+      dRow.append(el('span', 'pkpw-dim', 'net moved'));
       const v = el('span', '', Math.abs(d) < 0.5 ? 'unmoved' : `${d > 0 ? '→ right' : '← left'} ${Math.abs(d).toFixed(1)}`);
       v.style.color = Math.abs(d) < 0.5 ? '#a1a1aa' : (d > 0 ? '#f87171' : '#60a5fa');
       dRow.append(v);
       frag.append(dRow);
+
+      // The same window on the −3…+3 scale, which is the one the policy axes use and so
+      // the one a campaign is actually priced in. Fine pairs only: a coarse memo has no
+      // lean, and a difference of two numbers where one does not exist is not zero.
+      const l0 = lean(prev), l1 = lean(p);
+      if (l0 != null && l1 != null) {
+        const dl = l1 - l0;
+        const lRow = el('div', 'pkpw-row');
+        lRow.append(el('span', 'pkpw-dim', 'lean moved'));
+        const lv = el('span', '', Math.abs(dl) < 0.005
+          ? 'unmoved' : `${dl > 0 ? '→ right' : '← left'} ${Math.abs(dl).toFixed(2)}`);
+        lv.style.color = Math.abs(dl) < 0.005 ? '#a1a1aa' : (dl > 0 ? '#f87171' : '#60a5fa');
+        lRow.append(lv);
+        frag.append(lRow);
+      }
+
       if (!exact(p) || !exact(prev)) {
         frag.append(el('p', 'pkpw-note',
           'One of those two is a street poll or an online scrape, so this delta carries their error with it — the game rates street at ±8% and the scrape as extreme-biased.'));
@@ -1062,12 +1271,18 @@
       : data.polls;
     const p = chosen[chosen.length - 1];
     if (!p) return null;
-    const prev = chosen[chosen.length - 2] ?? null;
+
+    // The previous memo of THIS ISSUE, never simply the previous memo. With no issue
+    // pinned, `chosen` is every poll ever filed, so [length - 2] is whatever you last
+    // looked at — a delta between Gun Control and Abortion, presented as a movement.
+    // Every number below the spread is a difference against this one, so it has to be
+    // the same public both times.
+    const series = issuesSeen().get(p.issue) ?? [];
+    const prev = series.length > 1 ? series[series.length - 2] : null;
 
     const frag = document.createDocumentFragment();
     frag.append(renderMemo(p, prev));
 
-    const series = issuesSeen().get(p.issue) ?? [];
     if (series.length > 1) {
       frag.append(el('div', 'pkpw-h2', `trend · ${series.length} polls`));
       const sp = sparkline(series);
