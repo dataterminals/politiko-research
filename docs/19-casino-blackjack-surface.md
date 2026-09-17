@@ -253,10 +253,14 @@ ones. So the effective edge is the computed edge **plus** a tax drag, and the dr
 measured, never modelled:
 
 ```
-tax drag       = sum(tax_amount) / sum(total_wager)     two observed sums, no assumption
+tax drag       = sum(tax_amount) / sum(opening_wager)   two observed sums, no assumption
 effective edge = computed edge + tax drag
-realized edge  = -sum(net_payout - total_wager) / sum(total_wager)
+realized edge  = -sum(net_payout - total_wager) / sum(opening_wager)
 ```
+
+All three per dollar of **opening** bet, because that is the unit `roundEV` solves in. Until
+2026-09-17 the first and the third divided by `total_wager` and sat beside an edge that did
+not — see *The edge is per opening bet, and three lines forgot* below.
 
 Unlike slots, the structure lever cuts the other way. Tax there is assessed on aggregate
 *session* profit, so how a run is split into sessions changes the bill; here it is assessed
@@ -1011,6 +1015,95 @@ cards are already on the wire in a form strictly better than a picture of themse
 **The line moved further away, not closer.** The layer is `pointer-events: none`. It
 cannot receive a click, so it cannot forward one — the promise stopped being "it does not
 press a button" and became "it has nothing that could".
+
+### The edge is per opening bet, and three lines forgot — added 2026-09-17
+
+Prompted by a multi-day losing streak that felt like more than weather. The arithmetic was
+audited end to end — against an independent game and against the receipts, not against
+itself — and it held. One inconsistency of base came out of it, and it is the reason for
+0.13.0.
+
+**Measured, independently of the tool's code.** A second implementation of the *game*: its
+own dealer, its own 312-card shoe reshuffled every round (the regime measured above), its
+own payout accounting, taking nothing from `jack-watch` but the pick `solve()` returns
+against the TABLE composition. Thirty million rounds:
+
+| | jack-watch | simulation |
+|---|---|---|
+| return per opening bet | −0.4593% (solved) | −0.4331% ± 0.0209% |
+| per-round sd, units of the bet | — | 1.146 |
+| staking multiplier | 1.13–1.15 measured on play | 1.127 |
+| win / push / loss | — | 43.37% / 8.75% / 47.89% |
+| naturals, yours / dealer's | — | 4.75% / 4.76% |
+| splits / doubles | — | 2.48% / 10.17% |
+
+Return histogram, per opening bet: −4 0.02% · −3 0.17% · −2 4.26% · −1 43.44% · 0 8.75% ·
++1 32.66% · +1.5 4.54% · +2 5.92% · +3 0.22% · +4 0.04%.
+
+The solved edge and the simulated one are 1.25 standard errors apart, which is agreement.
+The two named approximations pull the solved figure a few hundredths high, in the direction
+that expects the reader to lose slightly more than they will. The 4.75% is exact for six
+decks (2 × 24/312 × 96/311), and the 1.146 is the textbook spread for this rule set — the
+number MONEY's sample deviation should settle toward as a ledger grows.
+
+**Measured on the table.** Corporation 30, ids 1353–1752, seen 2026-09-10 and 11 ET, 400
+rounds — a full `MAX_HANDS` ledger — $19,692,184 of opening bets and $22,653,184 staked
+(multiplier 1.150).
+
+```
+net                  −$118,044   vs −$90,450 expected on the opening bets:  −0.02 sd
+sample sd             1.158 units  (simulation 1.146)
+won / pushed / lost   181 / 37 / 182
+decisions             498 of 500 matched the maximum;  $5,840 of EV given up
+```
+
+The receipts, checked without the solver: 19 of 19 naturals paid 3:2; 22 dealer naturals
+and not one of them collected more than the opening bet, so the peek is honoured; 0 S17
+violations in the 299 rounds the dealer played out; 0 single-hand grosses disagreeing with
+the cards. The 2,160 cards: rank χ² 5.72 on 9 df, suit χ² 2.95 on 3 df, hole-card tens
+32.0% (z 0.53). The exact-code test is the one borderline reading, χ² 68.54 on 51 df
+against a 5% critical value of 68.67, and it is one card — `KD` appeared 67 times against
+41.5 expected (z 3.95) — spread evenly across dealer up, hole, draws and every player
+position, and across the id blocks. A code that landed in one seat would be a finding; one
+that lands everywhere is the tail of 52 draws.
+
+**The feel, and the number it corresponds to.** The same 400 rounds peaked at +$1,657,386
+at #1580 and bottomed at −$452,098 at #1720 — a $2,109,484 slide over 140 rounds, 54 won to
+73 lost — and #1720 is exactly where the LOG mark had been set. Resampling 20,000 ledgers
+with the same 400 opening bets, per-round results drawn from the simulated histogram above:
+
+| in 400 rounds at these bets | median | this ledger | how often |
+|---|---|---|---|
+| largest peak-to-trough | $1.63M | $2.11M | 29% |
+| worst 140-round window | −$1.28M | −$2.11M | 17% |
+| longest run of losses | 8 | 9 | 41% |
+
+A two-million-dollar drawdown is the ordinary weather of four hundred rounds at these
+stakes. It is *also* exactly what a losing streak feels like from inside, and the deviations
+line on MONEY is the only thing on screen that separates the two — which is why its
+arithmetic had to be checked rather than trusted.
+
+**The inconsistency.** `roundEV` prices a double as `2 ×` and a split as `2 × per`,
+both in units of the wager they started from, so the edge it sums is per **opening** bet.
+Three lines then multiplied it by the **total** staked: the expectation in
+`runDeviation`, the expected loss in `plan`, and the dashed line in `curveOf`. And
+`rollup` divided the tax drag and the realized edge by the total staked, which MONEY
+printed beside the per-bet edge. On real play the two bases differ by the staking
+multiplier, 1.13–1.15, so every expectation was about 13% too large and the realized edge
+about 13% too small next to the number it was being compared with. The worked example of
+2026-09-06 above (−$11,378 on $2,477,208 of opening bets) had used the right base by hand;
+the code had not.
+
+0.13.0 puts everything on the opening bet — expectation, drag, realized edge, planner,
+curve — and says so on each tab. `test-jack-ev.js` now carries a doubled round in every
+fixture that could tell the two bases apart, `test-jack-passive.js` fences the three
+lines by text, and the export's `version` goes 2 → 3 for the same reason it went 1 → 2:
+a change of base is as invisible by inspection as a rename.
+
+What it changes about a run already on screen: the deviations line moves by about a
+hundredth, because the expectation is a twentieth of one sd at any stake. Nothing anyone
+read off 0.12.0 was wrong by enough to notice. It was wrong in principle, in the one place
+people look after a bad night.
 
 ## Counting, and the honest treatment of it
 

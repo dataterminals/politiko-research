@@ -266,9 +266,20 @@ check('the edge is summed over every deal, not read off a payload',
   'roundEV must integrate over the deal');
 absent('...and there is no edge field on this surface to be tempted by',
   /house_edge_bps|theoretical_rtp_bps|_rtp_bps/g);
-check('expected loss is the solved edge times the stake, and nothing else',
-  /expLoss: e === null \? null : staked \* e,/.test(CODE),
-  'expLoss must use the solved edge alone');
+check('expected loss is the solved edge times the bets, and nothing else',
+  /expLoss: e === null \? null : bets \* e,/.test(CODE),
+  'expLoss must use the solved edge alone, on the opening bets');
+// The edge is per OPENING bet: roundEV prices a double and a split in units of the wager
+// they started from. Multiplying it by the total staked — which is what 0.12.0 did here, in
+// runDeviation and in curveOf — overstates every expectation by the staking multiplier.
+check('...and never times the staking multiplier, which is exposure and not edge',
+  !/expLoss: e === null \? null : staked \* e,/.test(CODE),
+  'the edge is per opening bet; charging it on the total staked is the 0.12.0 bug');
+check('expectation is charged on the opening bets everywhere it is drawn',
+  /const expected = -opened \* e;/.test(CODE)
+    && /expected: eff === null \? null : s0 - opened \* eff,/.test(CODE)
+    && /realizedEdge: opened \? -net \/ opened : null,/.test(CODE),
+  'runDeviation, curveOf and the realized edge must all be per opening bet');
 check('...and "cover" assumes nothing at all',
   /cover: bank === null \? null : Math\.floor\(bank \/ w\),/.test(CODE),
   'cover must be bankroll over bet, floored');
@@ -277,8 +288,8 @@ check('...and "cover" assumes nothing at all',
 // coefficient it has become a model wearing a measurement's label. Same for the staking
 // multiplier, which is the other place a guess would be easy and invisible.
 check('tax drag is measured, not modelled',
-  /taxDrag: wagered \? tax \/ wagered : null,/.test(CODE),
-  'tax drag must be observed tax over observed stake');
+  /taxDrag: opened \? tax \/ opened : null,/.test(CODE),
+  'tax drag must be observed tax over the observed opening bets');
 check('...and so is what a round really stakes',
   /stakeMult: opened \? wagered \/ opened : null,/.test(CODE),
   'the staking multiplier must be two observed sums');

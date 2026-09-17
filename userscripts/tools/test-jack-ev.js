@@ -456,13 +456,21 @@ console.log('\n— measured, and the identity it has to satisfy —');
   check('the sums are sums', [r.n, r.wagered, r.gross, r.tax, r.credited], [3, 400, 400, 20, 380]);
   check('net is credited minus staked', r.net, -20);
   check('a push is neither a win nor a loss', [r.wins, r.pushes, r.losses], [1, 1, 1]);
-  near('tax drag is two observed sums and nothing else', r.taxDrag, 20 / 400, 1e-12);
-  near('realized edge is what it cost you per dollar staked', r.realizedEdge, 20 / 400, 1e-12);
+  // Per dollar you BET. The third round doubled, so $300 was bet and $400 staked, and the
+  // solved edge these two sit beside on MONEY is per opening bet — roundEV prices a double
+  // and a split in units of the wager they started from. 0.12.0 divided by the $400 and
+  // printed the result next to a per-bet edge, off it by the staking multiplier.
+  check('the opening bets are summed', r.opened, 300);
+  check('...with the total standing in for a hand that never carried one',
+    E.rollup([{ id: 9, total: 50, gross: 50, tax: 0, net: 50 }]).opened, 50);
+  near('tax drag is two observed sums and nothing else, per dollar bet', r.taxDrag, 20 / 300, 1e-12);
+  near('realized edge is what it cost you per dollar bet, not per dollar staked',
+    r.realizedEdge, 20 / 300, 1e-12);
   // The identity. Gross shortfall plus drag IS the realized edge, always. If these ever
   // stop agreeing, one of the three is being computed wrong and the panel is quietly
   // lying about what the table costs.
   near('realized edge = gross shortfall + tax drag',
-    r.realizedEdge, (r.wagered - r.gross) / r.wagered + r.taxDrag, 1e-12);
+    r.realizedEdge, (r.wagered - r.gross) / r.opened + r.taxDrag, 1e-12);
   // A round can stake more than you bet: splits and doubles. A planner that multiplied
   // bet by rounds would understate the exposure by exactly this.
   near('the staking multiplier is measured, not assumed', r.stakeMult, 400 / 300, 1e-12);
@@ -546,8 +554,15 @@ console.log('\n— estimated, and labelled —');
   const p = E.plan({ bet: 100, rounds: 100, edge: 0.0046, drag: 0.01, bankroll: 5000,
     sd: 1.1, sdN: 42, mult: 1.15 });
   near('the stake folds in the measured multiplier', p.staked, 100 * 100 * 1.15, 1e-9);
-  near('expected loss is the solved edge times the stake', p.expLoss, 11500 * 0.0046, 1e-9);
+  // ...and the expected loss does NOT: the edge is per opening bet, so it is charged on the
+  // $10,000 of bets and not on the $11,500 those rounds go on to stake. The multiplier is
+  // exposure. 0.12.0 multiplied the edge by it, which overstated the loss by 15% here.
+  near('the bets are bet times rounds', p.bets, 10000, 1e-9);
+  near('expected loss is the solved edge times the bets, not the doubled stake',
+    p.expLoss, 10000 * 0.0046, 1e-9);
   near('...and the effective one adds the measured drag', p.effEdge, 0.0146, 1e-12);
+  near('...charged on the same base', p.expLossEff, 10000 * 0.0146, 1e-9);
+  near('...so the bankroll after is the bank less that', p.expAfter, 5000 - 10000 * 0.0146, 1e-9);
   check('cover assumes nothing at all', [p.cover, p.coversRun], [50, false]);
   near('the band is one sd of the sum, in cash', p.band, 100 * 10 * 1.1, 1e-9);
   check('...and carries its sample count', p.bandN, 42);
@@ -570,14 +585,21 @@ console.log('\n— was that luck —');
   for (let i = 0; i < 23; i++) l.push(mk(i, 50000, 50000, 100000));
   for (let i = 0; i < 8; i++) l.push(mk(100 + i, 50000, 50000, 50000));
   for (let i = 0; i < 20; i++) l.push(mk(200 + i, 50000, 50000, 0));
+  // ...and one $50,000 bet that was doubled and won, so the round staked $100,000.
+  l.push(mk(300, 50000, 100000, 200000));
   const sd = E.stdev(E.roundReturns(l));
   const r = E.runDeviation(l, EDGE, sd);
-  check('it counts every settled round', r.n, 51);
-  near('P and L is the credited sum less the staked one', r.pnl, 150000, 1e-9);
-  near('...and expectation is the solved edge on what was staked',
-    r.expected, -51 * 50000 * EDGE, 1e-6);
+  check('it counts every settled round', r.n, 52);
+  near('P and L is the credited sum less the staked one', r.pnl, 250000, 1e-9);
+  // The solved edge is per OPENING bet — roundEV prices a double and a split in units of
+  // the wager they started from — so expectation is the edge on the $50,000 bet 52 times,
+  // not on the $2,650,000 the rounds went on to stake. 0.12.0 charged it on the second.
+  near('...and expectation is the solved edge on the bets, not on the doubled totals',
+    r.expected, -52 * 50000 * EDGE, 1e-6);
+  check('...which is not the same number',
+    Math.abs(r.expected - -(51 * 50000 + 100000) * EDGE) > 100, true);
   check('a cash deviation is built from the OPENING bets, not the doubled totals',
-    Math.abs(r.cashSD - Math.sqrt(51) * 50000 * sd) < 1e-6, true);
+    Math.abs(r.cashSD - Math.sqrt(52) * 50000 * sd) < 1e-6, true);
   check('...so a good night lands where it belongs, in deviations', Math.abs(r.z) < 1.5, true);
   check('no sample, no distance', E.runDeviation(l, EDGE, null), null);
   check('no edge, no distance', E.runDeviation(l, null, sd), null);
@@ -605,12 +627,15 @@ console.log('\n— the bet the table will actually take —');
 
 console.log('\n— the curve —');
 {
-  const mk = (id, total, net) => ({ id, total, net, gross: net, tax: 0, open: total });
-  const pts = E.curveOf([mk(1, 100, 0), mk(2, 100, 200)], 1000, 0.0146);
+  const mk = (id, total, net, open) => ({ id, total, net, gross: net, tax: 0, open: open ?? total });
+  // Round 3 is a $100 bet doubled and won: it staked $200 and was paid $400.
+  const pts = E.curveOf([mk(1, 100, 0), mk(2, 100, 200), mk(3, 200, 400, 100)], 1000, 0.0146);
   check('it starts where you started', pts[0].actual, 1000);
-  check('...and walks your money along it', pts.map((p) => p.actual), [1000, 900, 1000]);
+  check('...and walks your money along it', pts.map((p) => p.actual), [1000, 900, 1000, 1200]);
   near('...against what perfect play says it should have cost',
     pts[2].expected, 1000 - 200 * 0.0146, 1e-9);
+  near('...charged on the bets, so a double moves the line by one bet and not two',
+    pts[3].expected, 1000 - 300 * 0.0146, 1e-9);
   check('no stake, no curve', E.curveOf([mk(1, 100, 0)], null, 0.01), null);
   check('and no rounds, no curve', E.curveOf([], 1000, 0.01), null);
   const e = E.extent(pts);
@@ -712,8 +737,9 @@ console.log('\n— the export carries what a flat row cannot —');
     decisions: E.replayHand(rounds[1]).map((d) => Object.assign({}, d, { id: 6 })),
   });
 
+  // 2 -> 3 in 0.13.0, when every edge and the expectation went per opening bet.
   check('it is stamped with a format and a version', [b.format, b.version],
-    ['jack-watch/round-ledger', 2]);
+    ['jack-watch/round-ledger', 3]);
   check('...and with the build that wrote it', b.tool, 'jack-watch test');
   check('the scope says how much was left out by the mark',
     [b.scope.rounds_exported, b.scope.rounds_held, b.scope.hidden_by_mark, b.scope.mark],

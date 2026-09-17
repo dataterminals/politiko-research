@@ -34,7 +34,7 @@ bump; the table below is hand-kept and can drift.
 | Shop Watch | 0.5.0 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
 | Bar Watch | 0.4.0 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
 | Slot Watch | 0.3.0 | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
-| Jack Watch | 0.12.0 | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
+| Jack Watch | 0.13.0 | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
 
 `_template.user.js` is not installable — it's the skeleton the others were built from
 (passive tap, SPA awareness, and the shared `PANEL KIT` and `FAB KIT` blocks).
@@ -2332,6 +2332,17 @@ apart — the **computed** one from the rules, the **measured** tax drag, and th
 **realized** one from what actually happened. The bankroll curve draws your money against
 what perfect play plus the measured drag says the run should have cost; the gap is the
 luck.
+
+Every one of those — and the expectation the curve and the deviations are measured
+against — is **per dollar of opening bet** since 0.13.0. That is the unit the solver prices
+in: a double is `2 ×` and a split `2 × per`, in units of the wager they started from,
+so it is the only base on which the computed, effective and realized edges are the same
+kind of number. Until then the drag, the realized edge and every expectation divided by the
+total staked and were printed beside a per-bet edge, off it by the staking multiplier
+(about 1.13 on real play). Found by a 2026-09-17 audit that checked the arithmetic against
+an independent thirty-million-round game rather than against itself — the solver held to
+within 0.03% — and [`docs/19`](../docs/19-casino-blackjack-surface.md) has the whole of
+it, including why a two-million-dollar drawdown is a 29% event at these stakes.
 
 It also keeps a decision ledger, **replayed from the cards rather than watched**. The wire
 never says what you pressed, but a settled round does not need asking: its cards are in the

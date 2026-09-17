@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — Jack Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.12.0
+// @version      0.13.0
 // @description  Solves the blackjack table the game never advertises a number for: the right action and what every other one costs, the chances behind it, a running count with the evidence for whether it means anything, and the money in and out. Reads only responses the game already fetched. Passive; zero added requests; presses nothing.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -153,7 +153,11 @@
  * COMPUTED, from those rules and nothing else. The dealer's final-total distribution, the
  * EV of every action available to you, therefore the correct action and the exact cost of
  * any other, and therefore the house edge under perfect play — which this tool works out
- * for itself rather than quoting: 0.4593% of every dollar staked, on a fresh shoe. Two
+ * for itself rather than quoting: 0.4593% of every dollar you BET, on a fresh shoe. That
+ * is per opening bet and not per dollar the round went on to stake: the solver prices a
+ * double and a split in units of the wager they started from, so what doubles and splits
+ * add is the measured staking multiplier under MONEY's "staked", never extra edge. Every
+ * edge, drag and expectation this panel prints is on that same base since 0.13.0. Two
  * approximations are made and both are named on screen where their numbers are: the
  * dealer's distribution is computed once at your decision and held fixed while your own
  * draws are enumerated, and a split is priced as twice one hand.
@@ -163,7 +167,8 @@
  * edge is charged on the round, but you are paid net, and "ordinary-income tax on positive
  * round profit" lands on winning rounds and gives nothing back on losing ones. So what the
  * table actually costs you is the computed edge PLUS the drag, and the drag is a straight
- * division of two observed sums with no distribution assumed for it.
+ * division of two observed sums — tax withheld over the bets it was withheld on — with no
+ * distribution assumed for it.
  *
  * ESTIMATED, and labelled as such wherever it is printed: the ±1 SD band on a planned run.
  * It is the sample deviation of YOUR own per-round results, the sample count is on screen
@@ -207,7 +212,7 @@
   // which build produced it. Deliberately outside the engine markers below: the engine is
   // lifted whole by tools/test-jack-ev.js and must reference nothing it was not handed,
   // so exportBundle takes this as an argument rather than reaching for it.
-  const SCRIPT_VERSION = '0.12.0';
+  const SCRIPT_VERSION = '0.13.0';
 
   const K = { data: 'pkbj:data', ui: 'pkbj:ui' };
 
@@ -864,7 +869,9 @@
       gross += h.gross;
       tax += h.tax;
       credited += h.net;
-      if (num(h.open) !== null) opened += h.open;
+      // Per dollar you BET, which is the base the solved edge is on. A hand that never
+      // carried an opening wager counts its total, the same fallback runDeviation makes.
+      opened += num(h.open) ?? h.total;
       if (net > 0) wins++; else if (net === 0) pushes++; else losses++;
       if (h.tax > 0) taxed++;
       if ((h.hands || []).some((p) => p.outcome === 'blackjack')) naturals++;
@@ -872,10 +879,14 @@
     const net = credited - wagered;
     return {
       n, rounds, wagered, gross, tax, credited, net, wins, pushes, losses, taxed, naturals, opened,
-      // Every rate below divides by what was actually staked, so every one is a
-      // measurement of what happened and none of them is a projection.
-      taxDrag: wagered ? tax / wagered : null,
-      realizedEdge: wagered ? -net / wagered : null,
+      // Every rate below divides by your OPENING bets, because that is the unit the solved
+      // edge is in — roundEV prices a double and a split in units of the wager they
+      // started from — so the computed, effective and realized edges on MONEY are the same
+      // kind of number. Each is still a measurement of what happened and none of them is a
+      // projection. 0.12.0 and earlier divided the drag and the realized edge by the total
+      // staked and printed them beside a per-bet edge, off it by the staking multiplier.
+      taxDrag: opened ? tax / opened : null,
+      realizedEdge: opened ? -net / opened : null,
       winRate: n ? wins / n : null,
       // What a round actually stakes, per dollar of opening bet. Splits and doubles put
       // more than your opening wager at risk, so a planner that multiplies bet by rounds
@@ -1031,20 +1042,24 @@
   const runDeviation = (list, edge, sd) => {
     const s = num(sd), e = num(edge);
     if (s === null || e === null || !(s > 0)) return null;
-    let staked = 0, pnl = 0, sq = 0, n = 0;
+    let opened = 0, pnl = 0, sq = 0, n = 0;
     for (const h of list) {
       const nt = netOf(h);
       if (nt === null) continue;
       // The sample is per dollar of OPENING bet, so the cash spread has to be built out of
       // opening bets too — mixing in the doubled total would inflate it by the same rounds
-      // twice over.
+      // twice over. And so is the EXPECTATION: the solved edge is per opening bet, because
+      // roundEV prices a double and a split in units of the wager they started from.
+      // 0.12.0 and earlier charged it on the total staked, which overstated the expected
+      // loss by the staking multiplier — about 13% on real play, and invisible in the
+      // deviations line only because the expectation is a twentieth of one sd.
       const unit = num(h.open) ?? num(h.total);
       if (unit === null) continue;
-      staked += h.total; pnl += nt; sq += (unit * s) * (unit * s); n++;
+      opened += unit; pnl += nt; sq += (unit * s) * (unit * s); n++;
     }
     const cashSD = Math.sqrt(sq);
     if (!n || !(cashSD > 0)) return null;
-    const expected = -staked * e;
+    const expected = -opened * e;
     return { n, pnl, expected, cashSD, over: pnl - expected, z: (pnl - expected) / cashSD };
   };
 
@@ -1058,18 +1073,23 @@
     const w = num(bet), n = num(rounds);
     if (w === null || n === null || w <= 0 || n <= 0) return null;
     const m = num(mult) && mult > 0 ? mult : 1;
-    const staked = w * n * m;
+    // What you will BET, and what the rounds will go on to STAKE. The edge is charged on
+    // the first — roundEV prices a double and a split in units of the wager they started
+    // from — and the second is the exposure, which is what the multiplier is for. 0.12.0
+    // charged the edge on the second and overstated the loss by the multiplier.
+    const bets = w * n;
+    const staked = bets * m;
     const e = num(edge);
     const d = num(drag) ?? 0;
     const eff = e === null ? null : e + d;
     const bank = num(bankroll);
     const s = num(sd);
     return {
-      staked, mult: m,
-      expLoss: e === null ? null : staked * e,
+      bets, staked, mult: m,
+      expLoss: e === null ? null : bets * e,
       effEdge: eff,
-      expLossEff: eff === null ? null : staked * eff,
-      expAfter: (bank === null || eff === null) ? null : bank - staked * eff,
+      expLossEff: eff === null ? null : bets * eff,
+      expAfter: (bank === null || eff === null) ? null : bank - bets * eff,
       // exact, and the only bankroll claim here that assumes nothing whatsoever
       cover: bank === null ? null : Math.floor(bank / w),
       coversRun: bank === null ? null : Math.floor(bank / w) >= n,
@@ -1103,16 +1123,16 @@
     const s0 = num(start);
     if (s0 === null) return null;
     const pts = [{ i: 0, actual: s0, expected: s0, label: 'start' }];
-    let bal = s0, staked = 0;
+    let bal = s0, opened = 0;
     asc.forEach((h, k) => {
       const net = netOf(h);
       if (net === null) return;
       bal += net;
-      staked += h.total;
+      opened += num(h.open) ?? h.total;          // the edge is per opening bet
       pts.push({
         i: k + 1,
         actual: bal,
-        expected: eff === null ? null : s0 - staked * eff,
+        expected: eff === null ? null : s0 - opened * eff,
         label: '#' + h.id,
       });
     });
@@ -1416,7 +1436,11 @@
       // sighting. That is a rename a reader cannot detect by inspection — an old file and
       // a new one are both valid JSON with a plausible field — so the number is what says
       // which one is in your hand.
-      version: 2,
+      // 2 -> 3 in 0.13.0: every edge, the drag, and luck.expected are per dollar of OPENING
+      // bet. Before that the drag, the realized edge and the expectation divided by the
+      // total staked while the computed edge did not. A change of base is as invisible by
+      // inspection as a rename, and the number is again what says which is in your hand.
+      version: 3,
       // Handed in rather than read off a constant: the engine is lifted whole by
       // tools/test-jack-ev.js and has to reference nothing it was not given.
       tool: typeof o.tool === 'string' ? o.tool : 'jack-watch',
@@ -1436,7 +1460,8 @@
       table: o.cfg || null,
       edge: {
         computed: num(o.edge), tax_drag_measured: num(o.drag), effective: num(o.effEdge),
-        note: 'computed is exact given perfect play; drag is measured from these rounds.',
+        note: 'computed is exact given perfect play; drag is measured from these rounds. '
+            + 'All three are per dollar of OPENING bet, the unit the solver prices in.',
       },
       shoe: o.shoe ? {
         cards_seen: num(o.shoe.cards), hole_cards_never_seen: num(o.shoe.hidden),
@@ -3248,14 +3273,14 @@
     // averaged into one number.
     const g2 = el('div', 'pkbj-stats');
     stat(g2, 'edge, perfect play', v.edge === null ? '—' : pct(v.edge, 3), null,
-      v.edge === null ? 'not solved yet — see PLAN' : 'computed from the rules');
+      v.edge === null ? 'not solved yet — see PLAN' : 'computed from the rules, per $1 bet');
     stat(g2, 'tax drag', pct(v.roll.taxDrag, 3), v.roll.taxDrag ? 'down' : null,
-      v.roll.n && !v.roll.taxed ? 'nothing taxed yet' : 'measured');
+      v.roll.n && !v.roll.taxed ? 'nothing taxed yet' : 'measured, per $1 bet');
     stat(g2, 'effective edge', pct(v.effEdge, 3), null,
       v.edge === null ? 'needs the solve' : 'computed + measured');
     stat(g2, 'realized edge', pct(v.roll.realizedEdge, 2),
       num(v.roll.realizedEdge) === null ? null : (v.roll.realizedEdge > 0 ? 'down' : 'up'),
-      'what actually happened');
+      'what actually happened, per $1 bet');
     body.append(g2);
 
     // A zero drag is a fact about the government, not about the table, and the difference
@@ -3307,7 +3332,10 @@
     }
 
     body.append(el('div', 'pkbj-note',
-      'The dashed line is what perfect play plus the measured tax drag says this run should have '
+      'Every edge above is per dollar of your OPENING bet — the unit the solver prices a double '
+      + 'and a split in — and so is the expectation under the dashed line and the deviations; '
+      + 'what doubles and splits add is the multiplier beside "staked", not a bigger edge. '
+      + 'The dashed line is what perfect play plus the measured tax drag says this run should have '
       + 'cost; the gap to your line is the luck. The wire never says what you pressed, but a '
       + 'settled round does not need to be asked: its cards are in the order they were dealt, so '
       + 'the hand is simply walked. That reads the whole back-catalogue history hands over on the '
@@ -3394,7 +3422,7 @@
       const g = el('div', 'pkbj-stats');
       stat(g, 'you will stake', money(res.staked), null,
         `${rounds} × ${money(bet)} × ${res.mult.toFixed(2)}`);
-      stat(g, 'expected loss', money(res.expLoss), 'down', 'perfect play, before tax');
+      stat(g, 'expected loss', money(res.expLoss), 'down', 'perfect play, on your bets');
       stat(g, 'with tax drag', money(res.expLossEff), 'down',
         num(v.roll.taxDrag) === null ? 'no drag measured yet' : 'computed + measured');
       stat(g, 'bankroll after', money(res.expAfter), null, 'if it goes to plan');
@@ -3408,10 +3436,13 @@
       body.append(g2);
 
       body.append(el('div', 'pkbj-note',
-        'Expected loss is exact arithmetic on the solved edge — but only if every hand is played '
+        'Expected loss is exact arithmetic on the solved edge, charged on the bets and not on '
+        + 'what the rounds go on to stake — the edge is per opening bet, because that is the unit '
+        + 'the solver prices a double and a split in — and only if every hand is played '
         + 'at the maximum, which is what MONEY measures and mostly is not what happens. The '
         + 'staking multiplier is measured from your own rounds: splits and doubles put more than '
-        + 'your opening bet at risk. "Cover" assumes nothing at all. The band is the sample '
+        + 'your opening bet at risk, which is exposure rather than extra edge. "Cover" assumes '
+        + 'nothing at all. The band is the sample '
         + 'deviation of YOUR results and is a band, never a probability — this tool will not '
         + 'quote you a risk of ruin, because it does not know one.'));
     }

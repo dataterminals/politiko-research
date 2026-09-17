@@ -23,18 +23,19 @@ update check — no reinstall.
 
 > [!WARNING]
 > Held out of the paste blocks below — these links do not serve current code yet:
+> - **Jack Watch 0.13.0** — local file differs from `origin/main`; the raw link serves the older version.
 > - **Gov Watch 0.7.0** — local file differs from `origin/main`; the raw link serves the older version.
 >
 > Push, re-run the generator, then post.
 
 ## Discord paste
 
-Discord's message limit is 2000 characters, so this is split into 3 messages. Copy each block and post them in order.
+Discord's message limit is 2000 characters, so this is split into 2 messages. Copy each block and post them in order.
 
-**Message 1 of 3** — 1569 characters
+**Message 1 of 2** — 1560 characters
 
 ```
-## Politiko userscripts — install links (1/3)
+## Politiko userscripts — install links (1/2)
 
 **People Watch** · who you've seen: last-online, city, rank, least-active first
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js>
@@ -51,23 +52,20 @@ Discord's message limit is 2000 characters, so this is split into 3 messages. Co
 **JUMP — Quick Jump** · launcher for the 64 screens the sidebar can't reach
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js>
 
-**JACK — Jack Watch** · blackjack solved: the right play, the chances, the count, the money
-<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js>
-
 **SLOT — Slot Watch** · slots bankroll against the house edge, and what a run really costs
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js>
 
 **MKT — Market Watch** · marks where you bought on the stock chart; charts market series locally
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js>
-```
-
-**Message 2 of 3** — 1546 characters
-
-```
-## Politiko userscripts — install links (2/3)
 
 **SHOP — Shop Watch** · shop fields the UI never shows, and brackets every restock
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js>
+```
+
+**Message 2 of 2** — 1828 characters
+
+```
+## Politiko userscripts — install links (2/2)
 
 **RAID — Raid Watch** · records faction raids, their event log and post-mortems
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js>
@@ -89,12 +87,6 @@ Discord's message limit is 2000 characters, so this is split into 3 messages. Co
 
 **Comms Move** · adds a drag bar to the game's Comms dock so you can move it
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js>
-```
-
-**Message 3 of 3** — 515 characters
-
-```
-## Politiko userscripts — install links (3/3)
 
 **Time Bridge** · hands Time Watch's clock anchor to the Time Wire planner
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js>
@@ -111,7 +103,7 @@ Install Tampermonkey first, then click a link and confirm the prompt. Every one 
 | 2 | `XP` | XP Watch | 0.8.0 | ledger of your own stat and skill changes, action by action | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 | 3 | `BARS` | Bar Watch | 0.4.0 | time to full for Energy, Juice and HP, with alerts you set | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
 | 4 | `JUMP` | Quick Jump | 0.8.0 | launcher for the 64 screens the sidebar can't reach | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
-| 5 | `JACK` | Jack Watch | 0.12.0 | blackjack solved: the right play, the chances, the count, the money | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
+| 5 | `JACK` | Jack Watch | 0.13.0 | blackjack solved: the right play, the chances, the count, the money | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |
 | 6 | `SLOT` | Slot Watch | 0.3.0 | slots bankroll against the house edge, and what a run really costs | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
 | 7 | `MKT` | Market Watch | 1.9.0 | marks where you bought on the stock chart; charts market series locally | [`market-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js) |
 | 8 | `SHOP` | Shop Watch | 0.5.0 | shop fields the UI never shows, and brackets every restock | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
