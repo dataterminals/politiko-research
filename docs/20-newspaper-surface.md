@@ -279,8 +279,11 @@ Everything in this section is ours. None of it is something the client does.
 - **`spin` has at least two values and the client reads one.** The test is
   `spin === 'liberal' ? blue ◀ : rose ▶`, an equality with a trailing else — the same
   shape as `factionUtils`'s label chain in `14`, and with the same failure mode. Any value
-  that is not the string `liberal` renders as its opposite. `conservative` is the obvious
-  guess and is a guess.
+  that is not the string `liberal` renders as its opposite. **The other value is
+  `conservative`** — measured 2026-09-17 off `gov-watch` 0.7.0's own store, where nine kept
+  World entries carry five `liberal` and four `conservative` and nothing else. It was a
+  guess here until that capture. The failure mode is unchanged: a third value would still
+  be drawn as if it were `conservative`.
 - **The printed tally is not the deciding number.** Stated above; repeated here because a
   ledger that stores yea/nay and calls it the margin will be wrong about close votes in a
   chamber with extremists in it.
@@ -406,7 +409,9 @@ already recorded above and the bundle reading this file was written from.
   other check appears; whether the endpoint itself is open is not knowable without calling
   it, which we do not do.
 - **The weights.** A bill passes on weighted votes and only raw counts are published.
-- **What the non-`liberal` `spin` value is.**
+- **Whether `spin` has a third value.** Nine kept World entries were `liberal` or
+  `conservative` (2026-09-17) and the renderer would draw a third as `conservative`, so
+  only the store distinguishes them and only for entries kept since `gov-watch` 0.7.0.
 - **Whether local editions exist for all cities or only some**, and what drives
   `is_carryover`.
 - **Whether the December 31–35 overflow is visible in play.** It is five game days a year,

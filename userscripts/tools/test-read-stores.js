@@ -40,7 +40,7 @@ check('it writes one file, only when asked',
   'expected exactly one writeFileSync, guarded by --out');
 
 console.log('\n— it runs —');
-const { brief, fromGs, parseGameMonth, collapse } = require(FILE);
+const { brief, fromGs, gameDay, realOf, pollMean, parseGameMonth, collapse } = require(FILE);
 
 check('game-second arithmetic matches time-watch',
   fromGs(0).label === 'January 1, Y1 00:00' && fromGs(31536000 * 7 + 2592000 * 8 + 86400 * 10 + 3600 * 14 + 60 * 23).label === 'September 11, Y8 14:23',
@@ -56,6 +56,11 @@ check('endpoint ids collapse',
 
 const NOW = Date.parse('2026-09-11T20:16:04.339Z');
 const T = (h) => NOW - h * 3600e3;
+// The game second a Herald entry needs to carry to have been printed h hours before
+// collection, read against the one time-watch sample the fixture holds. Writing the
+// fixture this way round is itself the fence: if the reader's conversion drifts, an
+// entry lands in the wrong poll window and the join below stops matching.
+const GS = (h) => Math.round(450175560 + ((T(h) - T(0.01)) / 1000) * 52.142857);
 const mk = (over) => ({
   collected_at: new Date(NOW).toISOString(),
   collector: 'tools/collect-stores.js',
@@ -63,7 +68,20 @@ const mk = (over) => ({
   redactions: [],
   tools: {
     'pktw:': { tool: 'time-watch', keys: { samples: { first: { t: T(700), gs: 292096440, accel: 52.142857 }, recent: [{ t: T(0.01), gs: 450175560, accel: 52.142857 }] } } },
-    'pkpl:': { tool: 'poll-watch', keys: { data: { clock: { t: T(0.01), gs: 450175560, accel: 52.142857 }, issues: ['Abortion', 'Taxes'], polls: [{ t: T(1), gs: 450100000, issue: 'Abortion', method: 'focus_group', mood: 'apathetic', volatility: 'stable', salience: 'quiet', best: 'Neutral voters', angle: 'Pragmatic appeals.', cooldown: '2026-09-11T20:11:06Z', fine: { far_left: 0, center_left: 0, slight_left: 0, neutral: 82, slight_right: 16, center_right: 0, far_right: 0 } }] } } },
+    // Three pairs, for the Herald join. Abortion moves across a window holding two
+    // conservative World entries and no disobedience of ours — the shape the section
+    // exists to surface. Taxes moves across a burst that starts before the event ledger
+    // does, so its count is a floor. Pollution is the deterministic repeat (docs/21: an
+    // untouched issue comes back identical), and opens before the ledger with nothing in
+    // it. Every cooldown stays in the past so the Levers row still reads "available".
+    'pkpl:': { tool: 'poll-watch', keys: { data: { clock: { t: T(0.01), gs: 450175560, accel: 52.142857 }, issues: ['Abortion', 'Taxes'], polls: [
+      { t: T(36), issue: 'Taxes', method: 'focus_group', mood: 'apathetic', volatility: 'stable', salience: 'warm', best: 'Neutral voters', angle: 'Pragmatic appeals.', cooldown: '2026-09-10T09:00:00Z', fine: { far_left: 0, center_left: 0, slight_left: 0, neutral: 60, slight_right: 38, center_right: 0, far_right: 0 } },
+      { t: T(34), issue: 'Pollution', method: 'focus_group', mood: 'apathetic', volatility: 'stable', salience: 'boiling', best: 'Neutral voters', angle: 'Pragmatic appeals.', cooldown: '2026-09-10T11:00:00Z', fine: { far_left: 0, center_left: 2, slight_left: 0, neutral: 73, slight_right: 23, center_right: 0, far_right: 0 } },
+      { t: T(31), issue: 'Pollution', method: 'focus_group', mood: 'apathetic', volatility: 'stable', salience: 'boiling', best: 'Neutral voters', angle: 'Pragmatic appeals.', cooldown: '2026-09-10T14:00:00Z', fine: { far_left: 0, center_left: 2, slight_left: 0, neutral: 73, slight_right: 23, center_right: 0, far_right: 0 } },
+      { t: T(12), issue: 'Taxes', method: 'focus_group', mood: 'apathetic', volatility: 'moderate', salience: 'warm', best: 'Neutral voters', angle: 'Pragmatic appeals.', cooldown: '2026-09-11T09:00:00Z', fine: { far_left: 0, center_left: 0, slight_left: 0, neutral: 70, slight_right: 28, center_right: 0, far_right: 0 } },
+      { t: T(6), issue: 'Abortion', method: 'focus_group', mood: 'apathetic', volatility: 'stable', salience: 'quiet', best: 'Neutral voters', angle: 'Pragmatic appeals.', cooldown: '2026-09-11T15:00:00Z', fine: { far_left: 0, center_left: 0, slight_left: 0, neutral: 90, slight_right: 8, center_right: 0, far_right: 0 } },
+      { t: T(1), gs: 450100000, issue: 'Abortion', method: 'focus_group', mood: 'apathetic', volatility: 'stable', salience: 'quiet', best: 'Neutral voters', angle: 'Pragmatic appeals.', cooldown: '2026-09-11T20:11:06Z', fine: { far_left: 0, center_left: 0, slight_left: 0, neutral: 82, slight_right: 16, center_right: 0, far_right: 0 } },
+    ] } } },
     'pkmw:': { tool: 'market-watch', keys: { hist: { 'user/money::balance': [[T(3), 150000], [T(0.1), 154054]], 'user/progression/net_worth::value': [[T(0.1), 200000]], 'factions/mine::treasury': [[T(0.5), 999]], 'property/mine::count': [[T(0.5), 2]], 'attributes::CurrentValue': [[T(0.1), 153]] }, rules: [], ids: {} } },
     'pksw:': { tool: 'sleeper-watch', keys: {
       meta: { faction_name: 'Sneedcorp Conglomerate', location_name: 'San Francisco', window_minutes: 60, recruited_count: 2, sleeper_cap: 12, energy_cost: 6, issues: ['Abortion', 'Taxes', 'Elections'], sites: 18, polledAt: T(0.1), factionId: '16', facPolledAt: T(0.1) },
@@ -92,7 +110,19 @@ const mk = (over) => ({
         814: { gametime: 454000000, category: 'Congress', headline: 'Slavery Repeal Act', from: 3, to: 2, hy: 253, hn: 182, sy: 65, sn: 35, outcome: 'signed', body: 'A bill.', firstSeen: T(80), lastSeen: T(1), prior: T(81) },
         815: { gametime: 454000000, category: 'Congress', headline: 'Sedition Expansion Act', from: 2, to: 3, hy: 194, hn: 241, sy: 40, sn: 60, outcome: 'dead in Congress', body: null, proseDropped: true, firstSeen: T(80), lastSeen: T(1), prior: T(81) },
         816: { gametime: 454000000, category: 'Congress', headline: 'Still Counting', from: 1, to: 0, hy: 240, hn: 195, sy: 60, sn: 40, outcome: null, body: null, firstSeen: T(2), lastSeen: T(1), prior: T(2.02) },
-        840: { gametime: 454000000, category: 'World', headline: 'Tremors', body: 'World prose.', spin: 'liberal', firstSeen: T(80), lastSeen: T(1), prior: T(81) },
+        // World entries, placed by the real hour they were printed rather than by a raw
+        // game second. Tremors sits before every poll and must land in no window at all;
+        // MILL CLOSES falls inside the Taxes pair; CLINIC REGRET and LATE TERM inside the
+        // Abortion pair, with STATUE GONE beside them in the 0.6.0 shape — a headline and
+        // a date, no prose and no spin.
+        840: { gametime: GS(40), category: 'World', headline: 'Tremors', body: 'World prose.', spin: 'liberal', firstSeen: T(80), lastSeen: T(1), prior: T(81) },
+        880: { gametime: GS(16), category: 'World', headline: 'MILL CLOSES', body: 'World prose.', spin: 'liberal', firstSeen: T(15), lastSeen: T(1), prior: T(16.1) },
+        881: { gametime: GS(5), category: 'World', headline: 'CLINIC REGRET', body: 'World prose.', spin: 'conservative', firstSeen: T(4), lastSeen: T(1), prior: T(5.1) },
+        882: { gametime: GS(3), category: 'World', headline: 'LATE TERM', body: 'World prose.', spin: 'conservative', firstSeen: T(2), lastSeen: T(1), prior: T(3.1) },
+        838: { gametime: GS(4), category: 'World', headline: 'STATUE GONE', firstSeen: T(3), lastSeen: T(1) },
+        // 24 minutes before the Abortion pair opens: a window is half-open at its lower
+        // edge, and this entry belongs to no poll of Abortion at all.
+        879: { gametime: GS(6.4), category: 'World', headline: 'RIVER ON FIRE', body: 'World prose.', spin: 'liberal', firstSeen: T(6), lastSeen: T(1), prior: T(6.5) },
       },
       members: { 1: { chamber: 'house', seat: 1, a: 0, inc: false, t: T(16) }, 2: { chamber: 'house', seat: 2, a: 3, inc: true, t: T(16) } },
       jobs: { 2064: { policy: 'Gun Control', dir: 'right', status: 'resolved', cycle: '117', outcome: 'vote_pressured', t: T(16) } },
@@ -123,7 +153,16 @@ const mk = (over) => ({
       eduCourses: { CMT1520: { completed: true, rewards: [{ key: 'computers', amount: 10 }] }, CMT2230: { completed: false, rewards: [{ key: 'law', amount: 5 }] } },
       mastery: { '/disobedience': { v: 70, since: 2523, steps: [{ d: 1, over: 67 }] } },
       actStats: { '/disobedience': { n: 2549, outcomes: { success: 2021, fail: 468, 'success+jailed': 47, 'fail+jailed': 9, 'success+hospitalized': 3, 'fail+hospitalized': 1 }, xp: { persuasion: { sum: 75.5, n: 2187 }, street_sense: { sum: 96.29, n: 2145 } } }, '/combat/050a0348-1faa-4fb0-bed9-08aa92b91d6f/action': { n: 3, outcomes: { success: 3 }, xp: { pistol: { sum: 0.4, n: 3 } } }, '/combat/61472c28-4c0e-4e78-b325-65e46e1cdb95/action': { n: 2, outcomes: { fail: 2 }, xp: {} }, '/actions/sleeper-recruitment/canvass': { n: 40, outcomes: { success: 40 }, xp: { persuasion: { sum: 4, n: 40 } } }, '/terminal/exec': { n: 5, outcomes: {}, xp: {} } },
-      events: [{ t: T(30), kind: 'action', ep: '/disobedience', outcome: 'success' }, { t: T(0.5), kind: 'action', ep: '/terminal/exec', outcome: null }, { t: T(0.2), kind: 'action', ep: '/actions/sleeper-recruitment/canvass', outcome: 'success' }],
+      // T(30) is the oldest event the ledger still holds, so a window that opens before it
+      // gets a floor. The burst at T(26) sits inside the Taxes pair and outside the last
+      // day, and nothing disobedient falls inside the Abortion pair at all.
+      events: [{ t: T(30), kind: 'action', ep: '/disobedience', outcome: 'success' },
+        ...[26, 25.9, 25.8, 25.7].map((h) => ({ t: T(h), kind: 'action', ep: '/disobedience', outcome: 'success' })),
+        { t: T(25.6), kind: 'action', ep: '/disobedience', outcome: 'fail+jailed' },
+        // On the stroke of the poll that opens the Abortion pair, and so outside it: the
+        // poll reads the public before this action, not after it.
+        { t: T(6), kind: 'action', ep: '/disobedience', outcome: 'success' },
+        { t: T(0.5), kind: 'action', ep: '/terminal/exec', outcome: null }, { t: T(0.2), kind: 'action', ep: '/actions/sleeper-recruitment/canvass', outcome: 'success' }],
       deltas: [{ t: T(0.3), key: 'persuasion', d: 0.63, from: 182.24, to: 182.87, attrib: { type: 'ambiguous', n: 35, eps: ['/disobedience', '/actions/poll'] } }],
       sheetIssue: { t: T(1), kind: 'shift', axis: 'social' }, changeVerdict: { at: T(0.1), key: 'shotgun', dCurrent: 0.06, dChange: 0.06, kind: 'running', datesMoved: false },
     }, samples: {} } },
@@ -159,7 +198,7 @@ if (process.env.DUMP) fs.writeFileSync(process.env.DUMP, md);
 
 const has = (label, re) => check(label, re.test(md), `not found: ${re}`);
 console.log('\n— the brief carries every section —');
-for (const s of ['Clock', 'Levers', 'Government', 'Court and the Record', 'Opinion', 'World', 'People', 'Hours', 'You', 'Faction and sleepers', 'Economy', 'Wire', 'Since the bundle of', 'Freshness per tool', 'What this bundle does not know']) has(`## ${s}`, new RegExp(`^## ${s}`, 'm'));
+for (const s of ['Clock', 'Levers', 'Government', 'Court and the Record', 'Opinion', 'The Herald against the polls', 'World', 'People', 'Hours', 'You', 'Faction and sleepers', 'Economy', 'Wire', 'Since the bundle of', 'Freshness per tool', 'What this bundle does not know']) has(`## ${s}`, new RegExp(`^## ${s}`, 'm'));
 has('hours fold sightings onto Eastern time with a quiet stretch that wraps midnight', /\| Benis \| Redefining Reality \| ··········███··········· \| 9 \| 3 \| 13:00–10:00 \(21 h\) \|/);
 has('...and too few sightings say so', /\| Alocrin \| [^|]* \| [·▁-█]{24} \| 1 \| 1 \| too few \|/);
 check('no section fell back to its guard', !/could not be read/.test(md), (md.match(/_.*could not be read.*_/g) || []).join('\n'));
@@ -184,7 +223,7 @@ console.log('\n— court rulings, and what was observed beside them —');
 {
   const sec = (md.split(/^## Court and the Record$/m)[1] || '').split(/^## /m)[0];
   const hasC = (label, re) => check(label, re.test(sec), `not found: ${re}\n${sec.slice(0, 1600)}`);
-  hasC('entries are counted by category, with the prose held', /6 Herald entries kept \(Congress 3, Supreme Court 2, World 1\); [\d,]+ chars of prose held on 3, 1 dropped for the budget\./);
+  hasC('entries are counted by category, with the prose held', /11 Herald entries kept \(World 6, Congress 3, Supreme Court 2\); [\d,]+ chars of prose held on 7, 1 dropped for the budget\./);
   hasC('decided bills are split toward vs away from the centre', /\| toward the centre \| 1 \| 1 \| 100% \| 1 \|[\s\S]*\| away from the centre \| 1 \| 0 \| 0% \| 0 \|/);
   check('...and pending is not counted as a loss', !/\| toward the centre \| 2 \|/.test(sec), 'a pending bill was counted as decided');
   hasC('rulings are newest first by the paper\'s date, then first sighting', /\*\*United States v\. Upton\*\*[\s\S]*\*\*United States v\. Farrell, Corp\.\*\*/);
@@ -223,6 +262,113 @@ console.log('\n— court rulings, and what was observed beside them —');
   check('malformed bills and events do not trip the guard', !/court: could not be read/.test(mdJ) && /\*\*A\\\|B\*\*/.test(mdJ) && /no game date/.test(mdJ), (mdJ.split(/^## Court and the Record$/m)[1] || '').slice(0, 600));
 }
 
+console.log('\n— the Herald against the polls —');
+{
+  // The two conversions the section is built on, checked on their own before the section
+  // that uses them. Both are against the real 2026-09-17 bundle: Herald entry 843, the
+  // impeachment, is dated June 21, Y15 and was printed 2026-09-13 04:46Z against that
+  // bundle's clock. If this drifts, every story lands in the wrong poll window.
+  const SAMPLE = { t: 1789673101449, gs: 476961720, accel: 52.142857142857146 };
+  check('a Herald game second lands on the real calendar',
+    gameDay(456193039) === 'June 21, Y15' && Math.abs(realOf(SAMPLE, 456193039) - Date.parse('2026-09-13T04:46:38Z')) < 60e3,
+    `${gameDay(456193039)} / ${new Date(realOf(SAMPLE, 456193039)).toISOString()}`);
+  check('...and an entry with no game second, or a bundle with no sample, is not placed at all',
+    !Number.isFinite(realOf(SAMPLE, undefined)) && !Number.isFinite(realOf(null, 456193039)) && gameDay('x') === 'no game date',
+    `${realOf(SAMPLE, undefined)} / ${realOf(null, 456193039)} / ${gameDay('x')}`);
+  // docs/21's mean: bucket-weighted over the buckets that are there, which sum to ~98.
+  // Dividing by 100 instead reads the first dose-response bracket as −0.084, not −0.086.
+  const LGBT0 = { far_left: 0, center_left: 0, slight_left: 0, neutral: 58, slight_right: 37, center_right: 0, far_right: 2 };
+  const LGBT1 = { far_left: 0, center_left: 0, slight_left: 0, neutral: 67, slight_right: 29, center_right: 0, far_right: 2 };
+  check("the poll mean is docs/21's bucket-weighted mean",
+    Math.abs(pollMean(LGBT0) - 0.4433) < 5e-4 && Math.abs(pollMean(LGBT1) - pollMean(LGBT0) + 0.086) < 5e-4
+      && pollMean(null) === null && pollMean({ neutral: 0 }) === null && pollMean({ far_right: 'x' }) === null,
+    `${pollMean(LGBT0)} → ${pollMean(LGBT1)}`);
+
+  const sec = (md.split(/^## The Herald against the polls$/m)[1] || '').split(/^## /m)[0];
+  const hasH = (label, re) => check(label, re.test(sec), `not found: ${re}\n${sec.slice(0, 2400)}`);
+  hasH('the spun entries are counted, and the unspun ones explained',
+    /6 World entries kept, 5 carrying a spin \(3 liberal, 2 conservative\)\. Prose and spin arrive with gov-watch 0\.7\.0, so an empty spin column on a window that closes before 2026-09-10 04:16Z means nothing was kept, not that nothing was printed\./);
+  hasH('an entry is placed on the real calendar, newest first',
+    /\| LATE TERM \| conservative \| April 4, Y15 \| 2026-09-11 17:16Z \|[^|]*\| 3\.0 h ago \|[\s\S]*\| Tremors \| liberal \|/);
+  hasH('a window with one-sided spin and nothing of ours in it is one row',
+    /\| Abortion \| 2026-09-11 14:16Z \| 2026-09-11 19:16Z \| 5\.0 h \| 0\.082 → 0\.163 \| \+0\.082 \| 3 — 2 conservative, 1 unspun \| LATE TERM \(con\); CLINIC REGRET \(con\) \| \*\*none\*\* \|/);
+  hasH('a window the ledger only half covers gets a floor, not a count',
+    /\| Taxes \| 2026-09-10 08:16Z \| 2026-09-11 08:16Z \| 24\.0 h \| 0\.388 → 0\.286 \| -0\.102 \| 1 — 1 liberal \| MILL CLOSES \(lib\) \| ≥ 6 \(5 ok\) \|/);
+  hasH('...and a window that closes before the ledger opens says so, rather than "none"',
+    /\| Pollution \| 2026-09-10 10:16Z \| 2026-09-10 13:16Z \| 3\.0 h \| 0\.194 → 0\.194 \| 0\.000 \| 0 \| — \| none kept \(the ledger starts inside this window\) \|/);
+  check('an entry printed before every poll is joined to no window',
+    !/Tremors/.test(sec.split('### What landed between two polls')[1] || ''), 'Tremors reached a window row');
+  // Newest first, so the freshest measurement leads and the truncation at 16 drops the
+  // oldest windows rather than the ones worth reading.
+  hasH('windows are listed newest first', /### What landed between two polls[\s\S]*\| Abortion \|[\s\S]*\| Taxes \|[\s\S]*\| Pollution \|/);
+  hasH('the open windows are listed stalest first, and are not a measurement',
+    /### Open windows[\s\S]*\| Pollution \| 2026-09-10 13:16Z \| 0\.194 \| 31\.0 h \| 5 — 2 liberal, 2 conservative, 1 unspun \|[\s\S]*\| Abortion \| 2026-09-11 19:16Z \| 0\.163 \| 1\.0 h \| 0 \| — \| 0 of 2 \(0 ok\) \|[\s\S]*Nothing has closed these windows, so no row here is a measurement/);
+  // An hour with a terminal command and a canvass in it is not an untouched hour, and the
+  // bold "none" has to mean what poll-watch's "no actions of yours" means.
+  hasH('an action that is not disobedience still counts against "nothing of ours"',
+    /\| Abortion \| 2026-09-11 19:16Z \| 0\.163 \| 1\.0 h \| 0 \| — \| 0 of 2 \(0 ok\) \|/);
+  hasH('the section states adjacency is not a cause', /_Adjacency only, and thinner than the Court's\./);
+  hasH('...and that the ledger cannot name the issue an action was aimed at',
+    /not the issue it was aimed at — so "our actions" is every disobedience action in the window, on any issue/);
+  check('...and never uses causal language',
+    !/\b(because|caused|causes|due to|as a result|moved by|led to|triggered|thanks to|resulted in)\b/i.test(sec),
+    (sec.match(/\b(because|caused|causes|due to|as a result|moved by|led to|triggered|thanks to|resulted in)\b/gi) || []).join(', '));
+
+  // poll-watch 0.8.0's memo counts the operator's own actions in the same window from the
+  // same ledger. If the two files disagree about which endpoint is a reading, or about
+  // which edge of the window is open, the panel and the brief print different counts for
+  // one window and one of them is wrong. Same rule as NEAR_MS above.
+  {
+    const PW = fs.readFileSync(path.join(__dirname, '..', 'poll-watch.user.js'), 'utf8');
+    const readingOf = (s) => (s.match(/const READING = ([^;]+);/) || [])[1];
+    check('the "a poll is a reading" exclusion matches poll-watch',
+      readingOf(PW) && readingOf(PW) === readingOf(SRC), `poll-watch ${readingOf(PW)} / read-stores ${readingOf(SRC)}`);
+    check('...and so does the half-open window',
+      /t > fromT && t <= toT/.test(PW) && /ms\(e\.t\) > t0 && ms\(e\.t\) <= t1/.test(SRC),
+      'the window edges differ between poll-watch and read-stores');
+  }
+
+  // gov-watch below 0.7.0 keeps the headline and the date and drops the prose and the spin.
+  // The join still runs; every spin column is empty, and the brief has to say which kind of
+  // empty that is — nothing kept, rather than nothing printed.
+  const noProse = mk({});
+  for (const x of Object.values(noProse.tools['pkgw:'].keys.data.bills)) { delete x.body; delete x.spin; }
+  const mdNP = brief(noProse, null);
+  const secNP = (mdNP.split(/^## The Herald against the polls$/m)[1] || '').split(/^## /m)[0];
+  check('with no prose kept at all, the empty spin column is explained rather than blank',
+    /6 World entries kept and not one carries a spin/.test(secNP) && /empty for want of a reading, not for want of a front page/.test(secNP)
+      && !/### World entries with a spin/.test(secNP), secNP.slice(0, 900));
+  check('...and the join still runs on the polls alone',
+    /\| Abortion \| 2026-09-11 14:16Z \| 2026-09-11 19:16Z \| 5\.0 h \| 0\.082 → 0\.163 \| \+0\.082 \| 3 — 3 unspun \| — \| \*\*none\*\* \|/.test(secNP), secNP.slice(0, 2400));
+  check('...and the gaps list says the front page cannot be lined up',
+    /no Herald entry carries a spin, so the front page cannot be lined up against the polls/.test(mdNP), 'no gap line');
+
+  // No clock at all: a Herald entry carries game seconds and nothing else, so not one of
+  // them can be placed — and the brief says that instead of printing zeroes.
+  const noClock = mk({});
+  delete noClock.tools['pktw:'];
+  delete noClock.tools['pkpl:'].keys.data.clock;
+  const secNC = (brief(noClock, null).split(/^## The Herald against the polls$/m)[1] || '').split(/^## /m)[0];
+  check('with no time sample, nothing is placed and the polls still join',
+    /_no time sample in the bundle: a Herald entry carries game seconds/.test(secNC)
+      && /\| Abortion \|[^\n]*\| \+0\.082 \| 0 \| — \| \*\*none\*\* \|/.test(secNC), secNC.slice(0, 900));
+
+  // A spin on an entry the paper never dated is a fourth kind of empty, and reads
+  // differently from a store that kept no spin at all.
+  const noDate = mk({});
+  for (const x of Object.values(noDate.tools['pkgw:'].keys.data.bills)) delete x.gametime;
+  const secND = (brief(noDate, null).split(/^## The Herald against the polls$/m)[1] || '').split(/^## /m)[0];
+  check('spun entries the paper never dated are called out as undatable, not as unspun',
+    /6 World entries kept, some of them spun, and not one carries a usable game date/.test(secND)
+      && /\| Abortion \|[^\n]*\| \+0\.082 \| 0 \| — \| \*\*none\*\* \|/.test(secND), secND.slice(0, 900));
+
+  // One poll of an issue is not a window.
+  const onePoll = mk({});
+  onePoll.tools['pkpl:'].keys.data.polls = onePoll.tools['pkpl:'].keys.data.polls.slice(0, 1);
+  const secOne = (brief(onePoll, null).split(/^## The Herald against the polls$/m)[1] || '').split(/^## /m)[0];
+  check('one poll is not a window', /1 poll kept and no issue has been polled twice/.test(secOne), secOne.slice(0, 600));
+}
+
 has('opinion has the fine distribution', /\| abortion \| 0 \| 0 \| 0 \| 82 \| 16 \| 0 \| 0 \| Neutral voters \|/);
 has('graffiti walls are read', /\| sanfrancisco \| 0 \| 25 \| 3 \|/);
 has('endpoints seen are read as last-seen stamps, newest first', /Endpoints world-watch has seen the app call: 2; most recent \/api\/time \(3 min ago\), \/api\/refresh \(30\.0 h ago\)/);
@@ -258,6 +404,7 @@ console.log('\n— and an empty bundle still produces one —');
 let md0 = '', err0 = null;
 try { md0 = brief({ collected_at: new Date(NOW).toISOString(), tools: {} }, null); } catch (e) { err0 = e; }
 check('an empty bundle does not throw', !err0 && /## Clock/.test(md0) && /No prior bundle/.test(md0), err0 ? String(err0.stack) : 'missing sections');
+check('...and the Herald join says it has no polls to join to', /_no polls kept: poll-watch stores a focus group when you run one/.test(md0), 'the Herald section is silent on an empty bundle');
 check('...and says so in every section', (md0.match(/_no /g) || []).length >= 6, `${(md0.match(/_no /g) || []).length} empty-section notes`);
 
 let mdN = '', errN = null;

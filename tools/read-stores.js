@@ -57,6 +57,10 @@ const fromGs = (gs) => {
   return { year, monthIdx, day, hh, mm, label: `${MONTHS[monthIdx]} ${day}, Y${year} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}` };
 };
 const gsOf = (year, monthIdx, day = 1) => (year - 1) * GS_YEAR + monthIdx * GS_MONTH + (day - 1) * GS_DAY;
+/** "June 1, Y15" — the date the Herald prints on an entry, with no clock time on it. */
+const gameDay = (gs) => { if (typeof gs !== 'number' || !Number.isFinite(gs)) return 'no game date'; const g = fromGs(gs); return `${MONTHS[g.monthIdx]} ${g.day}, Y${g.year}`; };
+/** A game second on the real calendar, read off one time-watch sample `{ t, gs, accel }`. */
+const realOf = (sample, gs) => (sample && typeof gs === 'number' && Number.isFinite(gs) ? sample.t + ((gs - sample.gs) / (sample.accel || FALLBACK_ACCEL)) * 1000 : NaN);
 /** "November Y16" -> gs at 00:00 on the 1st, or null. */
 const parseGameMonth = (s) => {
   const m = /([A-Za-z]+)\s+Y(\d+)/.exec(String(s || ''));
@@ -102,6 +106,18 @@ const tool = (b, p, k) => b && b.tools && b.tools[p] && b.tools[p].keys ? b.tool
 const AXIS_WORDS = { '-3': 'Tankie', '-2': 'Progressive', '-1': 'Moderate Left', 0: 'Moderate', 1: 'Moderate Right', 2: 'Conservative', 3: 'Fascist' };
 const axisWord = (a) => AXIS_WORDS[String(Math.round(a))] || String(a);
 
+// A focus group's seven buckets on that same −3..+3 scale, and the bucket-weighted mean
+// docs/21-opinion-motion-surface.md measures poll motion in. The divisor is the buckets
+// that are there, which sum to about 98 rather than 100 — a slice of the sample is never
+// placed, and dividing by 100 would quietly shrink every mean.
+const POLL_BUCKETS = { far_left: -3, center_left: -2, slight_left: -1, neutral: 0, slight_right: 1, center_right: 2, far_right: 3 };
+const pollMean = (fine) => {
+  if (!fine || typeof fine !== 'object') return null;
+  let sum = 0, n = 0;
+  for (const [k, w] of Object.entries(POLL_BUCKETS)) { const v = fine[k]; if (typeof v === 'number' && Number.isFinite(v)) { sum += w * v; n += v; } }
+  return n ? sum / n : null;
+};
+
 // ---------------------------------------------------------------------------------------
 // The brief
 // ---------------------------------------------------------------------------------------
@@ -124,7 +140,7 @@ function brief(b, prior) {
   const sample = last(tw && tw.recent) || (pl && pl.clock) || null;
   const accel = (sample && sample.accel) || FALLBACK_ACCEL;
   const gsNow = sample ? sample.gs + ((now - sample.t) / 1000) * accel : null;
-  const realOfGs = (gs) => (sample ? sample.t + ((gs - sample.gs) / accel) * 1000 : NaN);
+  const realOfGs = (gs) => realOf(sample, gs);
 
   p('# Politiko — state of things', '',
     `Bundle collected **${iso(now)}** (${et(now)}) by ${b.collector || 'collect-stores'}; `
@@ -273,7 +289,6 @@ function brief(b, prior) {
       .filter((x) => x && typeof x === 'object')
       .sort((a, c) => (c.gametime ?? 0) - (a.gametime ?? 0) || (c.firstSeen ?? 0) - (a.firstSeen ?? 0));
     if (!bills.length) { p('_no Herald entries: gov-watch 0.6.0+ fills this from the sidebar Herald card_'); return; }
-    const gameDay = (gt) => { if (typeof gt !== 'number' || !Number.isFinite(gt)) return 'no game date'; const g = fromGs(gt); return `${MONTHS[g.monthIdx]} ${g.day}, Y${g.year}`; };
     const prose = bills.filter((x) => typeof x.body === 'string');
     const court = bills.filter((x) => x.category === 'Supreme Court');
     p(`${bills.length} Herald entries kept (${count(bills, (x) => x.category || 'uncategorised').map(([k, n]) => `${k} ${n}`).join(', ')}); `
@@ -348,6 +363,128 @@ function brief(b, prior) {
       const cols = ['far_left', 'center_left', 'slight_left', 'neutral', 'slight_right', 'center_right', 'far_right'];
       table(['issue', ...cols, 'swing group', 'angle'], fine.map((i) => [i.k, ...cols.map((c) => i.fine[c]), i.best || '', trunc(i.angle || '', 90)]));
     }
+  });
+
+  // -- the herald against the polls -----------------------------------------------------
+  // gov-watch 0.7.0 keeps the World entries' prose and their `spin` — `liberal` or
+  // `conservative`, both of which are in the 2026-09-17 bundle, which is what turned
+  // docs/20-newspaper-surface.md's guess at the second value into a reading. Nothing else
+  // in the repo reads the field.
+  // poll-watch keeps up to 25 polls with per-bucket counts and a timestamp. Lining the two
+  // up is the only way to put the newspaper on trial as a source of poll motion: what did
+  // the front page print between two polls of one issue, which way did that poll move, and
+  // was the operator working at the time.
+  //
+  // Herald entries are stored in game seconds, so they are placed on the real calendar with
+  // realOf() and the same sample the Clock section uses — one conversion in the file, not
+  // two. test-read-stores.js holds the spot-check: against the 2026-09-17 bundle's clock the
+  // impeachment of June 21, Y15 lands at 2026-09-13 04:46Z.
+  //
+  // Adjacency, in the sense "Court and the Record" means it, and with one gap more in it:
+  // xp-watch's ledger keeps an action's endpoint and outcome and never the issue it was
+  // aimed at, so the count below is every disobedience action in the window, on any issue.
+  // The wording is fenced the same way — test-read-stores.js fails if this section ever
+  // says one thing moved another.
+  h('The Herald against the polls');
+  guard('herald', () => {
+    const gw = tool(b, 'pkgw:', 'data');
+    const xp = tool(b, 'pkxp:', 'ledger');
+    const polls = ((pl && pl.polls) || []).filter((x) => x && Number.isFinite(ms(x.t))).sort((a, c) => ms(a.t) - ms(c.t));
+    if (!polls.length) { p('_no polls kept: poll-watch stores a focus group when you run one, and this section needs two of one issue_'); return; }
+
+    const world = Object.entries((gw && gw.bills) || {})
+      .map(([id, x]) => (x && typeof x === 'object' ? { id, ...x, real: realOfGs(x.gametime) } : null))
+      .filter((x) => x && x.category === 'World')
+      .sort((a, c) => (c.real || 0) - (a.real || 0));
+    const dated = world.filter((x) => Number.isFinite(x.real));
+    const isSpin = (s) => s === 'liberal' || s === 'conservative';
+    const spun = dated.filter((x) => isSpin(x.spin));
+    const tally = (arr) => {
+      const l = arr.filter((x) => x.spin === 'liberal').length, c = arr.filter((x) => x.spin === 'conservative').length;
+      return [l ? `${l} liberal` : '', c ? `${c} conservative` : '', arr.length - l - c ? `${arr.length - l - c} unspun` : ''].filter(Boolean).join(', ') || '—';
+    };
+    const name = (x) => `${trunc(x.headline || `#${x.id}`, 30)} (${x.spin === 'liberal' ? 'lib' : 'con'})`;
+    const NAMED = 4;
+    const listed = (arr) => {
+      const s = arr.filter((x) => isSpin(x.spin));
+      return s.length ? s.slice(0, NAMED).map(name).join('; ') + (s.length > NAMED ? `; +${s.length - NAMED} more` : '') : '—';
+    };
+
+    // Four ways to be empty and they are not the same reading, so the brief names which:
+    // no clock to place anything by, no entry at all, a store older than 0.7.0 that kept
+    // the headline and dropped the spin, or spin on entries the paper never dated.
+    const plural = world.length === 1 ? 'entry' : 'entries';
+    const undated = world.length - dated.length;
+    if (!sample) p('_no time sample in the bundle: a Herald entry carries game seconds and nothing else, so none of them can be placed against a poll below._', '');
+    else if (!world.length) p('_no World entry kept: gov-watch 0.6.0+ fills this from the sidebar Herald card, and World is the category with a spin on it._', '');
+    else if (!world.some((x) => isSpin(x.spin))) p(`_${world.length} World ${plural} kept and not one carries a spin: prose and spin arrive with gov-watch 0.7.0, and an older store keeps the headline and the date only. Every spin column below is empty for want of a reading, not for want of a front page._`, '');
+    else if (!spun.length) p(`_${world.length} World ${plural} kept, some of them spun, and not one carries a usable game date: nothing here can be placed against a poll below._`, '');
+    else p(`${world.length} World ${plural} kept, ${spun.length} carrying a spin (${tally(spun)})`
+      + `${undated ? `; ${undated} with no usable game date` : ''}. `
+      + `Prose and spin arrive with gov-watch 0.7.0, so an empty spin column on a window that closes before `
+      + `${iso(last(spun).real)} means nothing was kept, not that nothing was printed.`);
+
+    const SPUN = 12;
+    if (spun.length) {
+      h3('World entries with a spin, newest first');
+      table(['story', 'spin', 'game date', 'printed (UTC)', 'ET', 'age at collection'],
+        spun.slice(0, SPUN).map((x) => [trunc(x.headline || `#${x.id}`, 44), x.spin, gameDay(x.gametime), iso(x.real), et(x.real), rel(x.real, now)]));
+      if (spun.length > SPUN) p('', `${spun.length - SPUN} older spun entries kept, not listed.`);
+    }
+
+    // Actions of the operator's own inside a window. Two numbers, and they answer two
+    // questions: how much disobedience — the only thing docs/21 measures moving a poll —
+    // and how much she did at all, which is what rules her out as the confounder. The
+    // second is poll-watch 0.8.0's set exactly, down to the excluded endpoint and the
+    // half-open edges, so the panel's memo and this table never print different counts for
+    // one window; test-read-stores.js fails if READING drifts between the two files.
+    // A poll is a reading, not an act, and the poll that CLOSES a window is logged inside
+    // it — counting it would mean "none" could never once be true.
+    const READING = /^\/actions\/poll/;
+    const evs = ((xp && xp.events) || []).filter((e) => e && Number.isFinite(ms(e.t)));
+    const oldestEv = evs.length ? Math.min(...evs.map((e) => ms(e.t))) : null;
+    const actsIn = (t0, t1) => {
+      if (!xp || !Array.isArray(xp.events)) return 'no ledger';
+      const inWin = evs.filter((e) => e.kind === 'action' && !READING.test(String(e.ep || '')) && ms(e.t) > t0 && ms(e.t) <= t1);
+      const dis = inWin.filter((e) => collapse(e.ep) === '/disobedience');
+      const ok = dis.filter((e) => String(e.outcome || '').startsWith('success')).length;
+      const floor = oldestEv != null && t0 < oldestEv;
+      if (!inWin.length) return floor ? 'none kept (the ledger starts inside this window)' : '**none**';
+      return `${floor ? '≥ ' : ''}${dis.length}${inWin.length > dis.length ? ` of ${inWin.length}` : ''} (${ok} ok)`;
+    };
+    const meanPair = (a, c) => { const m0 = pollMean(a.fine), m1 = pollMean(c.fine); return m0 == null || m1 == null ? ['n/a', 'n/a'] : [`${num(m0, 3)} → ${num(m1, 3)}`, signed(m1 - m0, 3)]; };
+
+    const byIssue = new Map();
+    for (const x of polls) { const k = norm(x.issue); if (!byIssue.has(k)) byIssue.set(k, []); byIssue.get(k).push(x); }
+
+    h3('What landed between two polls');
+    const wins = [];
+    for (const arr of byIssue.values()) {
+      for (let i = 1; i < arr.length; i++) {
+        const t0 = ms(arr[i - 1].t), t1 = ms(arr[i].t);
+        wins.push({ issue: arr[i].issue, t0, t1, st: dated.filter((x) => x.real > t0 && x.real <= t1), mean: meanPair(arr[i - 1], arr[i]) });
+      }
+    }
+    wins.sort((a, c) => c.t1 - a.t1);
+    if (!wins.length) p(`_${polls.length} ${polls.length === 1 ? 'poll' : 'polls'} kept and no issue has been polled twice: a window needs two polls of one issue._`);
+    else {
+      const SHOW = 16;
+      table(['issue', 'from', 'to', 'wide', 'mean', 'Δ mean', 'World entries', 'spun, newest first', 'our actions'],
+        wins.slice(0, SHOW).map((w) => [w.issue, iso(w.t0), iso(w.t1), span(w.t1 - w.t0), w.mean[0], w.mean[1],
+          w.st.length ? `${w.st.length} — ${tally(w.st)}` : '0', listed(w.st), actsIn(w.t0, w.t1)]));
+      if (wins.length > SHOW) p('', `${wins.length - SHOW} older windows kept, not listed.`);
+    }
+
+    h3('Open windows — what one focus group would buy');
+    table(['issue', 'last polled', 'mean then', 'open for', 'World entries', 'spun, newest first', 'our actions'],
+      [...byIssue.values()].map((arr) => last(arr)).sort((a, c) => ms(a.t) - ms(c.t)).map((a) => {
+        const t0 = ms(a.t), st = dated.filter((x) => x.real > t0 && x.real <= now);
+        const m = pollMean(a.fine);
+        return [a.issue, iso(t0), m == null ? 'n/a' : num(m, 3), span(now - t0), st.length ? `${st.length} — ${tally(st)}` : '0', listed(st), actsIn(t0, now)];
+      }));
+    p('', '_Nothing has closed these windows, so no row here is a measurement. It is what a second poll on that issue would be measuring against, at 5 energy and $1,000 the focus group._');
+
+    p('', `_Adjacency only, and thinner than the Court's. A World entry is listed against a window when the date the Herald prints on it falls inside that stretch. The paper never says which issue a story is about, a poll never says what moved it, and xp-watch's ledger keeps an action's endpoint and its outcome and not the issue it was aimed at — so "our actions" is every disobedience action in the window, on any issue, and a busy stretch does not say which issue was busy. Where a second number appears beside it, that is every action of yours of any kind, the set poll-watch 0.8.0's memo counts; a bold **none** means neither found anything at all. One column is measured: the buckets are integers and a repeat poll on an untouched issue comes back identical to the digit (docs/21-opinion-motion-surface.md), so a Δ here is real even where nothing in the row accounts for it._`);
   });
 
   // -- world ----------------------------------------------------------------------------
@@ -699,6 +836,7 @@ function brief(b, prior) {
     else if (last(money)[0] - money[0][0] < 2 * 86400e3) gaps.push(`money history spans only ${span(last(money)[0] - money[0][0])}`);
     if (!tool(b, 'pkgw:', 'data')) gaps.push('no gov-watch ledger');
     else if (!Object.keys(tool(b, 'pkgw:', 'data').bills || {}).length) gaps.push('no Herald entry kept: the sidebar Herald card may be hidden, or gov-watch is older than 0.6.0');
+    else if (!Object.values(tool(b, 'pkgw:', 'data').bills).some((x) => x && (x.spin === 'liberal' || x.spin === 'conservative'))) gaps.push('no Herald entry carries a spin, so the front page cannot be lined up against the polls: gov-watch below 0.7.0 keeps the headline and drops the prose');
     if (!tool(b, 'pkpw:', 'people')) gaps.push('no people ledger');
     if (!(b.tools['pksw:'] && b.tools['pksw:'].keys.meta)) gaps.push('no faction reading');
     if (!gaps.length) p('_every store carries data_'); else for (const g of gaps) p(`- ${g}`);
@@ -744,5 +882,5 @@ function main() {
   console.error(`read ${bundlePath}${priorPath ? `, compared with ${priorPath}` : ''}${o.out ? `, written to ${o.out}` : ''}`);
 }
 
-module.exports = { brief, fromGs, parseGameMonth, collapse, listBundles };
+module.exports = { brief, fromGs, gameDay, realOf, pollMean, parseGameMonth, collapse, listBundles };
 if (require.main === module) main();
