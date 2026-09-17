@@ -16,6 +16,13 @@ to tell from a poll alone that somebody else has been at it.
 
 Faction names appear below because the game shows them to anyone. Player usernames do not.
 
+> **Corrected 2026-09-17.** A second pass five days later found **both ends of two
+> distributions emptied** — Civil Rights' far right 72 → 53, LGBT's far right *and* centre
+> left to zero. The ratchet below is wrong: **±3 is not a sink**, and the plan that was
+> priced on it should not be run. See
+> [*The ±3 buckets empty*](#the-3-buckets-empty-added-2026-09-17). Two further corrections
+> are marked in place: what this Congress passes, and what a bar's yield tracks.
+
 ## The finding that shapes everything
 
 **The public moves per action, measurably; the law follows the public on every issue where
@@ -24,7 +31,9 @@ anybody has worked it; and on a captured issue the middle is re-taken by hand ov
 Three consequences, each measured below. The contest is action volume, not money. The
 *centre* is the instrument — a leftward leaning is discounted and a failed action pushes
 the other way. And a centrist action reaches the middle of a distribution but not its far
-end, so a captured issue has a floor that no amount of centrist work moves.
+end — though **the far end empties anyway**, on a timescale of days and by a mechanism this
+file cannot yet name, so a captured issue has a floor rather than a wall, and the floor
+leaks in both directions. Whoever holds an issue is paying rent on it.
 
 ## Measured
 
@@ -131,6 +140,10 @@ at the Pier 39 boardwalk read 87 % success, 1 % jail, 0 % mob.
 
 ### Reach: the centre does not touch +3
 
+> **Superseded 2026-09-17 — the bucket it says is untouchable later emptied.** The
+> observation below is real; the rule drawn from it is not. Read it as *a centrist bar
+> did not move far right within two hours*, which is all it measured.
+
 Across a 33-action centrist bar on Civil Rights, centre-right drained from 14 to 8 and
 neutral rose from 12 to 18 while far-right stayed at 72. Working hypothesis (inferred, see
 below): a centrist action moves people within about two steps straight to neutral and
@@ -138,6 +151,10 @@ cannot reach a bucket three steps away. If that holds, the centrist floor on a c
 issue is a mean of about 2.2 once centre-right is empty, with the far-right bloc untouched.
 
 ### The ladder test: +1 does not reach +3 either (added 2026-09-12 13:06 UTC)
+
+> **Superseded 2026-09-17**, same way: the 72 held across this bar and was 53 three days
+> later. What the bar measured — that a rightward action moves nobody leftward, even one
+> step — still stands.
 
 The reach hypothesis predicted that a +1 leaning would pull +3 down two steps the way
 centre pulled +2 to 0. One bar at slight right on Civil Rights, 26 actions and 25
@@ -249,6 +266,134 @@ two leanings relative to each other, same site, same hour, is the public moving*
 cheaper detector than a poll, readable every time the page is open. Field-observed
 2026-09-11: neutral and centre-left had read equal, then centre-left went harder again.
 
+### The ±3 buckets empty (added 2026-09-17)
+
+Five days later, both ends of two distributions had moved. The ratchet above says they
+cannot: *"the ±3 buckets do not move for any leaning"*, and *"whatever put 72 % of this
+public at far right, disobedience cannot take them off it"*.
+
+**Civil Rights**, two focus groups 2.9 days apart:
+
+| | 09-12 13:06 UTC | 09-15 11:40 UTC |
+|---|---|---|
+| neutral | 4 | 1 |
+| slight right | 14 | **45** |
+| centre right | 8 | **0** |
+| far right | **72** | **53** |
+| mean | 2.510 | 2.061 |
+
+Nineteen points left far right and eight left centre right; thirty-one arrived at slight
+right. **LGBT Rights**, 5.2 days apart, does the same thing at both ends at once:
+
+| | 09-12 13:38 UTC | 09-17 19:12 UTC |
+|---|---|---|
+| centre left | **2** | **0** |
+| slight left | 0 | 1 |
+| neutral | 79 | 83 |
+| slight right | 13 | 13 |
+| centre right | 0 | 2 |
+| far right | **2** | **0** |
+| mean | 0.156 | 0.162 |
+
+Both tails drained inward, and **the mean moved 0.006** — which is the reason this went
+unseen for five days. Every summary number said *unmoved*. Only the buckets said otherwise,
+and the panel showed one memo at a time. That is what
+[`poll-watch` 0.8.0](../userscripts/poll-watch.user.js) exists to fix.
+
+**This falsifies the sink regardless of who did it**, which is the useful part. The old model
+made two claims — no leaning reaches ±3, *and* an untouched public does not drift — and the
+±3 buckets moved. One of the two is wrong. So:
+
+- **Seeding sinks is dead.** "Two bars per issue, sixteen issues, ten days, each point
+  permanent" was priced on a ratchet that does not exist. Do not spend a day on it.
+- **Captured issues are not permanently captured either.** Police 91, intelligence 93,
+  elections 77 sit on the same arithmetic. Somebody is paying to hold them.
+
+### Who moved them is open, and the reason is a limitation of our own tools
+
+`xp-watch` records an action's endpoint and outcome and **not the issue it was aimed at**, so
+"her actions in this window" can never be "her actions on this issue". The windows, from
+`read-stores`' Herald-against-polls join:
+
+| window | her actions in it | what is accounted for |
+|---|---|---|
+| Civil Rights 09-12 13:06:56 → 09-15 11:40:10 | 30 (24 ok) | two bursts: **23** at 09-12 13:35–13:38, which is the measured −2 LGBT bar, and **7** at 09-15 11:30 |
+| LGBT 09-12 13:38 → 09-17 19:12 | 75 (67 ok) | all of her civil-rights work, including 09-17's bar |
+
+Seven actions cannot move twenty-seven points at any rate measured in this file — the
+recorded Civil Rights bar moved six points with 33 actions and 27 successes. So the Civil
+Rights collapse is **not hers**. LGBT is weaker but points the same way: that poll read
+**popularity 318**, and at the ~19/h decay above, 1000 → 318 puts the last touch about 36
+hours earlier, on 09-16 — a day on which her ledger records **no actions at all**.
+
+One caveat on that last step, because it bears on the tool as much as on the finding: the
+ledger *does* carry a `status` → `jailed` on 09-16 with no action beside it, alongside a
+combat in and out. Either something other than her own action put her there, or the log has
+a gap. A gap would make "no actions of yours" softer than it reads — which is the argument
+for the Intelligence poll below rather than for trusting this inference harder.
+
+Two candidates remain, and this file cannot yet separate them:
+
+- **Mean reversion.** An untouched public drifts toward neutral over days. The 42-minute and
+  11.5-hour controls that "ruled out drift" are simply too short: 19 points over 2.9 days is
+  0.27 points/hour, which is invisible in 11.5 hours at integer resolution on a 2-point
+  bucket. Every control in this file is consistent with it.
+- **A third party working the middle.** A centrist bar by someone else pulls both tails
+  inward too, and would explain LGBT's popularity re-raise on a day she was away.
+
+**The cheap discriminator: poll Intelligence.** 93 % far right, popularity 33, last read
+2026-09-11, an issue nobody has any reason to work. Decayed ⇒ mean reversion, and every gain
+in this file is perishable. Still 93 ⇒ somebody is working LGBT and Civil Rights specifically,
+and the drift story is wrong. One focus group, $1,000 and 5 energy, settles it.
+
+### What a bar moves is a fraction of the pool within reach (added 2026-09-17)
+
+The two centrist bars on Civil Rights are five days apart and moved very different numbers
+of points. Read against the pool a centrist action could reach — everyone within two steps
+of neutral, which is the one part of the reach rule that survived — they are the same bar:
+
+| window (UTC) | pool in reach | moved | share |
+|---|---|---|---|
+| 09-11 21:57:03 → 23:45:22 | centre right 14, slight right 0 | 6 | **43 %** |
+| 09-15 11:40:10 → 09-17 17:07:14 | slight right 45, centre right 0 | 20 | **44 %** |
+
+3.2× the pool, 3.3× the movement. **Push where the crowd is standing one or two steps
+away, not where it is far.** It also re-frames the population question in *Still unknown*:
+a constant `people_moved` of ~506k per success landing as a different number of points on
+different issues is what a fixed reach looks like against differently-sized publics.
+
+Both columns come from the polls alone, which is deliberate, because **the effort behind
+each is not cleanly knowable and the reason is worth its own paragraph.** xp-watch stamps a
+whole bar within a few seconds — 33 actions between 17:07:01 and 17:07:06, a poll at
+17:07:14 — so a window boundary either takes a burst whole or misses it whole, and a poll
+run straight after a bar is decided by seconds. Worse, the ledger is not per-issue. The
+first window holds **78** disobedience actions in three bursts (12, 33, 33), of which this
+file recorded **33 (27 ok)** as the Civil Rights bar; the other two bursts were that
+evening's work on other issues, and the poll log shows her on Elections, Intelligence and
+LGBT in the same two hours. The second holds **62 (56 ok)** in two bursts, split unknown.
+
+So: no per-success rate is claimed here, and **whether 43 % is what one bar buys or a
+ceiling on what any amount of work buys in one window is open** — the first window's 33
+Civil Rights actions and the second's at-most-62 are not far enough apart to separate them.
+The test is a deliberate double bar on one issue with a large pool at exactly one step,
+polled between: LGBT's 83 % neutral is now exactly that.
+
+### The Herald has a spin field, and nobody has priced it (added 2026-09-17)
+
+`gov-watch` 0.7.0 keeps the Herald's World stories, and each one carries **`spin`:
+`liberal` or `conservative`**. Nine are held: 5 liberal, 4 conservative, printed 09-14 →
+09-17. Nothing in this repo has ever tested whether they move a poll, and the stories are
+on the nose — *COP BEATING* (liberal) the day before nothing was measured on police,
+*ARMED CITIZEN SAVES LIVES* (conservative), two conservative abortion stories in
+nineteen hours.
+
+**There is a free natural experiment sitting open.** Abortion was last polled 2026-09-11 at
+82 neutral / 16 slight right, **popularity 0** — nobody, including her, has ever worked it.
+Since then the Herald printed *CLINIC REGRET* and *LATE TERM*, both conservative. One focus
+group says whether the paper moves the public with no player involved, and `read-stores`'
+*Herald against the polls* section already lines up every story against every window,
+including the ones still open.
+
 ### What it costs the operator's own compass
 
 From `align-watch`'s 66 readings: the social axis carries ~5,200 samples at a mean of
@@ -260,11 +405,12 @@ and moved 0.071 → 0.172 in a week, so it shows the same work about six times f
 
 Everything here is ours. None of it is something the client says.
 
-- **Reach.** Centre moved +2 → 0 in one jump and left +3 alone; +1 moved 0 → +1 and left both
-  +2 and +3 alone. The rule that fits all three bars: a success moves people *in the
-  direction of the leaning*, up to the leaning, never back toward it from the far side —
-  and the ±3 buckets do not move for any leaning. Whether ±3 is locked outright or merely
-  out of reach is the same thing in practice: disobedience trades the middle only.
+- ~~**Reach.**~~ **Withdrawn 2026-09-17.** The rule was: a success moves people in the
+  direction of the leaning, up to it, never back from the far side, and the ±3 buckets do
+  not move for any leaning. The last clause is false — both ±3 buckets emptied on two
+  issues within five days. What survives, because three bars measured it directly, is that
+  *a rightward action never moves anyone leftward*. What moves a ±3 bucket, and whether a
+  leaning reaches it at all, is now open and named in *Still unknown*.
 - **The overnight push is a +1 leaning by RE:PUBLIC.** It fits the one-step shape *and* the
   popularity re-raise *and* the sighting. Contagion drift toward the dominant bloc fits the
   shape only, and LGBT — whose dominant bloc is neutral — showed no drift at all.
@@ -278,9 +424,16 @@ Everything here is ours. None of it is something the client says.
 
 All of it from stores the tools already keep, zero added requests:
 
-- **poll-watch: brackets and the decay curve.** Print the mean and the bucket deltas between
-  consecutive polls of an issue; fit popularity decay across untouched intervals and flag a
-  re-raise — *"acted on since your last poll, by someone"* — as the durable activity tell.
+- ~~**poll-watch: brackets.**~~ **Shipped 2026-09-17 in poll-watch 0.8.0**, and it was not a
+  refinement: the LGBT reshape above moved the mean by 0.006 and both tails to zero, so every
+  summary number in the panel said *unmoved* for five days. Each bucket now carries its own
+  `+n` / `−n` against your previous poll of that issue, with the window's length, and — by
+  reading xp-watch's ledger — whether **any** action of yours falls inside it. That last line
+  is deliberately weaker than it looks, for the reason in *Who moved them is open*: the
+  ledger is not per-issue, so zero of hers rules her out and a count never rules her in.
+- **poll-watch: the decay curve.** Still unbuilt. Fit popularity decay across untouched
+  intervals and flag a re-raise — *"acted on since your last poll, by someone"* — which the
+  Intelligence test above will either establish or kill as a tell.
 - **poll-watch × xp-watch: net people moved per bar.** Successes and failures from the
   response bodies, so a bar reports what it did to the public before the next poll does.
 - **read-stores: an opinion-motion section** carrying the brackets, per-success rates and
@@ -299,14 +452,27 @@ takes; every number here was hers to take, and the tools only remember what came
   +2 down. See *The ladder test*. What remains unknown is what, if anything, moves a ±3
   bucket — a protest's `forecast_shift`, a media campaign, the law itself, or nothing.
 - **The decay curve past two points**, and whether it is linear, exponential, or issue-dependent.
-- **Whether a 3 → 2 bill is the way out of a captured issue.** Measured 2026-09-12: this
-  Congress passes bills toward the centre and kills bills away from it, so the law on top
-  of an immovable public can still be walked back a notch. What is unknown is who raises
-  one, and whether the president vetoes it — see
-  [`20-newspaper-surface.md`](20-newspaper-surface.md) and gov-watch's BILLS tab, which
-  now keeps every bill the Herald prints.
-- **Whether elections follow the public.** The Nov Y16 election (~2026-09-22) is the test; the
-  Herald publishes `congress_alignment_swing` after it (20).
+- ~~**Whether a 3 → 2 bill is the way out of a captured issue.**~~ **Answered, and the
+  2026-09-12 note here was wrong.** That note read *"this Congress passes bills toward the
+  centre and kills bills away from it"* off raw majorities, before gov-watch stored outcomes.
+  A full game year of the Record says otherwise: **26 Congress entries, 20 dead, 4 vetoed, 2
+  passed** — both the same rightward bill, both by overriding the president, neither toward
+  the centre. Direction predicts nothing. A bill is **not** the way out. See
+  [`14-government-motion-surface.md`](14-government-motion-surface.md).
+- **Whether the ballot follows the public.** It is now the live question, because the ballot is
+  the only thing that has moved a law without a supermajority: at the Nov Y15 election two
+  measures passed the same afternoon after a year of dying in Congress. The discouraging
+  calibration for this file is that **LGBT failed by ballot on an 83 %-neutral public** — the
+  public 200-odd centrist actions bought. Neutral is not a winning public; centring an issue
+  neutralises it. Whether a *left* public wins one is untested.
+- **Whether elections follow the public.** The Nov Y16 election — **Tue 2026-09-22, 12:36 PM
+  ET**, congress and president together — is the test; the Herald publishes
+  `congress_alignment_swing` after it (20). The Nov Y14 election moved the House right by 25
+  seats, so the mechanism exists.
+- **What moves a ±3 bucket**, and whether mean reversion or a third party emptied the two
+  above. The Intelligence poll separates them for $1,000.
+- **Whether the Herald's `spin` moves a poll.** Nine stories, an open abortion window, and
+  nobody has looked.
 - **What `popularity` measures**, beyond "attention, capped, decaying".
 - **Who works Women's Rights left**, and whether protests or media campaigns move a poll at
   all — no protest or campaign has been observed since world-watch shipped.
@@ -320,3 +486,10 @@ takes; every number here was hers to take, and the tools only remember what came
   to politiko.io to measure anything, and no page was opened for this file's sake.
 - Other players' data used: faction membership and last-online stamps, which the game shows
   to anyone under the current Privacy Rights setting. No username is reproduced here.
+
+For the 2026-09-17 pass: same method, a fresh bundle collected 19:25Z. Every poll in it was
+one the operator ran in normal play; no poll was run to write this file, and no poll can be
+— it is a paid action and the tools only remember what came back. The Herald entries and
+their `spin` come from gov-watch's store, and the story-to-window join is
+[`tools/read-stores.js`](../tools/read-stores.js)' own section, which states its own
+adjacency caveat and is worth reading before leaning on it.
