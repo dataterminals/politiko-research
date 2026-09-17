@@ -1076,7 +1076,7 @@ with the same 400 opening bets, per-round results drawn from the simulated histo
 |---|---|---|---|
 | largest peak-to-trough | $1.63M | $2.11M | 29% |
 | worst 140-round window | −$1.28M | −$2.11M | 17% |
-| longest run of losses | 8 | 9 | 41% |
+| longest run of losses, a push neither counting nor breaking it | 8 | 9 | 41% |
 
 A two-million-dollar drawdown is the ordinary weather of four hundred rounds at these
 stakes. It is *also* exactly what a losing streak feels like from inside, and the deviations
