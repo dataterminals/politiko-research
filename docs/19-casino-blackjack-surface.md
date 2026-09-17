@@ -1105,6 +1105,32 @@ hundredth, because the expectation is a twentieth of one sd at any stake. Nothin
 read off 0.12.0 was wrong by enough to notice. It was wrong in principle, in the one place
 people look after a bad night.
 
+### The audit is a file reader now — added 2026-09-17
+
+Everything in the section above took three throwaway scripts to produce, and the question
+it answers is the one that will be asked again after the next bad night, so it is a tool.
+[`tools/audit-jack.js`](../tools/audit-jack.js) reads a store collection
+(`artifacts/politiko-stores-*.json`) or a LOG "save" bundle (versions 1–3; a pre-0.13.0
+file is named as one, since its own money figures were on the total-staked base), lifts
+the engine between the `ENGINE` markers exactly as `test-jack-ev.js` does, and prints —
+for the whole ledger, for each Eastern calendar day of `seen`, and above the LOG mark — the
+five things above, each figure labelled COMPUTED, MEASURED or ESTIMATED as the panel labels
+its own: what MONEY prints, with the same distance taken again at the fixed 1.146-unit sd
+so a short day does not argue with its own sample; every decision replayed and the dearest
+departures with their cards; the receipts recomputed by a second totaller that shares
+nothing with the solver (naturals at 3:2, the peek, S17, every single-hand and split gross,
+and any 21 on a split ace with what it actually paid); the three χ² tests with p-values,
+rank shares by seat, and the code deviations that let a borderline code χ² be read; and the
+drawdown, sized by resampling the ledger's own opening bets, in order, against the
+histogram above — twenty thousand ledgers from a seeded generator, so the same file gives
+the same percentages. Run against the ledger above it reproduces every number in this
+section, the 29% included. The one figure it defines rather than reads is the losing run,
+which counts losses with pushes ignored — a push neither breaks it nor counts — because
+that is the run the 9 above was. It touches nothing but the file, writes nothing, and
+`tools/test-audit-jack.js` fences that (no network, no browser, no file write, no second
+solver) and drives every receipt check against a fixture that bends one receipt at a time.
+Zero game contact.
+
 ## Counting, and the honest treatment of it
 
 Six decks and a card-by-card record is the setup for a running count, and the count
