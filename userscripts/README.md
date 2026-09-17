@@ -2625,6 +2625,7 @@ node userscripts/tools/test-jack-passive.js
 node userscripts/tools/test-http-tap.js
 node userscripts/tools/test-collect.js
 node userscripts/tools/test-read-stores.js
+node userscripts/tools/test-audit-jack.js
 ```
 
 Every suite slices the layer it covers straight out of the shipped script rather than
@@ -2782,6 +2783,13 @@ only until someone adds it back:
   — no network, no browser, no child process, one file write and only behind `--out` — and
   runs it against a synthetic bundle covering every section, a prior for the comparison,
   and an empty bundle. See *The reader* below.
+
+- `test-audit-jack` fences [`tools/audit-jack.js`](../tools/audit-jack.js), the offline
+  blackjack audit — no network, no browser, no child process, no file write at all, and no
+  second solver: it has to lift jack-watch's engine rather than copy it — and drives every
+  receipt check against a fixture that bends one receipt at a time, both file shapes, the
+  Eastern-day slicing and the seeded resampling. See
+  [`docs/19`](../docs/19-casino-blackjack-surface.md), *The audit is a file reader now*.
 
 They have nothing else in common; market-watch's was named `test-passive.js` when it
 lived in its own repository and was renamed on the way in.

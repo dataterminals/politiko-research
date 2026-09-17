@@ -53,8 +53,10 @@ docs/     numbered findings + plan; 00 recon, 01 rules, 02 plan, 03 ideas,
           18 casino slots, 19 casino blackjack, 20 newspaper,
           21 opinion motion
 tools/    recon helpers; collect-stores.js (export half: the tools' own stores → one
-          gitignored JSON in artifacts/) and read-stores.js (the brief a strategy
-          conversation starts from — run it before talking strategy)
+          gitignored JSON in artifacts/), read-stores.js (the brief a strategy
+          conversation starts from — run it before talking strategy) and
+          audit-jack.js (the blackjack ledger, offline: receipts, card fairness,
+          decisions and a resampled drawdown, from a store collection or a LOG save)
 userscripts/  _template.user.js — passive-tap skeleton + WS TAP + PANEL KIT;
               people-watch, market-watch, time-watch, align-watch, comms-move,
               time-bridge, ws-watch, xp-watch, raid-watch, sleeper-watch,
