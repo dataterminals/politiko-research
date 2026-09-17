@@ -21,21 +21,14 @@ mobile header has no empty band to sit in. Same slots, same order, same gestures
 Each script declares `@updateURL`, so fixes arrive on your script manager's own
 update check — no reinstall.
 
-> [!WARNING]
-> Held out of the paste blocks below — these links do not serve current code yet:
-> - **Jack Watch 0.13.0** — local file differs from `origin/main`; the raw link serves the older version.
-> - **Gov Watch 0.7.0** — local file differs from `origin/main`; the raw link serves the older version.
->
-> Push, re-run the generator, then post.
-
 ## Discord paste
 
-Discord's message limit is 2000 characters, so this is split into 2 messages. Copy each block and post them in order.
+Discord's message limit is 2000 characters, so this is split into 3 messages. Copy each block and post them in order.
 
-**Message 1 of 2** — 1560 characters
+**Message 1 of 3** — 1569 characters
 
 ```
-## Politiko userscripts — install links (1/2)
+## Politiko userscripts — install links (1/3)
 
 **People Watch** · who you've seen: last-online, city, rank, least-active first
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js>
@@ -52,20 +45,23 @@ Discord's message limit is 2000 characters, so this is split into 2 messages. Co
 **JUMP — Quick Jump** · launcher for the 64 screens the sidebar can't reach
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js>
 
+**JACK — Jack Watch** · blackjack solved: the right play, the chances, the count, the money
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js>
+
 **SLOT — Slot Watch** · slots bankroll against the house edge, and what a run really costs
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js>
 
 **MKT — Market Watch** · marks where you bought on the stock chart; charts market series locally
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/market-watch.user.js>
+```
+
+**Message 2 of 3** — 1552 characters
+
+```
+## Politiko userscripts — install links (2/3)
 
 **SHOP — Shop Watch** · shop fields the UI never shows, and brackets every restock
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js>
-```
-
-**Message 2 of 2** — 1828 characters
-
-```
-## Politiko userscripts — install links (2/2)
 
 **RAID — Raid Watch** · records faction raids, their event log and post-mortems
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js>
@@ -76,6 +72,9 @@ Discord's message limit is 2000 characters, so this is split into 2 messages. Co
 **WRLD — World Watch** · plots law, opinion, street, media and citizens on one compass
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js>
 
+**GOV — Gov Watch** · change ledger for the government: what moved between readings
+<https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js>
+
 **POLL — Poll Watch** · keeps every opinion-poll memo, with bloc spread and trends
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js>
 
@@ -84,6 +83,12 @@ Discord's message limit is 2000 characters, so this is split into 2 messages. Co
 
 **SOCK — WS Watch** · read-only observer for the three sockets the game opens
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js>
+```
+
+**Message 3 of 3** — 697 characters
+
+```
+## Politiko userscripts — install links (3/3)
 
 **Comms Move** · adds a drag bar to the game's Comms dock so you can move it
 <https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js>
