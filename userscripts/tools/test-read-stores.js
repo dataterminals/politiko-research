@@ -109,6 +109,9 @@ const mk = (over) => ({
         861: { gametime: 454464000, category: 'Supreme Court', headline: 'United States v. Upton', from: null, to: null, hy: null, hn: null, sy: null, sn: null, outcome: null, body: `TEST FIXTURE | not the real ruling.\n\nThe Court holds ${'the charter provision void, '.repeat(20)}END-OF-BODY`, cut: 5200, spin: null, firstSeen: T(24), lastSeen: T(1), prior: T(24.02) },
         814: { gametime: 454000000, category: 'Congress', headline: 'Slavery Repeal Act', from: 3, to: 2, hy: 253, hn: 182, sy: 65, sn: 35, outcome: 'signed', body: 'A bill.', firstSeen: T(80), lastSeen: T(1), prior: T(81) },
         815: { gametime: 454000000, category: 'Congress', headline: 'Sedition Expansion Act', from: 2, to: 3, hy: 194, hn: 241, sy: 40, sn: 60, outcome: 'dead in Congress', body: null, proseDropped: true, firstSeen: T(80), lastSeen: T(1), prior: T(81) },
+        // A ballot measure and an impeachment: neither a bill in a chamber nor a ruling.
+        870: { gametime: 453000000, category: 'Election', headline: 'Protect our Borders Passes by Ballot', from: null, to: null, hy: null, hn: null, sy: null, sn: null, outcome: null, firstSeen: T(70), lastSeen: T(1) },
+        871: { gametime: 454200000, category: 'Impeachment', headline: 'President Bechtelar Removed From Office', from: null, to: null, hy: 329, hn: 106, sy: 74, sn: 26, outcome: 'convicted', firstSeen: T(60), lastSeen: T(1) },
         816: { gametime: 454000000, category: 'Congress', headline: 'Still Counting', from: 1, to: 0, hy: 240, hn: 195, sy: 60, sn: 40, outcome: null, body: null, firstSeen: T(2), lastSeen: T(1), prior: T(2.02) },
         // World entries, placed by the real hour they were printed rather than by a raw
         // game second. Tremors sits before every poll and must land in no window at all;
@@ -223,9 +226,17 @@ console.log('\n— court rulings, and what was observed beside them —');
 {
   const sec = (md.split(/^## Court and the Record$/m)[1] || '').split(/^## /m)[0];
   const hasC = (label, re) => check(label, re.test(sec), `not found: ${re}\n${sec.slice(0, 1600)}`);
-  hasC('entries are counted by category, with the prose held', /11 Herald entries kept \(World 6, Congress 3, Supreme Court 2\); [\d,]+ chars of prose held on 7, 1 dropped for the budget\./);
+  hasC('entries are counted by category, with the prose held', /13 Herald entries kept \(World 6, Congress 3, Supreme Court 2, Impeachment 1, Election 1\); [\d,]+ chars of prose held on 7, 1 dropped for the budget\./);
   hasC('decided bills are split toward vs away from the centre', /\| toward the centre \| 1 \| 1 \| 100% \| 1 \|[\s\S]*\| away from the centre \| 1 \| 0 \| 0% \| 0 \|/);
   check('...and pending is not counted as a loss', !/\| toward the centre \| 2 \|/.test(sec), 'a pending bill was counted as decided');
+  hasC('the Congressional Record opens with a count by outcome, pending first', /^### Congressional Record\n\n3 Congress bills: pending 1, signed 1, dead in Congress 1\.$/m);
+  hasC('...calls the tally printed raw, not the deciding number, not a margin', /\*\*printed raw\*\*[^\n]*not the deciding number and is not a margin/);
+  check('...and no column or line calls it a margin', !/\| [^|\n]*margin[^|\n]* \|/i.test(sec) && !/^- [^\n]*margin/im.test(sec), 'something is labelled a margin');
+  hasC('...lists every bill with both tallies and its fate, null as pending',
+    /\| game date \| bill \| axis \| House \| Senate \| outcome \|\n\|---\|---\|---\|---\|---\|---\|\n\| May 25, Y15 \| Still Counting \| \+1→0 \| 240–195 \| 60–40 \| pending \|\n\| May 25, Y15 \| Slavery Repeal Act \| \+3→\+2 \| 253–182 \| 65–35 \| signed \|\n\| May 25, Y15 \| Sedition Expansion Act \| \+2→\+3 \| 194–241 \| 40–60 \| dead in Congress \|/);
+  hasC('ballot measures get one line each, with no tally', /^### Ballot measures\n\n- May 14, Y15 — \*\*Protect our Borders Passes by Ballot\*\*$/m);
+  hasC('an impeachment carries its vote and verdict', /^### Impeachment\n\n- May 27, Y15 — \*\*President Bechtelar Removed From Office\*\* · House 329–106, Senate 74–26 \(printed raw\) · convicted$/m);
+  hasC('...and all three sit before the rulings', /### Congressional Record[\s\S]*### Ballot measures[\s\S]*### Impeachment[\s\S]*### Supreme Court rulings/);
   hasC('rulings are newest first by the paper\'s date, then first sighting', /\*\*United States v\. Upton\*\*[\s\S]*\*\*United States v\. Farrell, Corp\.\*\*/);
   hasC('the game date uses the Herald arithmetic', /\*\*United States v\. Upton\*\* — June 1, Y15 · appeared between 2026-09-10 20:1\dZ and 2026-09-10 20:1\dZ \(1 min window\)/);
   hasC('a 0.6.0 ruling from the first Herald reading has no lower edge', /\*\*United States v\. Farrell, Corp\.\*\* — June 1, Y15 · already on the front page at gov-watch's first Herald reading[^\n]*no lower edge/);
@@ -259,6 +270,15 @@ console.log('\n— court rulings, and what was observed beside them —');
   junk.tools['pkgw:'].keys.data.bills = { 1: null, 2: { category: 'Supreme Court', body: 42, gametime: 'x', firstSeen: 'y' }, 3: { category: 'Supreme Court', headline: 'A|B', body: 'ok', firstSeen: T(5), prior: T(5.1) } };
   junk.tools['pkgw:'].keys.data.events = [null, { kind: 'policy', t0: 'x' }];
   const mdJ = brief(junk, null);
+  const asString = mk({});
+  asString.tools['pkgw:'].keys.data = JSON.stringify(asString.tools['pkgw:'].keys.data);
+  const mdS = brief(asString, null);
+  check('a gov-watch store exported as a JSON string is still read', /\| May 25, Y15 \| Still Counting \|/.test(mdS) && !/court: could not be read/.test(mdS), (mdS.split(/^## Court and the Record$/m)[1] || '').slice(0, 400));
+  for (const [label, set] of [['with no bills key', (d) => { delete d.bills; }], ['with an empty bills map', (d) => { d.bills = {}; }]]) {
+    const e = mk({}); set(e.tools['pkgw:'].keys.data);
+    let mdX = ''; try { mdX = brief(e, null); } catch (err) { mdX = String(err.stack); }
+    check(`a gov-watch store ${label} says so and does not throw`, /^## Court and the Record\n\n_no Herald entries/m.test(mdX) && !/could not be read/.test(mdX), (mdX.split(/^## Court and the Record$/m)[1] || mdX).slice(0, 300));
+  }
   check('malformed bills and events do not trip the guard', !/court: could not be read/.test(mdJ) && /\*\*A\\\|B\*\*/.test(mdJ) && /no game date/.test(mdJ), (mdJ.split(/^## Court and the Record$/m)[1] || '').slice(0, 600));
 }
 

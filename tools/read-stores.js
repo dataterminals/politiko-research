@@ -284,7 +284,9 @@ function brief(b, prior) {
   // and the test fails if this section ever says why.
   h('Court and the Record');
   guard('court', () => {
-    const gw = tool(b, 'pkgw:', 'data');
+    // An export that carried gov-watch's store re-encoded as a string is read, not refused.
+    const gwRaw = tool(b, 'pkgw:', 'data');
+    const gw = typeof gwRaw === 'string' ? JSON.parse(gwRaw) : gwRaw;
     const bills = Object.entries((gw && gw.bills) || {}).map(([id, x]) => ({ id, ...x }))
       .filter((x) => x && typeof x === 'object')
       .sort((a, c) => (c.gametime ?? 0) - (a.gametime ?? 0) || (c.firstSeen ?? 0) - (a.firstSeen ?? 0));
@@ -307,6 +309,37 @@ function brief(b, prior) {
         .map((d) => { const g = voted.filter((x) => dirOf(x) === d); const dec = g.filter((x) => x.outcome != null); const won = dec.filter((x) => passed(x.outcome)).length; return [d, dec.length, won, dec.length ? pct(won, dec.length) : 'n/a', g.length - dec.length]; })
         .filter((r) => r[1] || r[4]));
     }
+
+    // The Record itself, bill by bill: both chambers' tallies and the fate, then ballot
+    // measures and impeachments, which are neither a bill in a chamber nor a ruling. A null
+    // outcome is "pending", never "dead": the game draws the two alike and gov-watch keeps
+    // them apart. The tally is printed raw and is never called a margin (docs/20).
+    const congress = bills.filter((x) => x.category === 'Congress');
+    const ballots = bills.filter((x) => x.category === 'Election');
+    const impeach = bills.filter((x) => x.category === 'Impeachment');
+    const fate = (x) => (x.outcome == null ? 'pending' : String(x.outcome));
+    const tally = (yea, nay) => (yea == null ? '·' : `${num(yea)}–${num(nay)}`);
+    const move = (x) => (typeof x.from === 'number' && typeof x.to === 'number' ? `${signed(x.from)}→${signed(x.to)}` : '·');
+    if (congress.length) {
+      h3('Congressional Record');
+      const ORDER = ['pending', 'signed', 'veto overridden', 'vetoed', 'dead in Congress'];
+      const rank = (k) => { const i = ORDER.indexOf(k); return i < 0 ? ORDER.length : i; };
+      const byFate = count(congress, fate).sort((x, y) => rank(x[0]) - rank(y[0]) || y[1] - x[1]);
+      p(`${congress.length} Congress bills: ${byFate.map(([k, n]) => `${k} ${n}`).join(', ')}.`, '',
+        'Tallies are yea–nay per chamber, **printed raw**: the wiki says passage turns on a weighted count, which the client never publishes, so the printed tally is not the deciding number and is not a margin. Axis is the step the bill proposed, which the game never draws.', '');
+      const CAP = 60;
+      table(['game date', 'bill', 'axis', 'House', 'Senate', 'outcome'], congress.slice(0, CAP).map((x) => [gameDay(x.gametime), x.headline || `#${x.id}`, move(x), tally(x.hy, x.hn), tally(x.sy, x.sn), fate(x)]));
+      if (congress.length > CAP) p('', `_${congress.length - CAP} older bills kept, not listed._`);
+    }
+    const line = (x) => {
+      const bits = [`**${cell(x.headline || `entry #${x.id}`)}**`];
+      if (typeof x.from === 'number' && typeof x.to === 'number') bits.push(`axis ${move(x)}`);
+      if (x.hy != null || x.sy != null) bits.push(`House ${tally(x.hy, x.hn)}, Senate ${tally(x.sy, x.sn)} (printed raw)`);
+      if (x.outcome != null) bits.push(fate(x));
+      return `- ${gameDay(x.gametime)} — ${bits.join(' · ')}`;
+    };
+    if (ballots.length) { h3('Ballot measures'); for (const x of ballots) p(line(x)); }
+    if (impeach.length) { h3('Impeachment'); for (const x of impeach) p(line(x)); }
 
     h3('Supreme Court rulings');
     if (!court.length) { p('_none kept_'); return; }
