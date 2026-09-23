@@ -208,6 +208,87 @@ Auth was not captured and is not replayed: requests go out with same-origin
 credentials, so a cookie session carries itself. If it turns out to be header-based
 the executor returns 401 and says so rather than reading the token.
 
+### The order endpoint was rebuilt — 2026-09-23
+
+Read off `artifacts/bundles/2026-09-23/StocksPage-Uks7pRp3.js`, the only real code change
+in the first build to ship since before 08-26 ([`00`](00-recon-baseline.md)). **Measured
+from the chunk, not from the wire** — nothing here was placed, and the two-line body
+recorded above is still the last order this project has actually seen sent.
+
+**Orders now go through a quote.** A new `POST /api/stocks/order-quote` (query key
+`stocks-order-quote`) returns a quote, and the client refuses to trade without a fresh
+one:
+
+```js
+if (!q.executable || !q.average_price || (o.cash_budget === undefined && q.shares !== o.shares))
+  throw Error(q.rejection_reason ?? 'Refresh the order quote before trading.');
+```
+
+The quote carries `executable`, `average_price`, `mark_price`, `slippage_bps`, `shares`,
+`position_kind`, `rejection_reason`, and — when the order would trip the conversion below
+— `converted_shares`, `conversion_holding_fee_per_day`, `conversion_liquidation_price`.
+The panel labels these **Mark / Slippage / Est. Fill**, and flags a spread at or above
+300 bps in red.
+
+**A market order is now a limit order.** The client derives the limit from the quote at
+±0.5% and sends it:
+
+```js
+limit_price = q.average_price * (action === 'buy' || action === 'cover' ? 1.005 : 0.995)
+```
+
+which is the UI string `Market · 0.5% price protection`. So the body grew:
+
+```
+POST /api/stocks/{buy|sell|short|cover|margin/close}
+{ instrument_id, shares, cash_budget, leverage, position_kind, limit_price,
+  short_position_id,     // only when action === 'cover'
+  margin_position_id,    // only when action === 'margin_close'
+  idempotency_key }
+```
+
+Four corrections to what is written above:
+
+- **The five verbs are alive.** The page computes the path now — `` post(`/stocks/${i}`) ``,
+  with `margin_close` → `margin/close` — so a call-site diff reports all five as deleted.
+  Each is still a bare literal in the chunk. This is the same trap
+  [`00`](00-recon-baseline.md) recorded on 08-26.
+- **`idempotency_key` is now `crypto.randomUUID()`**, not `<epoch_ms>-<11 base36>`.
+- **Spend-an-amount sizing is no longer blocked, because the game shipped it.** `cash_budget`
+  is a first-class order field; when it is set, the quote's share count is authoritative and
+  the client skips its own `q.shares !== o.shares` check. The *Still unknown* entry below
+  about a cash field is answered twice over.
+- **`rejection_reason` answers half of "what does a rejected order return"** — rejection is
+  surfaced on the *quote*, before the order is sent, not only as a status on the order.
+
+**A new position type, and it is the thing to be careful about.** `position_kind` gains
+`float_synthetic` alongside cash and margin. The client's own warning:
+
+> This order converts all *N* cash shares to a 1× synthetic position with holding fees and
+> 2× liquidation risk. Holding fee: $*X*/game day. Liquidation: $*Y*.
+
+Read what that says: an order large enough to exhaust the float does not merely fill
+differently — it **converts the cash shares you already hold** into a fee-bearing,
+liquidatable position. A synthetic is valued `shares × mark − holding_fees_paid`, carries
+`holding_fee_per_day` per *game* day, and the row goes red inside 5% of
+`liquidation_price`. The quote is the only warning, which is presumably why refreshing it
+is now mandatory.
+
+**What `market-watch` should change, and what it shouldn't.** It taps `/api/*` response
+bodies the app fetched itself, on any method, so `order-quote` responses arrive for free
+and nothing it reads was removed — `current_price` is still on holdings rows and
+`absorbHoldings` is still correct. Two notes rather than breakages:
+
+- The client now prefers `mark_price` from the quotes map over the holding row's
+  `current_price`, so a `market-watch` price can legitimately disagree with the screen.
+  `mark_price` is the better field where both are present.
+- `absorbHoldings` keeps `shares`, `avg_cost`, `current_price`, `unrealized_pnl` and
+  ignores `position_kind`, `leverage`, `risk_entry_price`, `holding_fee_per_day`,
+  `holding_fees_paid`, `collateral_locked` and `liquidation_price`. For a synthetic or
+  margin row that makes its P&L wrong — the client computes those three kinds by three
+  different formulas, and shares are negative on a short. Sizing that reads `shares`
+  alone should not be trusted across a leveraged position.
+
 ## Inferred
 
 - Roughly 8–9 listed instruments (53 series ≈ 6 fields each, plus the tax record and

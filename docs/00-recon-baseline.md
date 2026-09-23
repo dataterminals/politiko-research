@@ -176,6 +176,99 @@ before believing it.
 string anywhere in the build — only a "Developer News" feed, present in both snapshots.
 The oldest open question in the project is still open.
 
+## Client re-read — 2026-09-19
+
+Fresh one-shot pull (`artifacts/bundles/2026-09-19/`, 138 assets + `index.html`), diffed
+against the 2026-08-26 set on disk. **Zero game contact beyond the static asset fetch.**
+
+**Nothing moved.** Same 138 hashed filenames, and `cmp` on every pair finds them
+byte-identical — not "same hash", same bytes. The only file that differs is `index.html`,
+and only in the two lines Cloudflare injects: the challenge nonce/timestamp (per-request;
+expected) and the Insights beacon config, which gained `"spa":2`. Inferred, not measured:
+that is the beacon's single-page-app route tracking, i.e. a Cloudflare dashboard setting,
+not a client build. Nothing in it touches the game or the scripting clause.
+
+**What that buys.** The 2026-09-03 pull was this same build (its cited hashes —
+`CasinoBlackjackPage-BSYFJcI7`, `ActivismPage-l1era8Zl` — are today's), so every finding
+read off 08-26 or 09-03 is a finding about the live client today:
+[`18`](18-casino-slots-surface.md), [`19`](19-casino-blackjack-surface.md),
+[`20`](20-newspaper-surface.md), the poker section of [`09`](09-socket-surface.md), and the
+09-03 additions in [`01`](01-rules-envelope.md), [`07`](07-alignment-surface.md) and
+[`13`](13-world-politics-surface.md). Neither the 08-03 nor the 09-03 directory is on disk
+any more; 09-03 citations resolve to this pull, but the 08-03 ones in
+[`15`](15-shop-surface.md) and [`17`](17-attribute-surface.md) do not — that build predates
+08-10 and the 08-26 sweep found 12 real edits between.
+
+The standing checks hold by construction rather than re-derivation: `RulesPage` still md5
+`04d28d76f8d0225a2031770de8937461`; the entry chunk (route table) and every page chunk are
+the same bytes, so the 84 routes and every endpoint the 18 shipped tools tap are where they
+were. The build has now sat still for at least 24 days (the 08-26 pull, itself somewhere
+between 08-10 and 08-26) — the longest quiet stretch measured, against 12 real edits in the
+16 days before it.
+
+**Same trap, other side.** A naive grep of the tools' 40 `/api/…` strings against the
+chunks reported all 40 "missing". The tools' strings are prefixes and regex fragments
+(`/api/users/`, `/api/actions/`), not literal paths, so a literal grep proves nothing either
+way. Byte identity was the check that mattered; the endpoint grep was discarded.
+
+## Client re-read — 2026-09-23
+
+Fresh one-shot pull (`artifacts/bundles/2026-09-23/`, 138 assets + `index.html`), diffed
+against the 2026-09-19 set on disk. **Zero game contact beyond the static asset fetch.**
+
+**The build moved** — the first time it has since some point before 2026-08-26, ending a
+quiet stretch of at least 28 days. Entry chunk `index-Bietqk7D` → `index-DZqcfCQJ`,
+stylesheet `index-Bo4-wa4k` → `index-oXGx-PSA`. 121 of 138 chunks changed hash, which as
+ever is the cascade and not the edit. Normalize the hashed references out and **two files
+really differ**, and they are one feature:
+
+| file | change |
+|---|---|
+| `StocksPage` | **+3 333 bytes** (203 906 → 207 268), `DkzFUOgF` → `Uks7pRp3` |
+| `index.css` | +49 bytes — one generated Tailwind utility, `.md\:min-h-8` |
+
+Nothing was added to or removed from the filename set. What shipped is a **quote gate and
+a fee-bearing position type on the stock market**; the surface detail is in
+[`04-stocks-surface.md`](04-stocks-surface.md).
+
+**The refactor trap, third sighting, and this time in the direction that matters.** A
+call-site diff reports `/stocks/buy`, `/stocks/sell`, `/stocks/short`, `/stocks/cover` and
+`/stocks/margin/close` as **deleted** between these two builds. They are not. The page now
+computes the verb — `` a.post(`/stocks/${i}`) `` where `i` is the action, with
+`margin_close` mapped to `margin/close` — and every one of those verbs is still in the
+chunk as a bare literal. docs/00 has now recorded this failure mode three times
+(08-26 donations, 09-19 prefix-grep, here); the standing instruction is unchanged and was
+followed: grep the path string itself before believing a disappearance.
+
+**A bug in our own normalizer, worth recording because it fails silently.** The stem
+regex that strips a hash was written `-[A-Za-z0-9_-]{8,}\.(js|css)$`. A Vite hash is
+*exactly* 8 base64url characters, and `{8,}` with a hyphen in the class eats a hyphenated
+name segment too — so `arrow-left-…` and `arrow-right-…` both stemmed to `arrow.js`, one
+of each pair overwrote the other in the map, and **four chunks were dropped from the
+comparison without a word**. Pinned to `{8}` and re-run with all 138 present: same answer,
+2 real differences. A stem collision now throws instead of overwriting.
+
+**Standing checks, all holding:**
+
+- `RulesPage` is byte-identical, still md5 `04d28d76f8d0225a2031770de8937461`. The
+  Scripting Abuse clause is untouched; [`01-rules-envelope.md`](01-rules-envelope.md)
+  stands.
+- The entry chunk's route table is unchanged (91 `path:` declarations either side), and
+  `/ws/chat` is the only socket named in it.
+- `/ws/market?token=…` and the market socket's message discriminants are unchanged.
+- The authored class prefixes `ch-*` and `prof-*` are identical counts across both builds,
+  so the selectors `comms-move` and `people-watch` match on are safe.
+- Every chunk the other 17 tools read is unchanged *after normalization* — not byte-identical,
+  since 121 of 138 took a new hash off the cascade — so their endpoints are where they
+  were. Only `market-watch` looks at anything that moved — and it is a passive harvester,
+  so the new endpoint costs it nothing. See [`04`](04-stocks-surface.md) for the one field
+  it should now prefer.
+
+**Still no sanctioned player API.** No `api-key`, `rate-limit`, `developer-token`,
+`openapi`, `swagger` or `/api/v<n>` string anywhere in the 138 assets — only the same
+"Developer News" feed present in every snapshot since July. The oldest open question in
+the project is still open.
+
 ## What wasn't found yet
 
 - API path strings did **not** regex out of the entry bundle — they live in the route
