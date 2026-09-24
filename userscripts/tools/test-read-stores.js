@@ -86,7 +86,10 @@ const mk = (over) => ({
     'pksw:': { tool: 'sleeper-watch', keys: {
       meta: { faction_name: 'Sneedcorp Conglomerate', location_name: 'San Francisco', window_minutes: 60, recruited_count: 2, sleeper_cap: 12, energy_cost: 6, issues: ['Abortion', 'Taxes', 'Elections'], sites: 18, polledAt: T(0.1), factionId: '16', facPolledAt: T(0.1) },
       sleepers: { 981: { id: '981', display_name: 'Riley Klein', archetype_name: 'Bartender', site_name: 'Club', issue: 'Abortion', effectiveness: 43, recruited_at: '2026-08-27T03:28:56Z', recruiter_username: 'dataterminals', mine: true, lastSeen: T(90), can_advocate_at: '2026-09-07T12:57:12Z', can_embezzle_at: null }, 944: { id: '944', display_name: 'Sam Other', archetype_name: 'Clerk', site_name: 'City Hall', issue: 'Taxes', effectiveness: 30, recruited_at: '2026-08-20T00:00:00Z', recruiter_username: 'someone_else', can_advocate_at: '2026-09-12T12:00:00Z', can_embezzle_at: '2026-09-01T00:00:00Z', factionId: '16', facSeen: T(90) } },
-      leads: { 957: { id: '957', display_name: 'Jordan Foster', archetype_name: 'Journalist', site_name: 'City Hall', issue: "Women's Rights", status: 'meeting', next_meeting_at: '2026-08-25T02:51:50Z', meeting_count: 0, gone: true, goneState: 'missed' }, 1144: { id: '1144', display_name: 'Jamie Price', archetype_name: 'Aide', site_name: 'Capitol', issue: 'Elections', status: 'meeting', next_meeting_at: '2026-09-11T21:00:00Z', expires_at: '2026-09-11T22:00:00Z', meeting_count: 0, gone: false } },
+      leads: { 957: { id: '957', display_name: 'Jordan Foster', archetype_name: 'Journalist', site_name: 'City Hall', issue: "Women's Rights", status: 'meeting', next_meeting_at: '2026-08-25T02:51:50Z', meeting_count: 0, gone: true, goneState: 'missed' }, 1144: { id: '1144', display_name: 'Jamie Price', archetype_name: 'Aide', site_name: 'Capitol', issue: 'Elections', status: 'meeting', next_meeting_at: '2026-09-11T21:00:00Z', expires_at: '2026-09-11T22:00:00Z', meeting_count: 0, gone: false },
+        // Expired while still listed: `gone` is false and the lead is dead. sleeper-watch
+        // drops a lead only when a poll comes back without it.
+        1187: { id: '1187', display_name: 'Quinn Hayes', archetype_name: 'Court Clerk', site_name: 'Police Station', issue: 'Elections', status: 'meeting', next_meeting_at: '2026-09-09T22:28:04Z', expires_at: '2026-09-09T23:28:04Z', meeting_count: 0, gone: false, announcedMissed: true } },
       ledger: [{ kind: 'meet', at: T(0.2), leadId: '1144', name: 'Jamie Price', leadIssue: 'Elections', chosenIssue: 'Elections', outcome: 'scheduled' }],
     } },
     'pkgw:': { tool: 'gov-watch', keys: { data: {
@@ -165,15 +168,19 @@ const mk = (over) => ({
         // On the stroke of the poll that opens the Abortion pair, and so outside it: the
         // poll reads the public before this action, not after it.
         { t: T(6), kind: 'action', ep: '/disobedience', outcome: 'success' },
+        // Events with no endpoint — a status flip and a class. Grouped by `ep` they printed
+        // as "undefined".
+        { t: T(3), kind: 'status', from: 'active', to: 'jailed' }, { t: T(2.5), kind: 'status', from: 'jailed', to: 'active' },
+        { t: T(1.5), kind: 'train', key: 'heart', gain: 0.4718, mode: 'class' },
         { t: T(0.5), kind: 'action', ep: '/terminal/exec', outcome: null }, { t: T(0.2), kind: 'action', ep: '/actions/sleeper-recruitment/canvass', outcome: 'success' }],
-      deltas: [{ t: T(0.3), key: 'persuasion', d: 0.63, from: 182.24, to: 182.87, attrib: { type: 'ambiguous', n: 35, eps: ['/disobedience', '/actions/poll'] } }],
+      deltas: [{ t: T(1.5), key: 'heart', d: 0.4718, from: 55.79, to: 56.26, attrib: { type: 'train', n: 0 } }, { t: T(0.3), key: 'persuasion', d: 0.63, from: 182.24, to: 182.87, attrib: { type: 'ambiguous', n: 35, eps: ['/disobedience', '/actions/poll'] } }],
       sheetIssue: { t: T(1), kind: 'shift', axis: 'social' }, changeVerdict: { at: T(0.1), key: 'shotgun', dCurrent: 0.06, dChange: 0.06, kind: 'running', datesMoved: false },
     }, samples: {} } },
     'pkaw:': { tool: 'align-watch', keys: { data: { self: 'dataterminals', readings: [{ t: T(400), s: -0.05, sc: 100, e: 0.1, ec: 50, url: '/api/users/dataterminals' }, { t: T(0.2), s: -0.011, sc: 5134, e: 0.172, ec: 842, url: '/api/users/dataterminals' }] } } },
     'pksh:': { tool: 'shop-watch', keys: { data: { stores: { 5: { id: '5', name: 'Bay Area Auto', kind: 'shop', city: 'San Francisco', readings: [{ t: T(300), items: { 181: { name: 'Sedan', stock: 49, price: 1500, cat: 'vehicle' } } }, { t: T(17), items: { 181: { name: 'Sedan', stock: 47, price: 1500, cat: 'vehicle' } } }] } }, events: [], fields: {}, envelope: {}, seen: {}, readAt: T(17) } } },
     'pkqj:': { tool: 'quick-jump', keys: { places: { corps: { 1: { id: '1', name: 'Blackfin', type: 'financial', location_name: 'San Francisco', is_active: true, seenAt: T(100) } }, casinos: { 30: { operational: true, wagering_suspended: false, current_city_access: true, venues: [{ property_id: 66, location_name: 'San Francisco' }], games: [{ key: 'blackjack', status: 'live' }], seenAt: T(100) } }, factions: {} }, recent: [] } },
-    'pkbj:': { tool: 'jack-watch', keys: { data: { corps: { 30: { cfg: {}, hands: [{}, {}, {}] } }, edge: { key: 'd6s17das1split', edge: 0.004593, deals: 550, at: T(160) } } } },
-    'pksl:': { tool: 'slot-watch', keys: { data: { corps: { 30: { cfg: {}, sessions: [{}] } } } } },
+    'pkbj:': { tool: 'jack-watch', keys: { data: { corps: { 30: { cfg: {}, hands: { 939: { id: 939 }, 940: { id: 940 }, 941: { id: 941 } } } }, edge: { key: 'd6s17das1split', edge: 0.004593, deals: 550, at: T(160) } } } },
+    'pksl:': { tool: 'slot-watch', keys: { data: { corps: { 30: { cfg: {}, sessions: { 1647: { id: 1647 }, 1648: { id: 1648 } } } } } } },
     'pkrw:': { tool: 'raid-watch', keys: { raids: {}, reports: {}, events: { 11: { id: '11', raid_id: '2', event_type: 'leave', actor_username: 'John_Sneed', target_username: 'Benis', score_delta: 29, power_delta: -10, created_at: '2026-08-15T19:26:53Z', seenAt: T(400) } } } },
     'pkws:': { tool: 'ws-watch', keys: { census: { v: 1, startedAt: T(800), observedMs: 3600e3 * 200, frames: 257598, connects: 299, types: { chat: { presence: { n: 16850 }, message: { n: 445 } }, market: { quote: { n: 100 }, candle_update: { n: 50 } } }, presenceTotal: 12, clockType: 'quote.game_time' } } },
     'pkbw:': { tool: 'bar-watch', keys: { ui: { open: false } } },
@@ -406,8 +413,18 @@ has('education lists open courses with rewards', /\| CMT2230 \| law \+5 \|/);
 has('sleepers table', /\| Riley Klein \| Bartender \| Club \| Abortion \| 43 \| yes \|/);
 has('open leads exclude the gone', /### Open leads[\s\S]*\| Jamie Price \|/);
 check('...and gone leads are counted, not listed', !/\| Jordan Foster \|/.test(md) && /1 gone \(missed 1\)/.test(md), 'a gone lead was listed or not counted');
+check('...and a lead that expired while still listed is not open',
+  !/### Open leads\n\n[^#]*\| Quinn Hayes \|/.test(md)
+    && /\| open leads \| 1 \| Jamie Price in [^|]* · missed while still listed: Quinn Hayes \(last window closed [\d.]+ [hd] ago\) \|/.test(md)
+    && /Missed while still listed: Quinn Hayes \(Elections, window closed [\d.]+ [hd] ago\)/.test(md),
+  (md.match(/\| open leads \|[^\n]*/) || [''])[0]);
+has('...nor counted as gone', /3 leads ever seen; 1 gone \(missed 1\)/);
+has('an event with no endpoint is named by its kind', /\| \(status\) \| 2 \| active→jailed 1, jailed→active 1 \|[\s\S]*\| \(train\) \| 1 \| heart class 1 \|/);
+has('a skill gain with no endpoints reads as its type alone', /\| heart \| \+0\.472 \| 56\.26 \| train \|/);
+check('nothing in the brief prints "undefined" or "NaN"', !/undefined|NaN/.test(md), (md.match(/[^\n]*(undefined|NaN)[^\n]*/) || [''])[0]);
 has('shop stock movement is differenced', /\| Bay Area Auto \| San Francisco \| shop \| 2 \| .* \| 1 \| Sedan 49→47 \|/);
-has('blackjack edge is stated', /house edge 0\.459% over 550 deals; 3 hands in the ledger/);
+has('blackjack edge is stated, and hands kept as a map are counted', /house edge 0\.459% over 550 deals; 3 hands kept\./);
+has('...and slot sessions kept as a map', /Slots: 2 sessions kept\./);
 has('wire census is one line', /257,598 frames over 299 connections/);
 has('the comparison finds the money change', /\| money \| \$120,000 → \$154,054 \| \+34,054 \|/);
 has('...the skills that moved', /\| skills moved \| 2 \| heart \+6\.26, persuasion \+2\.87 \|/);

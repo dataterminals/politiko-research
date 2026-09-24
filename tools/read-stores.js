@@ -98,6 +98,14 @@ const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
 const collapse = (ep) => String(ep).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '{id}').replace(/#\d+/g, '#N').replace(/\/\d+(?=\/|$)/g, '/{id}');
 const count = (arr, key) => { const m = new Map(); for (const x of arr) { const k = key(x); m.set(k, (m.get(k) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1]); };
 const last = (arr) => (Array.isArray(arr) && arr.length ? arr[arr.length - 1] : undefined);
+/** Entries in a collection kept either as an array or as a map keyed by id — jack-watch's
+ *  hands and slot-watch's sessions are maps, and `.length` on one printed "NaN". */
+const size = (x) => (Array.isArray(x) ? x.length : x && typeof x === 'object' ? Object.keys(x).length : 0);
+/** A lead whose window closed while it was still listed. sleeper-watch drops a lead only
+ *  when a poll comes back without it, so one that expired unseen stays on the list with
+ *  `gone: false`. Same test as sleeper-watch's own leadState(): past its expiry and not
+ *  waiting on a later meeting. */
+const leadMissed = (l, now) => l.status !== 'lead' && !(ms(l.next_meeting_at) > now) && ms(l.expires_at) < now;
 
 const tool = (b, p, k) => b && b.tools && b.tools[p] && b.tools[p].keys ? b.tools[p].keys[k] : undefined;
 
@@ -199,9 +207,13 @@ function brief(b, prior) {
       rows.push(['sleepers able to embezzle', `${emb.length} of ${sl.length}`,
         [emb.map((s) => s.display_name).join(', '),
           "pays cash out of that sleeper's own effectiveness — a reading, not a lever"].filter(Boolean).join(' · ')]);
-      const leads = Object.values(sw.leads || {}).filter((l) => !l.gone);
+      const listed = Object.values(sw.leads || {}).filter((l) => !l.gone);
+      const leads = listed.filter((l) => !leadMissed(l, now));
+      const lapsed = listed.filter((l) => leadMissed(l, now));
       const meetings = leads.filter((l) => l.next_meeting_at).sort((a, c) => ms(a.next_meeting_at) - ms(c.next_meeting_at));
-      rows.push(['open leads', `${leads.length}`, meetings.slice(0, 3).map((l) => `${l.display_name} ${rel(l.next_meeting_at, now)}`).join('; ')]);
+      const closed = lapsed.map((l) => ms(l.expires_at)).sort((a, c) => c - a)[0];
+      rows.push(['open leads', `${leads.length}`, [meetings.slice(0, 3).map((l) => `${l.display_name} ${rel(l.next_meeting_at, now)}`).join('; '),
+        lapsed.length ? `missed while still listed: ${lapsed.map((l) => l.display_name).join(', ')} (last window closed ${rel(closed, now)})` : ''].filter(Boolean).join(' · ')]);
     }
     if (pl && pl.polls && pl.polls.length) {
       const cd = pl.polls.map((x) => ms(x.cooldown)).filter(Number.isFinite).sort((a, c) => c - a)[0];
@@ -688,11 +700,18 @@ function brief(b, prior) {
       const day = xp.events.filter((e) => now - e.t < 86400e3);
       h3('Last 24 h of activity');
       p(`${day.length} events in the last day (${xp.events.length} kept in total, oldest ${rel(xp.events[0].t, now)}).`, '');
-      table(['endpoint', 'n', 'outcomes'], count(day, (e) => collapse(e.ep)).slice(0, 15).map(([ep, n]) => [ep, n, count(day.filter((e) => collapse(e.ep) === ep), (e) => e.outcome || 'n/a').map(([o, m]) => `${o} ${m}`).join(', ')]));
+      // Not every event is an action. A status flip, a class and a finished course carry no
+      // endpoint, and grouped by `ep` they all printed as "undefined".
+      const what = (e) => (e.ep ? collapse(e.ep) : `(${e.kind || 'unknown'})`);
+      const result = (e) => e.outcome
+        || (e.kind === 'status' && e.from ? `${e.from}→${e.to}`
+          : e.kind === 'train' && e.key ? `${e.key}${e.mode ? ` ${e.mode}` : ''}`
+            : e.kind === 'edu' && e.code ? e.code : 'n/a');
+      table(['endpoint or event', 'n', 'outcomes'], count(day, what).slice(0, 15).map(([w, n]) => [w, n, count(day.filter((e) => what(e) === w), result).map(([o, m]) => `${o} ${m}`).join(', ')]));
     }
     if (xp && xp.deltas && xp.deltas.length) {
       h3('Latest skill gains');
-      table(['when', 'skill', 'Δ', 'to', 'attributed to'], xp.deltas.slice(-12).reverse().map((d) => [rel(d.t, now), d.key, signed(d.d, 3), num(d.to, 2), d.attrib ? `${d.attrib.type}: ${(d.attrib.eps || []).map(collapse).join(', ')}` : '']));
+      table(['when', 'skill', 'Δ', 'to', 'attributed to'], xp.deltas.slice(-12).reverse().map((d) => [rel(d.t, now), d.key, signed(d.d, 3), num(d.to, 2), d.attrib ? [d.attrib.type, (d.attrib.eps || []).map(collapse).join(', ')].filter(Boolean).join(': ') : '']));
     }
     if (xp && xp.sheetIssue) p('', `Sheet issue flagged: ${JSON.stringify(xp.sheetIssue)}.`);
     if (xp && xp.changeVerdict) p('', `Change verdict: ${xp.changeVerdict.kind} on ${xp.changeVerdict.key} (dates moved: ${xp.changeVerdict.datesMoved}).`);
@@ -709,9 +728,12 @@ function brief(b, prior) {
     const sl = Object.values((sw && sw.sleepers) || {});
     if (sl.length) { h3('Sleepers'); table(['name', 'archetype', 'site', 'issue', 'eff.', 'mine', 'recruited', 'advocate', 'embezzle', 'seen'], sl.map((s) => [s.display_name, s.archetype_name, s.site_name, s.issue, s.effectiveness, s.mine ? 'yes' : (s.recruiter_username || ''), iso(s.recruited_at), s.can_advocate_at ? rel(s.can_advocate_at, now) : 'n/a', s.can_embezzle_at ? rel(s.can_embezzle_at, now) : 'n/a', rel(s.lastSeen || s.facSeen, now)])); }
     const leads = Object.values((sw && sw.leads) || {});
-    const open = leads.filter((l) => !l.gone);
+    const listed = leads.filter((l) => !l.gone);
+    const open = listed.filter((l) => !leadMissed(l, now));
+    const lapsed = listed.filter((l) => leadMissed(l, now));
     if (open.length) { h3('Open leads'); table(['name', 'archetype', 'site', 'issue', 'status', 'meetings', 'next meeting', 'expires'], open.map((l) => [l.display_name, l.archetype_name, l.site_name, l.issue, l.status, l.meeting_count, l.next_meeting_at ? rel(l.next_meeting_at, now) : '', l.expires_at ? rel(l.expires_at, now) : ''])); }
-    if (leads.length) p('', `${leads.length} leads ever seen; ${leads.length - open.length} gone (${count(leads.filter((l) => l.gone), (l) => l.goneState || 'unknown').map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}).`);
+    if (lapsed.length) p('', `Missed while still listed: ${lapsed.map((l) => `${l.display_name} (${l.issue}, window closed ${rel(l.expires_at, now)})`).join('; ')}. sleeper-watch drops a lead only when a poll comes back without it, so these are dead, not open.`);
+    if (leads.length) p('', `${leads.length} leads ever seen; ${leads.length - listed.length} gone (${count(leads.filter((l) => l.gone), (l) => l.goneState || 'unknown').map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}).`);
     const ledger = (sw && sw.ledger) || [];
     if (ledger.length) {
       h3('Sleeper ledger (latest)');
@@ -765,8 +787,8 @@ function brief(b, prior) {
     if (qj && qj.casinos) {
       h3('Casinos');
       for (const [id, c] of Object.entries(qj.casinos)) p(`Casino ${id}: ${c.operational ? 'operational' : 'closed'}${c.wagering_suspended ? ', wagering suspended' : ''}; venues ${(c.venues || []).map((v) => v.location_name).join(', ')}; games ${(c.games || []).map((g) => `${g.key} (${g.status})`).join(', ')}.`);
-      if (bj && bj.edge) p(`Blackjack: rule set ${bj.edge.key}, house edge ${(bj.edge.edge * 100).toFixed(3)}% over ${num(bj.edge.deals)} deals; ${Object.values(bj.corps || {}).reduce((s, c) => s + ((c.hands || []).length), 0)} hands in the ledger.`);
-      if (sl && sl.corps) p(`Slots: ${Object.values(sl.corps).reduce((s, c) => s + ((c.sessions || []).length), 0)} sessions in the ledger.`);
+      if (bj && bj.edge) p(`Blackjack: rule set ${bj.edge.key}, house edge ${(bj.edge.edge * 100).toFixed(3)}% over ${num(bj.edge.deals)} deals; ${Object.values(bj.corps || {}).reduce((s, c) => s + size(c && c.hands), 0)} hands kept.`);
+      if (sl && sl.corps) p(`Slots: ${Object.values(sl.corps).reduce((s, c) => s + size(c && c.sessions), 0)} sessions kept.`);
     }
     const fams = count(Object.keys(mw), (k) => k.replace(/#\d+/g, '#N').replace(/::.*/, '').split('/').slice(0, 2).join('/'));
     if (fams.length) p('', `market-watch keeps ${Object.keys(mw).length} numeric series in ${fams.length} families: ${fams.slice(0, 14).map(([f, n]) => `${f} (${n})`).join(', ')}${fams.length > 14 ? ', …' : ''}.`);
