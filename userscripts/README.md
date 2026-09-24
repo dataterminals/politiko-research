@@ -24,7 +24,7 @@ bump; the table below is hand-kept and can drift.
 | Comms Move | 0.1.2 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.9.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.9.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.9.1 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 | Raid Watch | 0.8.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
 | Sleeper Watch | 0.10.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
 | Quick Jump | 0.8.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
@@ -718,6 +718,25 @@ history), clear.
 If you take actions without a reading after them, the panel says so — *"3 actions not
 measured yet"* — because a gain only becomes a number once a reading closes the window.
 Nothing is lost; click **home ↻** and it resolves.
+
+**The tables fit the panel (0.9.1).** Until then all three used auto layout, and on the
+bench, with a ledger shaped like the operator's, the actions table measured **1,693px**
+wide inside a 325px panel body. Disobedience's outcome tally and its six-skill XP list ran
+off to the right, and reading column one meant scrolling sideways.
+
+They now take the floor that slot-watch and jack-watch set:
+
+- fixed layout
+- column widths declared per table, summing to 100
+- a cell that doesn't fit ends in an ellipsis, with its whole value in a `title`
+
+The widths were sized on the bench against measured character widths. At the default size
+every ordinary value fits, and only the long outcome and XP lists truncate. At the resize
+floor (260px) something has to give, so counts and values keep priority. The outcome and XP
+lists put their largest entry first, so an ellipsis cuts the tail rather than the head.
+
+There are no draggable dividers; that is People Watch's refinement. The footer's buttons
+wrap onto a second line rather than clipping **clear** off the edge of a narrow panel.
 
 ## What are the home page's little green arrows?
 

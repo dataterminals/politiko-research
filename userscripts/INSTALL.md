@@ -23,7 +23,7 @@ update check — no reinstall.
 
 > [!WARNING]
 > Held out of the paste blocks below — these links do not serve current code yet:
-> - **XP Watch 0.9.0** — local file differs from `origin/main`; the raw link serves the older version.
+> - **XP Watch 0.9.1** — local file differs from `origin/main`; the raw link serves the older version.
 > - **Poll Watch 0.9.0** — local file differs from `origin/main`; the raw link serves the older version.
 >
 > Push, re-run the generator, then post.
@@ -100,7 +100,7 @@ Install Tampermonkey first, then click a link and confirm the prompt. Every one 
 |---|---|---|---|---|---|
 | 0 | (eye) | People Watch | 1.14.0 | who you've seen: last-online, city, rank, least-active first | [`people-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/people-watch.user.js) |
 | 1 | `ALGN` | Align Watch | 0.8.0 | your political compass on the home page, with a change log | [`align-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/align-watch.user.js) |
-| 2 | `XP` | XP Watch | 0.9.0 | ledger of your own stat and skill changes, action by action | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| 2 | `XP` | XP Watch | 0.9.1 | ledger of your own stat and skill changes, action by action | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 | 3 | `BARS` | Bar Watch | 0.4.0 | time to full for Energy, Juice and HP, with alerts you set | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
 | 4 | `JUMP` | Quick Jump | 0.8.0 | launcher for the 64 screens the sidebar can't reach | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 | 5 | `JACK` | Jack Watch | 0.13.0 | blackjack solved: the right play, the chances, the count, the money | [`jack-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/jack-watch.user.js) |

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.9.0
+// @version      0.9.1
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive, ambiguous, or — kept apart from the measured numbers — inferred by exclusion. Records which issue each disobedience, protest and poll was aimed at, read off the request the game itself sent. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -126,7 +126,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.9.0';
+  const VERSION = '0.9.1';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -1208,6 +1208,31 @@
     inferred: '#a3e635', // lime: between the measured green and the ambiguous amber, and neither
   };
 
+  // The three tables' column widths, in percent — each row sums to 100, so a fixed
+  // layout has no slack to hand out and no column is ever wider than it was declared.
+  // Sized on the bench, where 11px monospace is 6.05px a character plus 6px of cell
+  // padding, and a table is 305px wide at the default panel and 225px at the resize
+  // floor. At the default every ordinary value fits with room to spare: 15m, +0.4718,
+  // street_sense, "disobedience ×2 (avg)", the Δ SESSION header, terminal/exec, 2571.
+  // At the floor the content simply needs more than 225px (the skills table alone
+  // wants 257), so something truncates, and the counts and values are what is kept
+  // whole where it can be done — "25…" for 2571 reads like 25. The long outcome and
+  // xp lists are the ones built to end in an ellipsis. test-xp.js holds the sums.
+  const TABLE_COLS = {
+    feed: [9, 17, 27, 47],        // age · Δ · key · attributed to
+    skills: [30, 20, 18, 19, 13], // key · Δ session · Δ all · value · read
+    acts: [28, 14, 24, 34],       // endpoint · n · outcomes · xp/attempt
+  };
+  const colgroup = (name) => `<colgroup>${TABLE_COLS[name].map((w) => `<col style="width:${w}%">`).join('')}</colgroup>`;
+  // Every cell of those tables is built here, so every cell carries a title: a fixed
+  // layout truncates, and a value an ellipsis hid has to stay one hover away. `html`
+  // is for the one cell whose content is markup (the attribution label); its title is
+  // then given explicitly, as plain text.
+  const cell = (tag, text, { cls = '', style = '', title = text, html = null } = {}) =>
+    `<${tag}${cls ? ` class="${cls}"` : ''}${style ? ` style="${style}"` : ''} title="${esc(title)}">${html ?? esc(text)}</${tag}>`;
+  const plain = (html) => html.replace(/<[^>]+>/g, '')
+    .replace(/&(amp|lt|gt|quot);/g, (m, e) => ({ amp: '&', lt: '<', gt: '>', quot: '"' }[e]));
+
   const CSS = `
     /* FAB KIT v9 — shared verbatim block.
        Same rule as PANEL KIT: copy it in as it stands, and if it has to change,
@@ -1462,12 +1487,21 @@
     #pkxp header button{margin-left:auto;background:none;border:none;color:#a1a1aa;cursor:pointer;font-size:12px}
     #pkxp .bd{flex:1 1 auto;min-height:0;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:10px}
     #pkxp h4{margin:0;font-size:9px;letter-spacing:.14em;color:#71717a;text-transform:uppercase}
-    #pkxp table{border-collapse:collapse;width:100%}
-    #pkxp td,#pkxp th{padding:1px 6px 1px 0;text-align:left;font-weight:400;white-space:nowrap}
+    /* Fixed layout, the floor CLAUDE.md sets for any table in a panel, in the idiom
+       slot-watch and jack-watch use. Auto layout will not make a column narrower than
+       its content at any price: through 0.9.0 the actions table measured 1693px wide
+       in a 325px panel body, on the bench, with a real-shaped ledger. Here every table
+       declares its widths in a colgroup (TABLE_COLS, summing to 100), a cell that does
+       not fit ends in an ellipsis, and every cell carries its whole text in a title.
+       No draggable dividers: that is people-watch's refinement, and the floor is what
+       a margin needs. */
+    #pkxp table{border-collapse:collapse;width:100%;table-layout:fixed}
+    #pkxp td,#pkxp th{padding:1px 6px 1px 0;text-align:left;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #pkxp th{color:#71717a;font-size:9px;text-transform:uppercase;letter-spacing:.1em}
     #pkxp td.num{text-align:right;font-variant-numeric:tabular-nums}
+    #pkxp th.num{text-align:right}
     #pkxp .hint{color:#a1a1aa;background:#18181b;border:1px solid #27272a;border-radius:4px;padding:6px 8px}
-    #pkxp .ft{display:flex;gap:6px;padding:7px 10px;border-top:1px solid #27272a}
+    #pkxp .ft{display:flex;flex-wrap:wrap;gap:6px;padding:7px 10px;border-top:1px solid #27272a}
     #pkxp .ft button{background:#18181b;border:1px solid #3f3f46;border-radius:3px;color:#d4d4d8;
       font:10px ui-monospace,monospace;padding:3px 8px;cursor:pointer}
     #pkxp .ft button:hover{border-color:#71717a}
@@ -1533,31 +1567,40 @@
         One action between two reads gives that action's exact XP in every skill it moved.</div>` : ''}
       <div>
         <h4>latest deltas</h4>
-        ${feed.length === 0 ? '<div class="muted">none recorded yet</div>' : `<table>${feed.map((d) => `
-          <tr><td class="muted">${age(d.t)}</td>
-          <td class="num" style="color:${d.d >= 0 ? '#34d399' : '#f87171'}">${fmt(d.d)}</td>
-          <td>${esc(d.key)}</td>
-          <td style="color:${ATTRIB_COLOR[d.attrib.type] ?? '#a1a1aa'}" title="${esc(attribTitle(d.attrib))}">${attribText(d.attrib)}</td></tr>`).join('')}</table>`}
+        ${feed.length === 0 ? '<div class="muted">none recorded yet</div>' : `<table>${colgroup('feed')}${feed.map((d) => `
+          <tr>${cell('td', age(d.t), { cls: 'muted' })}
+          ${cell('td', fmt(d.d), { cls: 'num', style: `color:${d.d >= 0 ? '#34d399' : '#f87171'}` })}
+          ${cell('td', d.key)}
+          ${cell('td', '', {
+            style: `color:${ATTRIB_COLOR[d.attrib.type] ?? '#a1a1aa'}`,
+            // The 0.9.0 reason where a label owes one; otherwise the label itself.
+            title: attribTitle(d.attrib) || plain(attribText(d.attrib)),
+            html: attribText(d.attrib),
+          })}</tr>`).join('')}</table>`}
       </div>
       <div>
         <h4>skills · session / all-time</h4>
-        ${rows.length === 0 ? '<div class="muted">no measured changes yet</div>' : `<table>
-          <tr><th>key</th><th class="num">Δ session</th><th class="num">Δ all</th><th class="num">value</th><th>read</th></tr>
-          ${rows.slice(0, 14).map((r) => `<tr><td>${esc(r.k)}</td>
-            <td class="num">${Math.abs(r.s) > EPS ? fmt(r.s) : '·'}</td>
-            <td class="num">${fmt(r.a)}</td>
-            <td class="num">${r.last ? r.last.v.toFixed(2) : '—'}</td>
-            <td class="muted">${r.last ? age(r.last.t) : '—'}</td></tr>`).join('')}</table>`}
+        ${rows.length === 0 ? '<div class="muted">no measured changes yet</div>' : `<table>${colgroup('skills')}
+          <tr>${cell('th', 'key')}${cell('th', 'Δ session', { cls: 'num' })}${cell('th', 'Δ all', { cls: 'num' })}${cell('th', 'value', { cls: 'num' })}${cell('th', 'read')}</tr>
+          ${rows.slice(0, 14).map((r) => `<tr>${cell('td', r.k)}
+            ${cell('td', Math.abs(r.s) > EPS ? fmt(r.s) : '·', { cls: 'num' })}
+            ${cell('td', fmt(r.a), { cls: 'num' })}
+            ${cell('td', r.last ? r.last.v.toFixed(2) : '—', { cls: 'num' })}
+            ${cell('td', r.last ? age(r.last.t) : '—', { cls: 'muted' })}</tr>`).join('')}</table>`}
       </div>
       <div>
         <h4>actions · measured xp only</h4>
-        ${acts.length === 0 ? '<div class="muted">no action events yet</div>' : `<table>
-          <tr><th>endpoint</th><th class="num">n</th><th>outcomes</th><th>xp/attempt</th></tr>
+        ${acts.length === 0 ? '<div class="muted">no action events yet</div>' : `<table>${colgroup('acts')}
+          <tr>${cell('th', 'endpoint')}${cell('th', 'n', { cls: 'num' })}${cell('th', 'outcomes')}${cell('th', 'xp/attempt')}</tr>
           ${acts.map(([ep, a]) => {
-            const oc = Object.entries(a.outcomes).map(([k, v]) => `${esc(k)}:${v}`).join(' ') || '—';
-            const xp = Object.entries(a.xp).map(([k, x]) => `${esc(k)} ${fmt(x.sum / x.n)}(${x.n})`).join(' · ')
-              || `<span class="muted">${pending.some((p) => p.ep === ep) ? 'not measured yet' : 'no measured gain'}</span>`;
-            return `<tr><td>${esc(ep.replace(/^\/actions\//, ''))}</td><td class="num">${a.n}</td><td>${oc}</td><td>${xp}</td></tr>`;
+            // Biggest first, in both lists: in a narrow panel these cells end in an
+            // ellipsis, and the head of a truncated cell should be the entry that
+            // matters most — the commonest outcome, the best-sampled skill.
+            const oc = Object.entries(a.outcomes).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k}:${v}`).join(' ') || '—';
+            const xp = Object.entries(a.xp).sort((x, y) => y[1].n - x[1].n).map(([k, x]) => `${k} ${fmt(x.sum / x.n)}(${x.n})`).join(' · ');
+            return `<tr>${cell('td', shortEp(ep))}${cell('td', String(a.n), { cls: 'num' })}${cell('td', oc)}${xp
+              ? cell('td', xp)
+              : cell('td', pending.some((p) => p.ep === ep) ? 'not measured yet' : 'no measured gain', { cls: 'muted' })}</tr>`;
           }).join('')}</table>`}
       </div>
       <div class="muted">

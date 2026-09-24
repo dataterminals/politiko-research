@@ -158,6 +158,53 @@ ok('double-click clears the stored size, not just the position',
 // The render path must be gated on visibility (no work from an unfocused tab).
 ok('render is visibility-gated', SRC.includes("document.visibilityState !== 'visible'"));
 
+// CLAUDE.md: a table in a panel may ship without draggable dividers, never without fixed
+// layout — the horizontal scrollbar is the failure. Through 0.9.0 this panel's actions
+// table measured 1693px wide in a 325px body on the bench. 0.9.1 takes the floor
+// slot-watch and jack-watch set: fixed layout, declared widths summing to 100, an
+// ellipsis where a cell does not fit, and the whole value in a title.
+console.log('\n— 0.9.1: every table is fixed-layout, and every cell keeps its value —');
+ok('the panel\'s tables are table-layout: fixed', /#pkxp table\{[^}]*table-layout:fixed[^}]*\}/.test(SRC));
+ok('...and a cell that does not fit ends in an ellipsis rather than widening its column',
+  /#pkxp td,#pkxp th\{[^}]*white-space:nowrap;overflow:hidden;text-overflow:ellipsis[^}]*\}/.test(SRC));
+{
+  const opens = SRC.match(/<table/g) ?? [];
+  const declared = SRC.match(/<table>\$\{colgroup\('(feed|skills|acts)'\)\}/g) ?? [];
+  check('every table opens on a declared colgroup', [opens.length, declared.length], [3, 3]);
+}
+check('no cell is written by hand — every one goes through cell(), which always writes a title',
+  (SRC.match(/<t[dh][\s>]/g) ?? []).length, 0);
+ok('cell() writes the title unconditionally, defaulting to the cell\'s own text',
+  /const cell = \(tag, text, \{ cls = '', style = '', title = text, html = null \} = \{\}\) =>/.test(SRC)
+    && / title="\$\{esc\(title\)\}">\$\{html \?\? esc\(text\)\}<\/\$\{tag\}>`;/.test(SRC));
+ok('numeric headers sit over their numbers', /#pkxp th\.num\{text-align:right\}/.test(SRC));
+ok('the footer wraps instead of clipping a button at the resize floor', /#pkxp \.ft\{display:flex;flex-wrap:wrap;/.test(SRC));
+{
+  const T = new Function(`${cut('  const esc = (s)', '  const CSS = `')}
+    return { TABLE_COLS, colgroup, cell, plain, attribText, attribTitle };`)();
+  for (const [name, widths] of Object.entries(T.TABLE_COLS)) {
+    check(`${name}: declared widths sum to 100`, widths.reduce((s, w) => s + w, 0), 100);
+    check(`${name}: the colgroup declares one col per width`, (T.colgroup(name).match(/<col style="width:\d+%">/g) ?? []).length, widths.length);
+  }
+  // The colgroup has to match the cells the table actually draws, or a fixed layout
+  // hands the missing columns zero width and the last cell swallows the rest.
+  const seg = (name) => SRC.slice(SRC.indexOf(`colgroup('${name}')}`), SRC.indexOf('</table>', SRC.indexOf(`colgroup('${name}')}`)));
+  const count = (s, re) => (s.match(re) ?? []).length;
+  check('feed: four cells a row, four columns', count(seg('feed'), /cell\('td'/g), T.TABLE_COLS.feed.length);
+  check('skills: five headers, five cells a row, five columns',
+    [count(seg('skills'), /cell\('th'/g), count(seg('skills'), /cell\('td'/g)], [T.TABLE_COLS.skills.length, T.TABLE_COLS.skills.length]);
+  check('actions: four headers, four columns', count(seg('acts'), /cell\('th'/g), T.TABLE_COLS.acts.length);
+
+  check('a cell carries its text as its title, escaped once in each place',
+    T.cell('td', 'a"b<c', { cls: 'num' }), '<td class="num" title="a&quot;b&lt;c">a&quot;b&lt;c</td>');
+  check('...and even an empty cell writes the attribute', T.cell('th', ''), '<th title=""></th>');
+  const inferred = { type: 'inferred', ep: '/disobedience', n: 19, by: [{ ep: '/actions/poll', alone: 5 }] };
+  check('the inferred label is markup, and its plain text has none', T.plain(T.attribText(inferred)), '≈ disobedience ×19');
+  ok('...while its title stays the 0.9.0 reason', /^Inferred by exclusion, not measured\./.test(T.attribTitle(inferred)));
+  check('a label that owes no reason is titled with itself', T.attribTitle({ type: 'action', ep: '/disobedience', n: 2 }), '');
+  ok('...which is why the feed falls back to its plain text', /title: attribTitle\(d\.attrib\) \|\| plain\(attribText\(d\.attrib\)\)/.test(SRC));
+}
+
 // ---------------------------------------------------------------------------
 // 2. Slice the router / scrub / engine layer and drive it
 // ---------------------------------------------------------------------------
