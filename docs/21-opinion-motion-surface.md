@@ -316,7 +316,9 @@ made two claims — no leaning reaches ±3, *and* an untouched public does not d
 `read-stores`' Herald-against-polls join:
 
 > **2026-09-23, xp-watch 0.9.0:** from this version on it does. Each action now carries the
-> issue its request named, and `read-stores` and poll-watch 0.9.0 split a window's
+> issue its request named — and a disobedience its site and leaning too, which answers the
+> "neither the issue nor the leaning" further down for anything logged from now on. `read-stores`
+> and poll-watch 0.9.0 split a window's
 > disobedience into this issue, other issues, and any issue (logged earlier). See
 > [`10-xp-surface.md`](10-xp-surface.md). Everything below was logged before that, and
 > stays as unresolved as this section says.
