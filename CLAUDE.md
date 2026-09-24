@@ -120,9 +120,11 @@ artifacts/    gitignored: downloaded bundles, HARs, captures
   shares spare width over *every* column otherwise, so a panel wider than the total silently
   inflates all of them and none is the width it was dragged to). Once a table can be wider
   than its body, a repaint has to restore **both** scroll axes, not just `scrollTop`.
-  slot-watch and jack-watch take the first of those two and not the dividers: fixed layout
-  with declared widths that sum to 100, so their narrow numeric columns truncate with an
-  ellipsis and the table can never be wider than the panel. That is the floor — **a table
+  slot-watch, jack-watch and xp-watch take the first of those two and not the dividers:
+  fixed layout with declared widths that sum to 100, so their narrow numeric columns
+  truncate with an ellipsis and the table can never be wider than the panel. xp-watch's
+  three tables joined at 0.9.1, fenced in `tools/test-xp.js`; before that its actions table
+  measured 1,693px wide in a 325px panel body on the bench. That is the floor — **a table
   may ship without draggable dividers, but not without fixed layout**, because the
   horizontal scrollbar is the failure and the dividers are the refinement.
 - **Every toggle button is the same button.** One 38px square, one three- or four-letter
