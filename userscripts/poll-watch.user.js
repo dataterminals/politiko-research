@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — Poll Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.8.0
-// @description  Keeps every opinion-poll memo you run — timestamped in real and game time, with the bloc spread, a bucket-by-bucket delta against your last poll of that issue, the per-issue trend, and TSV/JSON export. Says whether you ran any disobedience inside that window, so a move you did not cause reads as one. Tells you when the poll cooldown in your own memo runs out, in the page by default and optionally as a desktop notification. Passive: it reads the memo the game already handed you and originates no requests.
+// @version      0.9.0
+// @description  Keeps every opinion-poll memo you run — timestamped in real and game time, with the bloc spread, a bucket-by-bucket delta against your last poll of that issue, the per-issue trend, and TSV/JSON export. Says whether you ran any disobedience inside that window, and since 0.9.0 how much of it was aimed at the issue you polled, so a move you did not cause reads as one. Tells you when the poll cooldown in your own memo runs out, in the page by default and optionally as a desktop notification. Passive: it reads the memo the game already handed you and originates no requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -33,13 +33,19 @@
  *
  *             Since 0.8.0, ONE key belonging to another of this repo's tools:
  *               `pkxp:ledger`               — xp-watch's own action log, which that
- *                                             script wrote from responses the game
- *                                             handed it. Read, never written, never
- *                                             removed. It supplies one fact and one
- *                                             only: how many of YOUR OWN actions fall
- *                                             between two of your polls. Without
- *                                             xp-watch installed the key is absent and
- *                                             the line simply does not appear.
+ *                                             script wrote from what the game handed
+ *                                             it. Read, never written, never removed.
+ *                                             It supplies two facts: how many of YOUR
+ *                                             OWN actions fall between two of your
+ *                                             polls, and (0.9.0) how many of your
+ *                                             disobedience actions among them named
+ *                                             the issue you polled — which xp-watch
+ *                                             0.9.0+ records from the request the
+ *                                             game sent. Of each event it reads the
+ *                                             time, kind, endpoint, outcome and issue.
+ *                                             Without xp-watch installed the key is
+ *                                             absent and the line simply does not
+ *                                             appear.
  *             Nothing outside `pkpl:` and that one key is read. Why it is worth a
  *             foreign key at all is under WHAT THE NUMBERS ARE, below.
  *
@@ -152,8 +158,15 @@
  * panel can rule out for free, and it is the operator herself. xp-watch already logs
  * every action she takes, with a timestamp. If NONE of her actions fall inside the
  * window, whatever moved is the world and not her, and the panel says so. If some do,
- * it says how many and stops there: the log is not per-issue, so actions inside the
- * window prove nothing either way and are reported as a count, never as a cause.
+ * it says how many and stops there: actions inside the window prove nothing either way
+ * and are reported as a count, never as a cause.
+ *
+ * 0.9.0: the count gains a second half. Through xp-watch 0.8.0 the log was not
+ * per-issue, so twenty disobediences on LGBT Rights read the same inside a Civil Rights
+ * window as twenty on Civil Rights. xp-watch 0.9.0 records the issue each action's
+ * request named, so the line now also says how many of her disobedience actions were
+ * aimed at THIS issue. Events logged before 0.9.0 name none; they are counted apart and
+ * never assigned to one. Still a count, still never a cause.
  *
  * Two silences that are deliberate, because a flag that cannot be wrong is worth more
  * than a flag that is usually right:
@@ -435,6 +448,14 @@
   // this" line could never once be true.
   const READING = /^\/actions\/poll/;
 
+  // The per-issue half (0.9.0), taken over disobedience — the one action docs/21
+  // measures moving a poll — and keyed the way xp-watch names issues: a slug from the
+  // request (`civil-rights`) and a memo's name (`Civil Rights`) are one issue. Both
+  // constants are tools/read-stores.js's too, and test-read-stores.js fails on a drift.
+  const AIMED = /^\/disobedience$/;
+  const ISSUE_KEY = /[^a-z]/g;
+  const issueKey = (s) => String(s || '').toLowerCase().replace(ISSUE_KEY, '');
+
   /**
    * How many of YOUR OWN actions xp-watch logged inside a window, and whether its log
    * reaches far enough back for that number to mean anything.
@@ -443,26 +464,40 @@
    *                         drawn. Absence of evidence is not a zero.
    *   { covered: false }    the log's oldest entry is NEWER than the window's start, so
    *                         the window outruns the evidence. Says so; counts nothing.
-   *   { covered: true, n }  n actions of yours fall in the window. The log is not
-   *                         per-issue, so n > 0 only rules the question open again —
-   *                         it is never reported as a cause.
+   *   { covered: true, n }  n actions of yours fall in the window. n > 0 only rules the
+   *                         question open again — it is never reported as a cause.
+   *
+   * With `issue`, a covered window also splits its disobedience: `here` named this
+   * issue, `elsewhere` named another, `unknown` named none (logged before xp-watch
+   * 0.9.0). `named` is false when nothing in the window names an issue at all, and then
+   * the split is not drawn — every one of those would be "unknown", which is the 0.8.0
+   * line again with more words.
    */
-  const windowActions = (fromT, toT) => {
+  const windowActions = (fromT, toT, issue) => {
     const led = readJSON(FOREIGN.xpLedger, null);
     const events = led && Array.isArray(led.events) ? led.events : null;
     if (!events || !events.length) return null;
 
-    let oldest = Infinity, n = 0;
+    let oldest = Infinity, n = 0, here = 0, elsewhere = 0, unknown = 0;
+    const k = issueKey(issue);
     for (const e of events) {
       const t = e && Number(e.t);
       if (!Number.isFinite(t)) continue;
       if (t < oldest) oldest = t;
       if (e.kind !== 'action') continue;
       if (READING.test(String(e.ep || ''))) continue;
-      if (t > fromT && t <= toT) n++;
+      if (t > fromT && t <= toT) {
+        n++;
+        if (AIMED.test(String(e.ep || ''))) {
+          if (e.issue == null || e.issue === '') unknown++;
+          else if (k && issueKey(e.issue) === k) here++;
+          else elsewhere++;
+        }
+      }
     }
     if (!Number.isFinite(oldest)) return null;
-    return oldest > fromT ? { covered: false, n: null, oldest } : { covered: true, n, oldest };
+    if (oldest > fromT) return { covered: false, n: null, oldest };
+    return { covered: true, n, oldest, here, elsewhere, unknown, named: here + elsewhere > 0 };
   };
 
   const issuesSeen = () => {
@@ -1114,14 +1149,18 @@
    *
    * The wording is chosen so that each state claims exactly what it knows. "no actions
    * of yours" is a fact about her; it is never upgraded to a fact about the world, and
-   * "N of yours" is never downgraded to a cause, because the log is not per-issue.
+   * "N of yours" is never downgraded to a cause — not even "N on this issue", which
+   * places her at work on the issue and says nothing about what moved the buckets.
    */
   const windowLine = (p, prev, fine) => {
     const row = el('div', 'pkpw-row');
     row.style.marginTop = '5px';
+    // Panels live in the margins: in a narrow one the count drops to its own line
+    // rather than squeezing the window length out of the row.
+    row.style.flexWrap = 'wrap';
     row.append(el('span', 'pkpw-faint', `window · ${dur(p.t - prev.t)}`));
 
-    const w = windowActions(prev.t, p.t);
+    const w = windowActions(prev.t, p.t, p.issue);
     const right = el('span', 'pkpw-faint', '');
     if (!w) {
       // No xp-watch, or nothing logged yet. Say what the deltas are against and stop.
@@ -1135,10 +1174,18 @@
       right.style.color = '#34d399';
       right.title = 'xp-watch logged none of your actions in this window, so whatever moved '
         + 'here, you did not move it.';
-    } else {
+    } else if (!w.named) {
       right.textContent = `${w.n} action${w.n === 1 ? '' : 's'} of yours`;
-      right.title = 'Your own actions in this window, across every issue — xp-watch\'s log '
-        + 'does not record which issue an action was aimed at, so this is a count, not a cause.';
+      right.title = 'Your own actions in this window, across every issue — none of the ones logged '
+        + 'here names the issue it was aimed at (xp-watch below 0.9.0 did not record it), so this '
+        + 'is a count, not a cause.';
+    } else {
+      right.textContent = `${w.n} action${w.n === 1 ? '' : 's'} of yours · ${w.here} on this issue`;
+      right.title = `Your own actions in this window: ${w.n} of every kind. Of your disobedience, `
+        + `${w.here} named this issue and ${w.elsewhere} named another`
+        + `${w.unknown ? `; ${w.unknown} ${w.unknown === 1 ? 'was' : 'were'} logged before xp-watch 0.9.0 and `
+          + `name${w.unknown === 1 ? 's' : ''} none, so ${w.unknown === 1 ? 'it' : 'they'} could be on any` : ''}. `
+        + 'A count, not a cause: it places you at work on the issue, not behind whatever moved.';
     }
     row.append(right);
     return row;

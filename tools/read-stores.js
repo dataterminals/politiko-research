@@ -93,7 +93,12 @@ const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : 'n/a');
 const signed = (x, d = 0) => (x > 0 ? '+' : '') + num(x, d);
 const cell = (s) => String(s == null ? '' : s).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 const trunc = (s, n) => { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
-const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+// One issue, three spellings: disobedience sends a slug (`civil-rights`), a poll names it
+// (`Civil Rights`), and ActivismPage labels one of them differently again (`Police` for
+// `Police Behavior`). Lower-cased letters only joins all 20 (docs/10, 2026-09-23). xp-watch
+// and poll-watch key issues the same way; test-read-stores.js fails if ISSUE_KEY drifts.
+const ISSUE_KEY = /[^a-z]/g;
+const norm = (s) => String(s || '').toLowerCase().replace(ISSUE_KEY, '');
 /** /combat/<uuid>/action -> /combat/{id}/action; …/#584 -> …/#N */
 const collapse = (ep) => String(ep).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '{id}').replace(/#\d+/g, '#N').replace(/\/\d+(?=\/|$)/g, '/{id}');
 const count = (arr, key) => { const m = new Map(); for (const x of arr) { const k = key(x); m.set(k, (m.get(k) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1]); };
@@ -425,11 +430,14 @@ function brief(b, prior) {
   // two. test-read-stores.js holds the spot-check: against the 2026-09-17 bundle's clock the
   // impeachment of June 21, Y15 lands at 2026-09-13 04:46Z.
   //
-  // Adjacency, in the sense "Court and the Record" means it, and with one gap more in it:
-  // xp-watch's ledger keeps an action's endpoint and outcome and never the issue it was
-  // aimed at, so the count below is every disobedience action in the window, on any issue.
-  // The wording is fenced the same way — test-read-stores.js fails if this section ever
-  // says one thing moved another.
+  // Adjacency, in the sense "Court and the Record" means it. Through xp-watch 0.8.0 the
+  // ledger kept an action's endpoint and outcome and never the issue it was aimed at, so
+  // this count was every disobedience action in the window, on any issue. From 0.9.0 an
+  // event carries the issue its request named, and a window's count splits three ways:
+  // on the row's issue, on other issues, and — for events logged before 0.9.0 — on any
+  // issue, counted apart and never assigned to one. A window with no named event reads
+  // exactly as it always did. The wording is fenced the same way — test-read-stores.js
+  // fails if this section ever says one thing moved another.
   h('The Herald against the polls');
   guard('herald', () => {
     const gw = tool(b, 'pkgw:', 'data');
@@ -486,16 +494,34 @@ function brief(b, prior) {
     // A poll is a reading, not an act, and the poll that CLOSES a window is logged inside
     // it — counting it would mean "none" could never once be true.
     const READING = /^\/actions\/poll/;
+    // The actions the per-issue split is taken over: disobedience, the one action
+    // docs/21 measures moving a poll. poll-watch splits the same set with the same key,
+    // and test-read-stores.js fails if AIMED drifts between the two files.
+    const AIMED = /^\/disobedience$/;
     const evs = ((xp && xp.events) || []).filter((e) => e && Number.isFinite(ms(e.t)));
     const oldestEv = evs.length ? Math.min(...evs.map((e) => ms(e.t))) : null;
-    const actsIn = (t0, t1) => {
+    const named = (e) => e.issue != null && e.issue !== '';
+    const actsIn = (t0, t1, issue) => {
       if (!xp || !Array.isArray(xp.events)) return 'no ledger';
       const inWin = evs.filter((e) => e.kind === 'action' && !READING.test(String(e.ep || '')) && ms(e.t) > t0 && ms(e.t) <= t1);
-      const dis = inWin.filter((e) => collapse(e.ep) === '/disobedience');
-      const ok = dis.filter((e) => String(e.outcome || '').startsWith('success')).length;
+      const dis = inWin.filter((e) => AIMED.test(collapse(String(e.ep || ''))));
+      const okOf = (arr) => arr.filter((e) => String(e.outcome || '').startsWith('success')).length;
       const floor = oldestEv != null && t0 < oldestEv;
       if (!inWin.length) return floor ? 'none kept (the ledger starts inside this window)' : '**none**';
-      return `${floor ? '≥ ' : ''}${dis.length}${inWin.length > dis.length ? ` of ${inWin.length}` : ''} (${ok} ok)`;
+      // No event in the window names an issue: the ledger is older than xp-watch 0.9.0
+      // here, and the cell reads as it always has — every disobedience, on any issue.
+      if (!dis.some(named)) return `${floor ? '≥ ' : ''}${dis.length}${inWin.length > dis.length ? ` of ${inWin.length}` : ''} (${okOf(dis)} ok)`;
+      // Same test as poll-watch's windowActions: a key that normalises to nothing
+      // matches nothing, so a row with no usable issue can never collect "here".
+      const k = norm(issue);
+      const here = dis.filter((e) => named(e) && k && norm(e.issue) === k);
+      const elsewhere = dis.filter((e) => named(e) && !(k && norm(e.issue) === k));
+      const unknown = dis.filter((e) => !named(e));
+      let s = `${floor ? '≥ ' : ''}${here.length} on this issue (${okOf(here)} ok)`;
+      if (unknown.length) s += ` + ${unknown.length} on any issue (${okOf(unknown)} ok)`;
+      if (elsewhere.length) s += ` · ${elsewhere.length} on other issues`;
+      if (inWin.length > dis.length) s += ` · ${inWin.length} actions in all`;
+      return s;
     };
     const meanPair = (a, c) => { const m0 = pollMean(a.fine), m1 = pollMean(c.fine); return m0 == null || m1 == null ? ['n/a', 'n/a'] : [`${num(m0, 3)} → ${num(m1, 3)}`, signed(m1 - m0, 3)]; };
 
@@ -516,7 +542,7 @@ function brief(b, prior) {
       const SHOW = 16;
       table(['issue', 'from', 'to', 'wide', 'mean', 'Δ mean', 'World entries', 'spun, newest first', 'our actions'],
         wins.slice(0, SHOW).map((w) => [w.issue, iso(w.t0), iso(w.t1), span(w.t1 - w.t0), w.mean[0], w.mean[1],
-          w.st.length ? `${w.st.length} — ${tally(w.st)}` : '0', listed(w.st), actsIn(w.t0, w.t1)]));
+          w.st.length ? `${w.st.length} — ${tally(w.st)}` : '0', listed(w.st), actsIn(w.t0, w.t1, w.issue)]));
       if (wins.length > SHOW) p('', `${wins.length - SHOW} older windows kept, not listed.`);
     }
 
@@ -525,11 +551,11 @@ function brief(b, prior) {
       [...byIssue.values()].map((arr) => last(arr)).sort((a, c) => ms(a.t) - ms(c.t)).map((a) => {
         const t0 = ms(a.t), st = dated.filter((x) => x.real > t0 && x.real <= now);
         const m = pollMean(a.fine);
-        return [a.issue, iso(t0), m == null ? 'n/a' : num(m, 3), span(now - t0), st.length ? `${st.length} — ${tally(st)}` : '0', listed(st), actsIn(t0, now)];
+        return [a.issue, iso(t0), m == null ? 'n/a' : num(m, 3), span(now - t0), st.length ? `${st.length} — ${tally(st)}` : '0', listed(st), actsIn(t0, now, a.issue)];
       }));
     p('', '_Nothing has closed these windows, so no row here is a measurement. It is what a second poll on that issue would be measuring against, at 5 energy and $1,000 the focus group._');
 
-    p('', `_Adjacency only, and thinner than the Court's. A World entry is listed against a window when the date the Herald prints on it falls inside that stretch. The paper never says which issue a story is about, a poll never says what moved it, and xp-watch's ledger keeps an action's endpoint and its outcome and not the issue it was aimed at — so "our actions" is every disobedience action in the window, on any issue, and a busy stretch does not say which issue was busy. Where a second number appears beside it, that is every action of yours of any kind, the set poll-watch 0.8.0's memo counts; a bold **none** means neither found anything at all. One column is measured: the buckets are integers and a repeat poll on an untouched issue comes back identical to the digit (docs/21-opinion-motion-surface.md), so a Δ here is real even where nothing in the row accounts for it._`);
+    p('', `_Adjacency only, and thinner than the Court's. A World entry is listed against a window when the date the Herald prints on it falls inside that stretch. The paper never says which issue a story is about, and a poll never says what moved it. "Our actions" counts disobedience. From xp-watch 0.9.0 the ledger keeps the issue each action's request named, so a cell reads "on this issue" for the ones aimed at the row's issue, "on other issues" for the ones aimed elsewhere, and "on any issue" for the ones logged before 0.9.0 — those name no issue and are never assigned to one; "actions in all" is every action of yours of any kind, the set poll-watch's memo counts. A cell that names no issue is a stretch the ledger holds only pre-0.9.0 events for, and reads as it always has: every disobedience action in the window, on any issue, with every action of any kind beside it when anything else happened too. A bold **none** means nothing of yours at all. Even "on this issue" is a count and not a verdict: it places the operator at work on the issue, and says nothing about what moved the buckets. One column is measured: the buckets are integers and a repeat poll on an untouched issue comes back identical to the digit (docs/21-opinion-motion-surface.md), so a Δ here is real even where nothing in the row accounts for it._`);
   });
 
   // -- world ----------------------------------------------------------------------------
@@ -682,10 +708,15 @@ function brief(b, prior) {
         const ok = Object.entries(a.out).filter(([o]) => o.startsWith('success')).reduce((s, [, n]) => s + n, 0);
         const jail = Object.entries(a.out).filter(([o]) => o.includes('jailed')).reduce((s, [, n]) => s + n, 0);
         const hosp = Object.entries(a.out).filter(([o]) => o.includes('hospital')).reduce((s, [, n]) => s + n, 0);
-        const yields = Object.entries(a.xp).map(([sk, x]) => [sk, x.sum / (a.n || 1)]).sort((p1, p2) => p2[1] - p1[1]).slice(0, 3).map(([sk, y]) => `${sk} ${y.toFixed(3)}`).join(', ');
+        // Per MEASURED attempt: `x.n` counts the attempts that sat in a clean window, and
+        // the rest were never measured, not measured at zero. Dividing by every attempt
+        // (`a.n`) is what printed one +15 writing sample as "0.577 per poll" across 26
+        // polls, and halved every disobedience yield. The n is printed so a single sample
+        // looks like one.
+        const yields = Object.entries(a.xp).map(([sk, x]) => [sk, x.sum / (x.n || 1), x.n]).sort((p1, p2) => p2[1] - p1[1]).slice(0, 3).map(([sk, y, n]) => `${sk} ${y.toFixed(3)} (n=${num(n)})`).join(', ');
         return [k, num(a.n), judged ? pct(ok, judged) : 'n/a', jail, hosp, yields];
       });
-      table(['action', 'n', 'success', 'jailed', 'hospitalised', 'xp per action (top 3)'], rows);
+      table(['action', 'n', 'success', 'jailed', 'hospitalised', 'xp per measured attempt (top 3)'], rows);
     }
     if (xp && xp.mastery) { h3('Mastery'); table(['action', 'level', 'since', 'steps recorded'], Object.entries(xp.mastery).map(([k, m]) => [k, m.v, m.since, (m.steps || []).length])); }
     if (xp && xp.eduCourses) {
@@ -711,7 +742,21 @@ function brief(b, prior) {
     }
     if (xp && xp.deltas && xp.deltas.length) {
       h3('Latest skill gains');
-      table(['when', 'skill', 'Δ', 'to', 'attributed to'], xp.deltas.slice(-12).reverse().map((d) => [rel(d.t, now), d.key, signed(d.d, 3), num(d.to, 2), d.attrib ? [d.attrib.type, (d.attrib.eps || []).map(collapse).join(', ')].filter(Boolean).join(': ') : '']));
+      // What each label stands on, in the same terms xp-watch's panel uses: an endpoint
+      // for a measured row, the endpoints for an ambiguous one, and for an inferred one
+      // the endpoints ruled out and how many solo attempts ruled each out. Inferred rows
+      // are xp-watch 0.9.0's, and they never enter the per-action yields above.
+      const eps = (list) => [...new Set((list || []).map((e) => collapse(e)))].join(', ');
+      const label = (a) => {
+        if (!a) return '';
+        if (a.type === 'action') return `action: ${collapse(a.ep)}${a.n > 1 ? ` ×${a.n}` : ''}`;
+        if (a.type === 'inferred') return `inferred by exclusion: ${collapse(a.ep)}${a.n > 1 ? ` ×${a.n}` : ''} — ruled out ${(a.by || []).map((b) => `${collapse(b.ep)} (alone ${b.alone}×, never moved it)`).join(', ')}`;
+        if (a.type === 'ambiguous') return `ambiguous: ${eps(a.eps)}`;
+        return [a.type, a.note].filter(Boolean).join(': ');
+      };
+      table(['when', 'skill', 'Δ', 'to', 'attributed to'], xp.deltas.slice(-12).reverse().map((d) => [rel(d.t, now), d.key, signed(d.d, 3), num(d.to, 2), label(d.attrib)]));
+      const types = count(xp.deltas, (d) => (d.attrib && d.attrib.type) || 'unlabelled');
+      p('', `Across all ${num(xp.deltas.length)} deltas kept: ${types.map(([k, n]) => `${k} ${num(n)}`).join(', ')}. Only \`action\` rows feed the yields above; \`inferred\` rows are a reading of the evidence, not a measurement.`);
     }
     if (xp && xp.sheetIssue) p('', `Sheet issue flagged: ${JSON.stringify(xp.sheetIssue)}.`);
     if (xp && xp.changeVerdict) p('', `Change verdict: ${xp.changeVerdict.kind} on ${xp.changeVerdict.key} (dates moved: ${xp.changeVerdict.datesMoved}).`);

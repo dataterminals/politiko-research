@@ -24,13 +24,13 @@ bump; the table below is hand-kept and can drift.
 | Comms Move | 0.1.2 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.9.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.8.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.9.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 | Raid Watch | 0.8.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
 | Sleeper Watch | 0.10.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
 | Quick Jump | 0.8.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
 | World Watch | 0.6.0 | [`world-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/world-watch.user.js) |
 | Gov Watch | 0.7.0 | [`gov-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/gov-watch.user.js) |
-| Poll Watch | 0.8.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
+| Poll Watch | 0.9.0 | [`poll-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/poll-watch.user.js) |
 | Shop Watch | 0.5.0 | [`shop-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/shop-watch.user.js) |
 | Bar Watch | 0.4.0 | [`bar-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/bar-watch.user.js) |
 | Slot Watch | 0.3.0 | [`slot-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/slot-watch.user.js) |
@@ -638,12 +638,53 @@ the panel just diffs what arrives.
 | `education` | a course completion's declared reward, matched to the catalog |
 | an endpoint | **exactly one** action sat in the window between two readings — honest per-action XP, and the per-action averages are built only from these |
 | `passive` | no action in the window; labelled `jailed`/`traveling` when the status poll saw one (street sense ticks in jail) |
-| `ambiguous ×N` | N actions in the window. Kept and shown, **never averaged into per-action stats** — grind blocks between two distant readings land here, which is correct |
+| `ambiguous ×N` | N actions in the window. Kept and shown, **never averaged into per-action stats** — grind blocks between two distant readings land here, which is correct. Hover it for the endpoints |
+| `≈ endpoint ×N` | *inferred by exclusion* (0.9.0), in lime italics — an ambiguous window where every endpoint but one has been watched alone at least 5 times and never moved this skill, and the one left is known to award it. Hover it for what was ruled out and on how many solo attempts. **Never averaged into per-action stats either** |
 
 **Grinding one action type in a block is a valid measurement**, not a spoiled one. If
 every action between two readings is the same one, the total belongs to it and the
 per-attempt figure is total ÷ N — shown as `disobedience ×3 (avg)`. Only *mixing*
 different actions in a window costs you the split, and that shows as `ambiguous`.
+
+**The inferred label is off until it has evidence, on purpose.** Since 0.9.0 a window
+holding one kind of action counts its attempts against every skill the reading covered,
+*moved or not*. Before that, a poll that never trained street sense and a poll whose street
+sense had never been read looked the same. The most common ambiguous window in practice is
+a poll and then a disobedience burst: 37 of 135 rows in the operator's ledger. That one
+starts resolving after five polls that each had a home ↻ after them before the burst. Those
+five are clean measurements anyway. The full rule and its reasoning are in
+[`docs/10-xp-surface.md`](../docs/10-xp-surface.md).
+
+## What an action was aimed at (0.9.0)
+
+Through 0.8.0 the log said *disobedience, success* and nothing else: a burst on Civil
+Rights and a burst on LGBT Rights were the same rows. Now each action carries what its
+request named. The game's own client sent it; xp-watch reads the copy it already holds:
+
+| action | recorded |
+|---|---|
+| disobedience | `issue`, `site`, `leaning` |
+| start a protest | `issue`, `stance` |
+| join a protest | `side`, and `issue` if this page load saw that protest listed |
+| graffiti | `site` (the wall), `side` |
+| opinion poll | `issue` |
+
+The issue is stored under the game's own name (`Civil Rights`, `Police Behavior`) once
+you have opened the opinion-poll screen, which is where the list of names comes from.
+Before that it is stored as sent (`civil-rights`), and every consumer treats the two
+spellings as one issue. Nothing else in a request is read. No body is read on any other
+endpoint, and none at all for an action the game refused. The header's `Request bodies`
+stanza lists it field by field.
+
+What it is for:
+
+- **Poll Watch's memo** now says how much of your disobedience inside a window was aimed at
+  the issue you polled.
+- **`tools/read-stores.js`** splits the Herald table's "our actions" the same way.
+- **copy report** has an `aimed at` line.
+- The **"not measured yet"** hint names the issue beside the endpoint.
+
+Anything logged before 0.9.0 has no issue and stays *any issue*, never a zero.
 
 That's how the first number this tool ever measured came out of ordinary play: **+0.02
 persuasion and +0.02 street sense per civil disobedience.**
@@ -729,9 +770,15 @@ __pkxw.clear()     // wipe it
 Full disclosure — reads, storage, network — is in the header comment at the top of
 [`xp-watch.user.js`](xp-watch.user.js). In short: it reads your own
 `/api/users/<you>/stats`, `/api/train`, `/api/education*`, `/api/user/status`,
-`/api/user/progression` responses and the responses of actions you submit, stores your
-own numbers under `pkxp:` keys in your browser, ignores other players' data entirely,
-and sends nothing anywhere.
+`/api/user/progression` responses and the responses of actions you submit. Since 0.9.0 it
+also reads:
+
+- the named fields of five of those actions' request bodies, listed above
+- the poll screen's list of issue names
+- each protest's id and issue, from the protest screens, held in memory and never stored
+
+It stores your own numbers under `pkxp:` keys in your browser, ignores other players' data
+entirely, and sends nothing anywhere.
 
 ---
 
@@ -1582,7 +1629,8 @@ written) to count how many of your own actions fall inside the window:
 | the line reads | what it means |
 |---|---|
 | `no actions of yours` | you did not move this. Whatever did is the world |
-| `4 actions of yours` | a count, across **every** issue — the log does not record which issue an action was aimed at, so this never claims a cause |
+| `4 actions of yours · 1 on this issue` | since 0.9.0: four actions of any kind, and of your disobedience, one named this issue. Hover for how many named another, and how many were logged before xp-watch 0.9.0 and name none. Still a count, never a cause |
+| `4 actions of yours` | a count, across **every** issue — nothing in the window names the issue it was aimed at (xp-watch below 0.9.0 did not record it), so this never claims a cause |
 | `log starts mid-window` | xp-watch's oldest entry is newer than your previous poll; the window outruns the evidence, so nothing is counted |
 | `Δ vs your last poll` | xp-watch is not installed. No line is drawn, because zero would be a claim |
 
@@ -1673,7 +1721,8 @@ people-watch also writes — and 0.5.0 carries the old ones across once on first
 **The prefix collision** near the end of this file.
 
 Since 0.8.0 it also *reads* one key that is not its own: `pkxp:ledger`, xp-watch's action
-log, for the window line above. Read, never written, never removed — `test-placement.js`
+log, for the window line above. Since 0.9.0 that includes each event's `issue`, which
+xp-watch 0.9.0+ records. Read, never written, never removed — `test-placement.js`
 finds the constant it binds that key to and fails the build if it appears beside a writing
 verb, the same way it holds time-bridge to reading `pktw:samples`. Without xp-watch the key
 is absent and the line simply does not appear.
@@ -2820,12 +2869,24 @@ only until someone adds it back:
   never transmitted, and refuse the refresh feature in writing — where it will be read by
   whoever next asks for it. Since 2026-09-11 it also **runs** the file against a stub
   store and asks for each reading and each credential by name — see *The scrub that ate
-  canvass* below.
+  canvass* below. Since xp-watch 0.9.0 that stub carries action events with `issue`,
+  `site`, `leaning`, `side` and `stance`, and the request-body names `issue_id`, `site_key`
+  and `location_key`. All of them have to come out of the collector untouched and
+  unredacted, because the collector splits key names into tokens and none of those tokens
+  is a credential word.
 
 - `test-read-stores` fences [`tools/read-stores.js`](../tools/read-stores.js), the reader
   — no network, no browser, no child process, one file write and only behind `--out` — and
   runs it against a synthetic bundle covering every section, a prior for the comparison,
-  and an empty bundle. See *The reader* below.
+  and an empty bundle. See *The reader* below. It also holds several constants the same
+  across files, because the brief and the panels print numbers for the same windows:
+
+  - `READING` and the half-open window edges, against poll-watch
+  - since 0.9.0, `AIMED` (the actions the per-issue split is taken over), against poll-watch
+  - since 0.9.0, `ISSUE_KEY` (when two spellings are one issue), against poll-watch *and*
+    xp-watch
+
+  A drift in any of them makes the memo and the brief disagree about one window.
 
 - `test-audit-jack` fences [`tools/audit-jack.js`](../tools/audit-jack.js), the offline
   blackjack audit — no network, no browser, no child process, no file write at all, and no

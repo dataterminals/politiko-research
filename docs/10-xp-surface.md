@@ -574,6 +574,154 @@ resolve is invisible. The 0.1.4 candidate: ingest the faction-jobs GET — train
 results as declared award events (education-style), plus scrubbed samples of the payload
 to map `result_metadata` and lobbying outcomes properly.
 
+## What an action was aimed at — xp-watch 0.9.0 (2026-09-23)
+
+**Why.** Through 0.8.0 an action event was `{ t, kind: 'action', ep, outcome }`: the
+endpoint and the outcome, never the issue. On 2026-09-24 the operator ran two Civil Rights
+focus groups around two disobedience bursts — 19 actions (12 ok), then 28 (18 ok); neutral
+lost 3 points each time and far right held at 59 — and the result could only be read after
+asking the operator which issue the bursts were on. `tools/read-stores.js` said the same
+limit in print: its Herald join counted "every disobedience action in the window, on any
+issue".
+
+### Where the aim is (measured in the 2026-09-23 pull, zero game contact)
+
+The client sends the target in the request body, and every body goes through one wrapper:
+
+```
+R.post = (url, t) => zi(url, { method: 'POST', body: JSON.stringify(t) })
+zi(url, init)     →  fetch(`${base}${url}`, { ...init, headers: { … } })
+```
+
+So `fetch` always receives a **string URL and an init whose `body` is a JSON string**. A 401
+retries through `zi` once more with the same init; the first reply is not `ok`, so a tap
+that only reads successes sees one action, not two. **The client has no XHR path**: the only
+`XMLHttpRequest` in the pull is phaser's asset loader, which is GET-only. Nothing is sent
+as a `Request` object.
+
+| call site (chunk, 2026-09-23) | body |
+|---|---|
+| ActivismPage | `POST /disobedience { issue_id, site_key, leaning }` — `issue_id` defaults to the slug `free-speech` |
+| ProtestPage (create) | `POST /protests { issue_id, stance, location_id }` |
+| ProtestPage, ProtestDetailPage (join) | `POST /protests/{id}/join { side }` |
+| GraffitiPage | `POST /actions/graffiti { location_key, side, mode }` — `side` defaults to `R` |
+| OpinionPollPage | `POST /actions/poll { issue, method }` — `issue` is a **name** from `GET /actions/poll/issues` |
+
+A join names only a side. Its issue is on the protest itself: `GET /protests[?location_id=]`
+rows and `GET /protests/{id}` both carry `issue` and `issue_id`, and both screens refetch
+while open (15 s and 5 s).
+
+**The poll's reply names its issue too.** Measured in xp-watch's own scrubbed samples: the
+memo body carries `issue: "Civil Rights"`. The disobedience reply does not; it carries
+`direction: "L"` and `people_moved`, but no issue.
+
+### One issue, three spellings
+
+**There is no response on the activism screen that names an issue.**
+`/disobedience/context` carries `mastery`, `sites`, `game_hour` and `available`
+([`07-alignment-surface.md`](07-alignment-surface.md)), and the label table is compiled
+into the chunk. ProtestPage compiles its own. They disagree:
+
+| source | spelling |
+|---|---|
+| ActivismPage's table, and the wire | slug — `civil-rights`, `police-behavior`, `womens-rights` |
+| ActivismPage's labels | `Police` |
+| ProtestPage's labels, the poll list, every memo | `Police Behavior` |
+
+**Lower-cased letters only joins all 20** slugs to all 20 poll names (measured, and pinned
+in `test-xp.js`). That key is `ISSUE_KEY = /[^a-z]/g`, and it is the one xp-watch,
+poll-watch and `tools/read-stores.js` all join on. `test-read-stores.js` fails if it drifts
+between the three.
+
+**Inferred, not yet seen from our side:** that the `issue_id` on the wire is exactly the
+slug in the table. Both the React state default and the preview URL use the table's `id`,
+so the inference is strong, but no request body of ours has been captured. The first
+0.9.0 event will settle it: before the poll list is seen, xp-watch stores the raw value.
+
+### What 0.9.0 does with it
+
+- **Reads the body in one place:** after the request has gone, for an action that
+  succeeded, on the five endpoints above, and only when the body is a string. The
+  allowlist is consulted *before* the body is touched, so a terminal command or a combat
+  move is never parsed. A `Request` object's stream is never taken from the app. The
+  `Request bodies` stanza of the header lists every field.
+- **Names the issue with the game's own spelling.** The name comes from
+  `GET /actions/poll/issues`, or from a memo, whichever has been seen. Otherwise the value
+  is kept exactly as sent. No name is ever guessed.
+- **Protest ids stay in memory.** They go to an in-memory map, for this page load only,
+  and are never stored, because a join is named from that lookup.
+- **Leaves older events alone.** An event from before 0.9.0 simply has no `issue`, and every
+  consumer treats that as "any issue", never as a zero.
+
+Downstream, `read-stores.js` and poll-watch 0.9.0 split a window's disobedience three ways:
+on this issue, on other issues, and on any issue for the untagged ones.
+
+### Attribution by exclusion, and why it is dormant on every ledger today
+
+Of the operator's 135 `ambiguous` rows (ledger 2026-08-11 → 09-24):
+
+| composition | rows |
+|---|---|
+| poll + disobedience | **37** (persuasion 14, street_sense 14, stealth 9) |
+| combat (action + resolve, ± something else) | 42 |
+| sleeper meet/canvass + something else | 30 |
+| disobedience + terminal | 11 |
+| other mixes | 7 |
+| a single endpoint, all 2026-08-11 — the day 0.2.5 stopped doing this; inferred to be an install that had not updated yet | 8 |
+
+The first group looks decidable: a poll surely does not train street sense. **What the
+ledger could not do was say so.** A skill's absence from `actStats[ep].xp` meant "never
+measured moving" and "never measured at all" alike, because an unchanged reading left no
+trace. So 0.9.0 starts counting the second one. Every window that holds **one endpoint
+alone** adds its attempts to `actStats[ep].alone[key]` for each key the reading covered,
+*whether or not the key moved*.
+
+The rule, in `closeWindow`, names a mixed window's residual only when:
+
+1. **exactly one** endpoint in the window is not ruled out,
+2. that one has itself **measured a change in this key** in a clean window, so the claim is
+   "the one here known to award it", never "whoever is left",
+3. and every other endpoint has been **watched alone ≥ 5 attempts** with the key in view and
+   **never** moved it.
+
+The row is `inferred` (lime, italic, `≈`), carries what it ruled out and on how many solo
+attempts, and **never touches `actStats.xp`**. The per-action averages stay clean-window
+only. Five is a floor, not a proof: an endpoint that moves a key on half its attempts shows
+it within five 97 % of the time, and one that moves it rarely can slip past. That is why
+the row is labelled inferred rather than shown in the measured green.
+
+**Dormant on every existing ledger, by construction.** No 0.8.0 ledger has an `alone` count.
+The rule starts to fire for the poll + disobedience case after **five polls, each followed
+by a reading** (home ↻) before the burst starts. Those five windows are also clean
+measurements in their own right.
+
+### The number that made the poll look well-sampled was a division error (fixed)
+
+The premise behind this rule was "a poll only ever awards writing, ≈0.577 per poll". That
+figure came from `read-stores.js`, which divided each skill's measured sum by **every**
+attempt of the endpoint (`a.n`) instead of the attempts that measured it (`x.n`). Measured
+in the 09-24 ledger:
+
+- The poll's whole writing record is **one clean window**: +15 on 2026-08-26 07:40Z,
+  n = 1. 15 ÷ 26 polls = 0.577. An award that size from one poll is itself suspicious.
+  **Inferred:** something else, perhaps a course or a faction job, landed in that window.
+- Writing also moved **+8 in a window with no poll in it at all** (2026-08-29:
+  disobedience with sleeper meet and canvass). "Only a poll moves writing" does not hold
+  either.
+- The same division halved every disobedience yield: street_sense read 0.017 per action
+  instead of 0.037 per measured attempt.
+
+The brief now prints **per measured attempt with its n** (`writing 15.000 (n=1)`), so a
+single sample looks like one.
+
+### Open, from this section
+
+- **Which combat endpoint trains what.** Combat is the largest ambiguous group (42 rows),
+  and exclusion cannot help it as things stand. Fight ids are UUIDs, and the router
+  collapses only numeric ids, so each fight is its own endpoint and no profile ever reaches
+  five. Separately, `resolve` never sits alone in a window.
+- **Whether the `issue_id` on the wire is the table's slug.** One 0.9.0 event answers it.
+
 ## Open questions
 
 1. ~~**Do crime responses carry award fields the client discards?**~~ **Answered
@@ -620,3 +768,9 @@ to map `result_metadata` and lobbying outcomes properly.
 Local reads of the 2026-08-10 bundle snapshot only; grep and hand de-minification. Zero
 requests to politiko.io. No authenticated data touched. The only live-game contact in this
 work was the operator's manual `fetch-bundles.ps1` run that produced the snapshot.
+
+The 0.9.0 section adds two local reads, and still makes zero requests. The first is the
+2026-09-23 pull, for call sites and the client's fetch wrapper. The second is the
+operator's own store collection of 2026-09-24 03:22Z, for the ambiguous breakdown, the
+poll's writing record and the memo samples. That collection holds other players' data and
+stays in `artifacts/`, gitignored. Every number quoted from it here is the operator's own.

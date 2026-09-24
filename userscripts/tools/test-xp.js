@@ -94,7 +94,38 @@ ok('disclosure states zero added requests', /ZERO additional requests/.test(HEAD
 ok('disclosure names the storage prefix', HEAD.includes('pkxp:'));
 ok('disclosure says the auth key is never touched', /`auth` localStorage key/.test(HEAD) && /never touched/.test(HEAD));
 ok('disclosure says other players are never stored', /Another player/.test(HEAD));
-ok('disclosure says request bodies are never read', /Request\s*\n?\s*\*\s*bodies are never read|Request bodies are never read/.test(HEAD.replace(/\n \* {13}/g, ' ')));
+// 0.9.0 reads request bodies, so the line that used to say it never did is gone —
+// and what replaces it has to name every endpoint and every field, or the tool is
+// doing something its header does not say (clause 6).
+{
+  const flat = HEAD.replace(/\n \*/g, ' ').replace(/\s+/g, ' ');
+  ok('disclosure has a Request bodies section', /Request bodies: read on FIVE action endpoints and nowhere else/.test(flat));
+  for (const [ep, fields] of [
+    ['POST /api/disobedience', 'issue_id → issue, site_key → site, leaning'],
+    ['POST /api/protests', 'issue_id → issue, stance'],
+    ['POST /api/protests/<id>/join', 'side'],
+    ['POST /api/actions/graffiti', 'location_key → site, side'],
+    ['POST /api/actions/poll', 'issue'],
+  ]) ok(`...names ${ep} and its fields`, flat.includes(`${ep} ${fields}`));
+  ok('...says a Request object body is never touched', /Request object is a stream the app has not consumed, and is never touched/.test(flat));
+  ok('...and that everything else is left unread', /every body on every other endpoint, is left unread/.test(flat));
+  ok('no stale "never read" claim survives', !/bodies are never read/.test(flat));
+  ok('disclosure names the two lookup reads', flat.includes('GET /api/actions/poll/issues') && flat.includes('GET /api/protests, /api/protests/<id>'));
+  ok('...and says the protest lookup is memory-only', /held in memory for this page load, never stored/.test(flat));
+}
+
+// The body is read in exactly one place, after the request has gone, for an action
+// that succeeded — and nowhere else. `bodyOf` is called from `aimFor` only, and
+// `aimFor` from the tap only.
+check('bodyOf is called once (inside aimFor)', (SRC.match(/bodyOf\(args\)/g) ?? []).length, 1);
+check('aimFor is called once', (SRC.match(/aimFor\(msg, args, protestIssue\)/g) ?? []).length, 1);
+ok('...only for a successful action',
+  /if \(msg && res\.ok && msg\.kind === 'action'\) msg = \{ \.\.\.msg, aim: aimFor\(msg, args, protestIssue\) \};/.test(SRC));
+ok('...after the request has already gone',
+  SRC.indexOf('const res = await origFetch.apply(this, args);') < SRC.indexOf('aimFor(msg, args, protestIssue)'));
+ok('the protest lookup is never written anywhere', !/writeJSON\([^)]*protestIssue/.test(SRC) && !/L\.[a-zA-Z]+\s*=\s*protestIssue/.test(SRC));
+ok('the event is built from named fields and the aim, never from the whole message',
+  /pushEvent\(L, \{ t, kind: 'action', ep: msg\.ep, outcome: o, \.\.\.aimed\(L, msg, data\) \}\);/.test(SRC));
 
 // The home button is a client-side route change to the router's INDEX path.
 // `/home` is not a route in this app (measured); the game's own nav links to `/`.
@@ -132,7 +163,8 @@ ok('render is visibility-gated', SRC.includes("document.visibilityState !== 'vis
 // ---------------------------------------------------------------------------
 const ENGINE = cut('  const slug = (label)', '  // Persistent state');
 const build = () => new Function('log', `${ENGINE}
-  return { slug, classify, outcomeOf, scrub, makeLedger, ingest, recordSample, buildReport, EPS, CAP };`)(() => {});
+  return { slug, classify, outcomeOf, scrub, makeLedger, ingest, recordSample, buildReport, EPS, CAP,
+    bodyOf, aimOf, aimFor, issueKey, issueName, harvestProtests, MIN_ALONE };`)(() => {});
 const E = build();
 
 console.log('\n— router: a strict allowlist —');
@@ -155,7 +187,14 @@ console.log('\n— router: a strict allowlist —');
   check('bank rob', c('/api/city/bank/rob', 'POST'), { kind: 'action', ep: '/city/bank/rob' });
   check('travel', c('/api/travel', 'POST'), { kind: 'action', ep: '/travel' });
   check('disobedience', c('/api/disobedience', 'POST'), { kind: 'action', ep: '/disobedience' });
-  check('protest join: id collapsed', c('/api/protests/9/join', 'POST'), { kind: 'action', ep: '/protests/{id}/join' });
+  // The ref rides the routing message so the tap can look the protest's issue up;
+  // the engine tests below prove it never reaches an event.
+  check('protest join: id collapsed, ref kept for the lookup', c('/api/protests/9/join', 'POST'), { kind: 'action', ep: '/protests/{id}/join', ref: '9' });
+  check('protest start', c('/api/protests', 'POST'), { kind: 'action', ep: '/protests' });
+  check('protest leave is not an action', c('/api/protests/9/leave', 'POST'), null);
+  check('poll issue list is a lookup', c('/api/actions/poll/issues', 'GET'), { kind: 'issue-list' });
+  check('protest list is a lookup', c('/api/protests?location_id=4', 'GET'), { kind: 'protests' });
+  check('one protest is a lookup', c('/api/protests/9', 'GET'), { kind: 'protests' });
 
   // The privacy-load-bearing negatives: chat and mail can never be recorded
   // because the router refuses to classify them at all.
@@ -599,5 +638,282 @@ console.log('\n— samples: ring of 3, scrubbed before write —');
   ok('the username KEY survives (discovery)', samples['/actions/deal-drugs'][0].body.includes('"username"'));
 }
 
-console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
-process.exit(fail ? 1 : 0);
+// ---------------------------------------------------------------------------
+// 0.9.0 — what an action was aimed at
+// ---------------------------------------------------------------------------
+// The real disobedience body, as ActivismPage builds it in the 2026-09-23 bundle:
+// `i.post('/disobedience', {issue_id:S, site_key:E, leaning:F})`, stringified by the
+// client's one wrapper before fetch ever sees it.
+const DISOB_BODY = JSON.stringify({ issue_id: 'civil-rights', site_key: 'sf-05', leaning: 0 });
+const POLL_NAMES = ['Abortion', 'Animal Research', 'Civil Rights', 'Corporations', 'Drugs', 'Elections',
+  'Free Speech', 'Gun Control', 'Healthcare', 'Immigration', 'Intelligence', 'LGBT Rights', 'Military',
+  'Nuclear Power', 'Police Behavior', 'Pollution', 'Sweatshops', 'Taxes', 'Torture', "Women's Rights"];
+const ACTIVISM_IDS = ['free-speech', 'police-behavior', 'civil-rights', 'immigration', 'drugs', 'abortion',
+  'animal-research', 'healthcare', 'lgbt-rights', 'gun-control', 'torture', 'intelligence', 'womens-rights',
+  'corporations', 'elections', 'sweatshops', 'military', 'nuclear-power', 'pollution', 'taxes'];
+
+console.log('\n— 0.9.0: the body read — a string, an allowlist, nothing else —');
+{
+  const init = { method: 'POST', body: DISOB_BODY };
+  check('a disobedience body yields issue, site and leaning',
+    E.aimFor({ kind: 'action', ep: '/disobedience' }, ['/api/disobedience', init], new Map()),
+    { issue: 'civil-rights', site: 'sf-05', leaning: 0 });
+  check('...and the body string is untouched', init.body, DISOB_BODY);
+  check('a leaning of 0 is kept, not dropped as falsy',
+    E.aimOf('/disobedience', { issue_id: 'taxes', site_key: 'x', leaning: 0 }).leaning, 0);
+
+  // A Request object: its body is a stream the app still has to send. Reading it would
+  // take it from the app, so it is not read — and the test proves the stream is still there.
+  const req = new Request('https://politiko.io/api/disobedience', { method: 'POST', body: DISOB_BODY });
+  check('a Request-object body gives no aim', E.aimFor({ kind: 'action', ep: '/disobedience' }, [req], new Map()), null);
+  check('...and its stream is left unconsumed', req.bodyUsed, false);
+  check('...even with an init that carries no body', E.bodyOf([req, { method: 'POST' }]), null);
+
+  check('a non-string body (FormData-like) is not read', E.bodyOf(['/api/x', { body: { issue_id: 'taxes' } }]), null);
+  check('malformed JSON is not an aim', E.bodyOf(['/api/x', { body: '{issue_id:' }]), null);
+  check('an array body is not an aim', E.bodyOf(['/api/x', { body: '["taxes"]' }]), null);
+  check('an oversized body is not parsed', E.bodyOf(['/api/x', { body: `{"issue_id":"${'a'.repeat(5000)}"}` }]), null);
+  check('no init at all is fine', E.bodyOf(['/api/x']), null);
+
+  check('fields outside the allowlist are never copied',
+    E.aimOf('/disobedience', { issue_id: 'taxes', site_key: 'sf-01', leaning: -2, username: 'LEAK', note: 'LEAK' }),
+    { issue: 'taxes', site: 'sf-01', leaning: -2 });
+  check('an endpoint outside the allowlist has its body left unread',
+    E.aimOf('/terminal/exec', { command: 'LEAK', issue_id: 'taxes' }), null);
+  check('...and so does combat', E.aimOf('/combat/{id}/action', { action: 'shoot', issue_id: 'taxes' }), null);
+  check('objects, NaN and long strings are dropped, not stringified',
+    E.aimOf('/disobedience', { issue_id: { x: 1 }, site_key: 'y'.repeat(65), leaning: NaN }), null);
+  check('a protest start keeps its stance', E.aimOf('/protests', { issue_id: 'drugs', stance: -2, location_id: 4 }),
+    { issue: 'drugs', stance: -2 });
+  check('graffiti keeps the wall and the side', E.aimOf('/actions/graffiti', { location_key: 'mission', side: 'R', mode: 'paint' }),
+    { site: 'mission', side: 'R' });
+  check('a poll names its issue', E.aimOf('/actions/poll', { issue: 'Civil Rights', method: 'focus_group' }), { issue: 'Civil Rights' });
+}
+
+console.log('\n— 0.9.0: one issue, three spellings, one key —');
+{
+  // Measured 2026-09-23: ActivismPage's 20 ids and the poll screen's 20 names. The key
+  // has to join every pair, including the two whose labels disagree between chunks.
+  const unmatched = ACTIVISM_IDS.filter((id) => !POLL_NAMES.some((n) => E.issueKey(n) === E.issueKey(id)));
+  check('every disobedience id meets its poll name', unmatched, []);
+  check('police-behavior is "Police Behavior", not ActivismPage\'s "Police"', E.issueName(POLL_NAMES, 'police-behavior'), 'Police Behavior');
+  check('the apostrophe does not split Women\'s Rights', E.issueName(POLL_NAMES, 'womens-rights'), "Women's Rights");
+  check('an unknown issue id is kept exactly as sent', E.issueName(POLL_NAMES, 'space-program'), 'space-program');
+  check('...and so is any id before the names are known', E.issueName([], 'civil-rights'), 'civil-rights');
+}
+
+console.log('\n— 0.9.0: the aim lands on the event —');
+{
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'action', ep: '/disobedience', aim: { issue: 'civil-rights', site: 'sf-05', leaning: 0 } }, { success: true }, 2000);
+  check('before the poll screen is seen, the raw id is stored', L.events.at(-1),
+    { t: 2000, kind: 'action', ep: '/disobedience', outcome: 'success', issue: 'civil-rights', site: 'sf-05', leaning: 0 });
+
+  E.ingest(L, { kind: 'issue-list' }, { issues: POLL_NAMES }, 2500);
+  check('the poll screen teaches the names', L.issueNames.length, 20);
+  E.ingest(L, { kind: 'action', ep: '/disobedience', aim: { issue: 'civil-rights', site: 'sf-05', leaning: 0 } }, { success: false }, 3000);
+  check('after it, the game\'s own name is stored', L.events.at(-1).issue, 'Civil Rights');
+  E.ingest(L, { kind: 'action', ep: '/disobedience', aim: { issue: 'space-program', site: 'sf-05', leaning: 1 } }, { success: true }, 3100);
+  check('an unknown issue id stays raw, still recorded', L.events.at(-1).issue, 'space-program');
+
+  // A poll whose body could not be read still names its issue in the memo.
+  E.ingest(L, { kind: 'action', ep: '/actions/poll' }, { issue: 'Taxes', method: 'street', left_bloc: 1 }, 3200);
+  check('a poll with no body read takes its issue from the memo', L.events.at(-1).issue, 'Taxes');
+
+  // An action with no aim at all is the 0.8.0 event, byte for byte.
+  E.ingest(L, { kind: 'action', ep: '/terminal/exec' }, {}, 3300);
+  check('an action with nothing to aim at is the old shape', L.events.at(-1), { t: 3300, kind: 'action', ep: '/terminal/exec', outcome: null });
+
+  // Protest join: the body names a side, the lookup names the issue, the ref goes nowhere.
+  const protests = new Map();
+  E.harvestProtests([{ id: 9, issue: 'Drugs', issue_id: 'drugs', participants: [{ username: 'LEAK', side: 'left' }] },
+    { id: 10, issue_id: 'taxes' }, { id: null, issue: 'x' }, 'junk'], protests);
+  check('the protest list yields id → issue and nothing else', [...protests], [['9', 'Drugs'], ['10', 'taxes']]);
+  E.harvestProtests({ id: 11, issue: 'Elections', participants: [] }, protests);
+  check('...one protest\'s own page does too', protests.get('11'), 'Elections');
+  const msg = E.classify('/api/protests/9/join', 'POST');
+  const aim = E.aimFor(msg, ['/api/protests/9/join', { method: 'POST', body: '{"side":"left"}' }], protests);
+  check('a join is named from the list', aim, { side: 'left', issue: 'Drugs' });
+  E.ingest(L, { ...msg, aim }, {}, 3400);
+  check('...and the event carries no protest id', L.events.at(-1), { t: 3400, kind: 'action', ep: '/protests/{id}/join', outcome: null, side: 'left', issue: 'Drugs' });
+  check('a join whose protest was never listed keeps just its side',
+    E.aimFor(E.classify('/api/protests/77/join', 'POST'), ['/api/protests/77/join', { body: '{"side":"right"}' }], protests), { side: 'right' });
+  const big = new Map();
+  for (let i = 0; i < 260; i++) E.harvestProtests([{ id: i, issue: 'Taxes' }], big);
+  check('the lookup is capped', big.size, 200);
+
+  const r = E.buildReport(L, {}, '9.9.9');
+  ok('the report says what the actions were aimed at, one line per issue',
+    /aimed at \(events held\): Civil Rights 2 · space-program 1 · Drugs 1$/m.test(r));
+  ok('...leaving the poll out, as a reading', !/aimed at[^\n]*Taxes/.test(r));
+}
+
+console.log('\n— 0.9.0: neither scrub blanks the new fields —');
+{
+  // xp-watch's own scrub guards samples; collect-stores' guards the export (test-collect.js
+  // runs the file itself). Every body field name and every event field name must pass here.
+  const fields = { issue_id: 'civil-rights', site_key: 'sf-05', leaning: -1, location_key: 'mission',
+    issue: 'Civil Rights', site: 'sf-05', side: 'left', stance: 2, alone: { street_sense: 5 } };
+  check('xp-watch scrub keeps every aim field', E.scrub(fields), fields);
+}
+
+console.log('\n— 0.9.0: clean windows count attempts alone, moved or not —');
+const ledgerWith = (keys) => {
+  const L = E.makeLedger();
+  E.ingest(L, { kind: 'status' }, { username: 'me', status: 'active' }, 1000);
+  E.ingest(L, { kind: 'assessment' }, { snapshot_date: 'x', stats_table: Object.entries(keys).map(([key, current]) => ({ key, current, change: 0 })) }, 2000);
+  return L;
+};
+let clock = 3000;
+const read = (L, keys) => E.ingest(L, { kind: 'assessment' }, { snapshot_date: 'x', stats_table: Object.entries(keys).map(([key, current]) => ({ key, current, change: 0 })) }, clock += 10);
+const act = (L, ep, n = 1) => { for (let i = 0; i < n; i++) E.ingest(L, { kind: 'action', ep }, { success: true }, clock += 10); };
+{
+  const L = ledgerWith({ street_sense: 10, writing: 5 });
+  act(L, '/actions/poll');
+  read(L, { street_sense: 10, writing: 5 });
+  check('an unchanged reading still counts the attempt', L.actStats['/actions/poll'].alone, { street_sense: 1, writing: 1 });
+  check('...without inventing an award', L.actStats['/actions/poll'].xp, {});
+  act(L, '/actions/poll'); act(L, '/disobedience', 3);
+  read(L, { street_sense: 10.06, writing: 5 });
+  check('a mixed window counts nothing alone', L.actStats['/actions/poll'].alone, { street_sense: 1, writing: 1 });
+  check('...for either endpoint', L.actStats['/disobedience'].alone, undefined);
+  act(L, '/disobedience', 3);
+  read(L, { street_sense: 10.12, writing: 5 });
+  check('N attempts alone count N', L.actStats['/disobedience'].alone, { street_sense: 3, writing: 3 });
+}
+
+console.log('\n— 0.9.0: attribution by exclusion — where it fires —');
+// The operator's shape: disobedience measured on street_sense, the poll watched alone
+// five times with street_sense read and never moving it, then a burst with the poll
+// that opened it inside the same window.
+const teach = ({ pollAlone = 5, pollTouches = false, disobMeasured = true } = {}) => {
+  const L = ledgerWith({ street_sense: 10, writing: 5, persuasion: 20 });
+  let ss = 10, w = 5, p = 20;
+  if (disobMeasured) { act(L, '/disobedience', 2); read(L, { street_sense: ss += 0.04, writing: w, persuasion: p += 0.04 }); }
+  for (let i = 0; i < pollAlone; i++) {
+    act(L, '/actions/poll');
+    read(L, { street_sense: (pollTouches && i === 0) ? (ss += 0.01) : ss, writing: w += 0.5, persuasion: p });
+  }
+  return { L, now: { ss, w, p } };
+};
+{
+  const { L, now } = teach();
+  const before = JSON.stringify(L.actStats['/disobedience'].xp);
+  act(L, '/actions/poll'); act(L, '/disobedience', 19);
+  const rows = read(L, { street_sense: now.ss + 0.38, writing: now.w + 0.5, persuasion: now.p + 0.38 });
+  const ssRow = rows.find((x) => x.key === 'street_sense');
+  check('the burst\'s street_sense is inferred to disobedience', ssRow.attrib,
+    { type: 'inferred', rule: 'exclusion', ep: '/disobedience', n: 19, by: [{ ep: '/actions/poll', alone: 5 }] });
+  check('...and the whole residual rides on it', +ssRow.d.toFixed(4), 0.38);
+  check('the per-action averages learned nothing from it', JSON.stringify(L.actStats['/disobedience'].xp), before);
+  // Writing, the other way round: the poll is the one seen to award it, and
+  // disobedience was watched alone twice — below the bar, so it stays ambiguous.
+  check('writing stays ambiguous: disobedience has only 2 solo attempts on it',
+    rows.find((x) => x.key === 'writing').attrib.type, 'ambiguous');
+  const r = E.buildReport(L, {}, '9.9.9');
+  ok('the report counts the inferred row apart', /attribution: action \d+ · inferred 2 · ambiguous 1/.test(r));
+}
+
+console.log('\n— 0.9.0: attribution by exclusion — where it must not —');
+{
+  const { L, now } = teach({ pollAlone: 4 });
+  act(L, '/actions/poll'); act(L, '/disobedience', 19);
+  const rows = read(L, { street_sense: now.ss + 0.38, writing: now.w, persuasion: now.p });
+  check('four solo polls are not enough: ambiguous', rows[0].attrib.type, 'ambiguous');
+}
+{
+  const { L, now } = teach({ pollTouches: true });
+  check('(the poll did measure a street_sense change once)', !!L.actStats['/actions/poll'].xp.street_sense, true);
+  act(L, '/actions/poll'); act(L, '/disobedience', 19);
+  const rows = read(L, { street_sense: now.ss + 0.38, writing: now.w, persuasion: now.p });
+  check('an endpoint that ever moved the key is never ruled out: ambiguous', rows[0].attrib.type, 'ambiguous');
+}
+{
+  const { L, now } = teach({ disobMeasured: false });
+  act(L, '/actions/poll'); act(L, '/disobedience', 19);
+  const rows = read(L, { street_sense: now.ss + 0.38, writing: now.w, persuasion: now.p });
+  check('a survivor never seen to award the key gets nothing: ambiguous', rows[0].attrib.type, 'ambiguous');
+}
+{
+  const { L, now } = teach();
+  // terminal/exec measured on street_sense too: two candidates left standing
+  act(L, '/terminal/exec'); read(L, { street_sense: now.ss + 0.1, writing: now.w, persuasion: now.p });
+  act(L, '/actions/poll'); act(L, '/disobedience', 5); act(L, '/terminal/exec');
+  const rows = read(L, { street_sense: now.ss + 0.3, writing: now.w, persuasion: now.p });
+  check('two endpoints that can award it: ambiguous', rows[0].attrib.type, 'ambiguous');
+}
+{
+  // A 0.8.0 ledger: xp profiles, no `alone` anywhere. Nothing can be ruled out.
+  const L = ledgerWith({ street_sense: 10 });
+  L.actStats['/actions/poll'] = { n: 28, outcomes: {}, xp: { writing: { sum: 15, n: 1 } } };
+  L.actStats['/disobedience'] = { n: 2571, outcomes: {}, xp: { street_sense: { sum: 44.19, n: 1204 } } };
+  act(L, '/actions/poll'); act(L, '/disobedience', 19);
+  const rows = read(L, { street_sense: 10.38 });
+  check('an old ledger with no solo counts stays ambiguous, and does not throw', rows[0].attrib.type, 'ambiguous');
+}
+
+// ---------------------------------------------------------------------------
+// The tap itself, sliced out and driven against a stub fetch. What has to hold:
+// the app's arguments reach the real fetch untouched, a string body is read once
+// and only for an action that succeeded, and a Request object's stream is never
+// taken from the app.
+// ---------------------------------------------------------------------------
+const TAP = cut('  const listeners = new Set();', '  onApiResponse((msg, data) => {');
+const tapTests = async () => {
+  console.log('\n— 0.9.0: the tap reads the body the app already sent, and only that —');
+  const sent = [];
+  let reply = { ok: true, status: 200, data: { success: true } };
+  const win = {
+    fetch: async (...a) => {
+      sent.push(a);
+      const r = reply;
+      return { ok: r.ok, status: r.status, headers: { get: () => 'application/json' }, clone: () => ({ json: async () => r.data }) };
+    },
+  };
+  const T = new Function('window', 'log', `${ENGINE}\n${TAP}\n return { onApiResponse, protestIssue };`)(win, () => {});
+  const got = [];
+  T.onApiResponse((m, d) => got.push([m, d]));
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  let reads = 0;
+  const init = { method: 'POST', get body() { reads++; return DISOB_BODY; } };
+  await win.fetch('https://politiko.io/api/disobedience', init);
+  await flush();
+  check('the real fetch got the app\'s own init object', sent[0][1] === init, true);
+  check('...and the listener got the aim', got[0][0].aim, { issue: 'civil-rights', site: 'sf-05', leaning: 0 });
+  check('the body was read once', reads, 1);
+
+  reply = { ok: false, status: 400, data: { error: 'not enough juice' } };
+  reads = 0;
+  await win.fetch('https://politiko.io/api/disobedience', init);
+  await flush();
+  check('a refused action\'s body is never read', reads, 0);
+
+  reply = { ok: true, status: 200, data: [] };
+  reads = 0;
+  await win.fetch('https://politiko.io/api/user/status', { method: 'GET', get body() { reads++; return '{}'; } });
+  check('a reading\'s body is never read', reads, 0);
+  await win.fetch('https://politiko.io/api/terminal/exec', { method: 'POST', get body() { reads++; return '{"command":"LEAK"}'; } });
+  await flush();
+  check('an action outside AIM has its body left unread — not even parsed', reads, 0);
+  check('...and carries no aim', got.at(-1)[0].aim, null);
+
+  reply = { ok: true, status: 200, data: { success: true } };
+  const req = new Request('https://politiko.io/api/disobedience', { method: 'POST', body: DISOB_BODY });
+  await win.fetch(req);
+  await flush();
+  check('a Request object reaches the real fetch as itself', sent.at(-1)[0] === req, true);
+  check('...its stream is not consumed', req.bodyUsed, false);
+  check('...and its action simply has no aim', got.at(-1)[0].aim, null);
+
+  T.protestIssue.set('9', 'Drugs');
+  await win.fetch('https://politiko.io/api/protests/9/join', { method: 'POST', body: '{"side":"left"}' });
+  await flush();
+  check('a join is named from the page\'s own protest list', got.at(-1)[0].aim, { side: 'left', issue: 'Drugs' });
+};
+
+tapTests().catch((e) => { console.log(`FAIL  tap tests threw: ${e && e.stack}`); fail++; }).then(() => {
+  console.log(fail ? `\n${fail} FAILED\n` : '\nALL OK\n');
+  process.exit(fail ? 1 : 0);
+});

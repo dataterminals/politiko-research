@@ -121,7 +121,18 @@ const STORE = {
   theme: 'dark',
   'pkxp:ledger': JSON.stringify({
     me: 'someone',
-    actStats: { '/actions/sleeper-recruitment/canvass': { n: 3, outcomes: { success: 2 } } },
+    actStats: { '/actions/sleeper-recruitment/canvass': { n: 3, outcomes: { success: 2 } },
+      '/actions/poll': { n: 5, outcomes: {}, xp: {}, alone: { street_sense: 5 } } },
+    // xp-watch 0.9.0's event: what the action was aimed at. None of these may be
+    // redacted, or the brief loses exactly the fact the version was cut for.
+    events: [{ t: 1, kind: 'action', ep: '/disobedience', outcome: 'success', issue: 'Civil Rights', site: 'sf-05', leaning: 0 },
+      { t: 2, kind: 'action', ep: '/protests/{id}/join', outcome: null, issue: 'police-behavior', side: 'left' },
+      { t: 3, kind: 'action', ep: '/protests', outcome: null, issue: "Women's Rights", stance: -2 }],
+    issueNames: ['Civil Rights', "Women's Rights", 'Police Behavior'],
+    // ...and the request-body names they are read from, in case a later version
+    // keeps them verbatim: the collector splits a key into tokens, and none of
+    // issue / id / site / key / leaning / location is a credential word.
+    bodyNames: { issue_id: 'civil-rights', site_key: 'sf-05', leaning: -1, location_key: 'mission', stance: 2 },
   }),
   'pkmw:ids': JSON.stringify({
     'corporations/Zebulon & Zyklon Law/Slutty secretary': { id: 5, sure: true },
@@ -184,6 +195,17 @@ if (bundle) {
   check('canvass is not canvas: the XP record of the sleeper action survives',
     !!xp && xp.actStats['/actions/sleeper-recruitment/canvass'] && xp.actStats['/actions/sleeper-recruitment/canvass'].n === 3,
     `got ${JSON.stringify(xp && xp.actStats)}`);
+  check('xp-watch 0.9.0 aim fields survive the collector untouched',
+    !!xp && JSON.stringify(xp.events) === JSON.stringify(JSON.parse(STORE['pkxp:ledger']).events)
+      && JSON.stringify(xp.issueNames) === JSON.stringify(['Civil Rights', "Women's Rights", 'Police Behavior'])
+      && xp.actStats['/actions/poll'].alone.street_sense === 5,
+    `got ${JSON.stringify(xp && { events: xp.events, issueNames: xp.issueNames })}`);
+  check('...and so do the request-body names issue_id, site_key, leaning',
+    !!xp && JSON.stringify(xp.bodyNames) === JSON.stringify({ issue_id: 'civil-rights', site_key: 'sf-05', leaning: -1, location_key: 'mission', stance: 2 }),
+    `got ${JSON.stringify(xp && xp.bodyNames)}`);
+  check('...with no redaction recorded under pkxp:',
+    !bundle.redactions.some((r) => r.path.startsWith('pkxp:')),
+    bundle.redactions.filter((r) => r.path.startsWith('pkxp:')).map((r) => r.path).join(', '));
   check('secretary is not secret: the corporation job id survives',
     !!mw && mw['corporations/Zebulon & Zyklon Law/Slutty secretary'] && mw['corporations/Zebulon & Zyklon Law/Slutty secretary'].id === 5
       && mw['actions/sleeper-recruitment/canvass/#584'] && mw['actions/sleeper-recruitment/canvass/#584'].id === 584,

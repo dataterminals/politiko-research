@@ -173,7 +173,10 @@ const mk = (over) => ({
         { t: T(3), kind: 'status', from: 'active', to: 'jailed' }, { t: T(2.5), kind: 'status', from: 'jailed', to: 'active' },
         { t: T(1.5), kind: 'train', key: 'heart', gain: 0.4718, mode: 'class' },
         { t: T(0.5), kind: 'action', ep: '/terminal/exec', outcome: null }, { t: T(0.2), kind: 'action', ep: '/actions/sleeper-recruitment/canvass', outcome: 'success' }],
-      deltas: [{ t: T(1.5), key: 'heart', d: 0.4718, from: 55.79, to: 56.26, attrib: { type: 'train', n: 0 } }, { t: T(0.3), key: 'persuasion', d: 0.63, from: 182.24, to: 182.87, attrib: { type: 'ambiguous', n: 35, eps: ['/disobedience', '/actions/poll'] } }],
+      deltas: [{ t: T(1.5), key: 'heart', d: 0.4718, from: 55.79, to: 56.26, attrib: { type: 'train', n: 0 } }, { t: T(0.3), key: 'persuasion', d: 0.63, from: 182.24, to: 182.87, attrib: { type: 'ambiguous', n: 35, eps: ['/disobedience', '/actions/poll'] } },
+        // xp-watch 0.9.0: a measured row, and an inferred one that names what it ruled out.
+        { t: T(0.28), key: 'persuasion', d: 0.04, from: 182.83, to: 182.87, attrib: { type: 'action', ep: '/disobedience', n: 2 } },
+        { t: T(0.25), key: 'street_sense', d: 0.38, from: 227.12, to: 227.5, attrib: { type: 'inferred', rule: 'exclusion', ep: '/disobedience', n: 19, by: [{ ep: '/actions/poll', alone: 5 }] } }],
       sheetIssue: { t: T(1), kind: 'shift', axis: 'social' }, changeVerdict: { at: T(0.1), key: 'shotgun', dCurrent: 0.06, dChange: 0.06, kind: 'running', datesMoved: false },
     }, samples: {} } },
     'pkaw:': { tool: 'align-watch', keys: { data: { self: 'dataterminals', readings: [{ t: T(400), s: -0.05, sc: 100, e: 0.1, ec: 50, url: '/api/users/dataterminals' }, { t: T(0.2), s: -0.011, sc: 5134, e: 0.172, ec: 842, url: '/api/users/dataterminals' }] } } },
@@ -335,8 +338,11 @@ console.log('\n— the Herald against the polls —');
   hasH('an action that is not disobedience still counts against "nothing of ours"',
     /\| Abortion \| 2026-09-11 19:16Z \| 0\.163 \| 1\.0 h \| 0 \| — \| 0 of 2 \(0 ok\) \|/);
   hasH('the section states adjacency is not a cause', /_Adjacency only, and thinner than the Court's\./);
-  hasH('...and that the ledger cannot name the issue an action was aimed at',
-    /not the issue it was aimed at — so "our actions" is every disobedience action in the window, on any issue/);
+  hasH('...and what each part of an "our actions" cell means, from xp-watch 0.9.0',
+    /From xp-watch 0\.9\.0 the ledger keeps the issue each action's request named, so a cell reads "on this issue" for the ones aimed at the row's issue, "on other issues" for the ones aimed elsewhere, and "on any issue" for the ones logged before 0\.9\.0 — those name no issue and are never assigned to one/);
+  hasH('...and that a cell naming no issue is the old count, on any issue',
+    /A cell that names no issue is a stretch the ledger holds only pre-0\.9\.0 events for, and reads as it always has: every disobedience action in the window, on any issue/);
+  hasH('...and that even "on this issue" is a count, not a verdict', /Even "on this issue" is a count and not a verdict/);
   check('...and never uses causal language',
     !/\b(because|caused|causes|due to|as a result|moved by|led to|triggered|thanks to|resulted in)\b/i.test(sec),
     (sec.match(/\b(because|caused|causes|due to|as a result|moved by|led to|triggered|thanks to|resulted in)\b/gi) || []).join(', '));
@@ -353,6 +359,47 @@ console.log('\n— the Herald against the polls —');
     check('...and so does the half-open window',
       /t > fromT && t <= toT/.test(PW) && /ms\(e\.t\) > t0 && ms\(e\.t\) <= t1/.test(SRC),
       'the window edges differ between poll-watch and read-stores');
+    // 0.9.0: the per-issue split. The two files have to agree on which actions it is
+    // taken over and on when two spellings are one issue, or the memo and the brief
+    // print different "on this issue" counts for one window. xp-watch names issues with
+    // the same key, so it is held to it too.
+    const XW = fs.readFileSync(path.join(__dirname, '..', 'xp-watch.user.js'), 'utf8');
+    const constOf = (s, name) => (s.match(new RegExp(`const ${name} = ([^;]+);`)) || [])[1];
+    check('the per-issue set (AIMED) matches poll-watch',
+      constOf(PW, 'AIMED') && constOf(PW, 'AIMED') === constOf(SRC, 'AIMED'), `poll-watch ${constOf(PW, 'AIMED')} / read-stores ${constOf(SRC, 'AIMED')}`);
+    check('the issue key matches poll-watch and xp-watch',
+      constOf(SRC, 'ISSUE_KEY') && [PW, XW].every((s) => constOf(s, 'ISSUE_KEY') === constOf(SRC, 'ISSUE_KEY')),
+      `read-stores ${constOf(SRC, 'ISSUE_KEY')} / poll-watch ${constOf(PW, 'ISSUE_KEY')} / xp-watch ${constOf(XW, 'ISSUE_KEY')}`);
+  }
+
+  // xp-watch 0.9.0 events name their issue. The same bundle, with the Taxes burst tagged
+  // the way a real ledger would hold it: four on Taxes — two as the slug the request
+  // sent before the poll list was seen, one as the name after, and the failed one —
+  // one on Abortion, and the oldest left untagged (logged before 0.9.0). One more
+  // Abortion push and a terminal command sit inside the Abortion pair.
+  {
+    const tagged = mk({});
+    const tev = tagged.tools['pkxp:'].keys.ledger.events;
+    Object.assign(tev[1], { issue: 'taxes', site: 'sf-05', leaning: 0 });
+    Object.assign(tev[2], { issue: 'taxes', site: 'sf-05', leaning: 0 });
+    Object.assign(tev[3], { issue: 'Taxes', site: 'sf-05', leaning: 0 });
+    Object.assign(tev[4], { issue: 'Abortion', site: 'sf-02', leaning: -1 });
+    Object.assign(tev[5], { issue: 'taxes', site: 'sf-05', leaning: 0 });
+    tev.push({ t: T(4), kind: 'action', ep: '/disobedience', outcome: 'success', issue: 'Abortion', site: 'sf-02', leaning: -1 },
+      { t: T(3.5), kind: 'action', ep: '/terminal/exec', outcome: null });
+    const secT = (brief(tagged, null).split(/^## The Herald against the polls$/m)[1] || '').split(/^## /m)[0];
+    const hasT = (label, re) => check(label, re.test(secT), `not found: ${re}\n${secT.slice(0, 2600)}`);
+    hasT('a window splits its disobedience: this issue, any issue, other issues — the slug and the name are one issue',
+      /\| Taxes \| 2026-09-10 08:16Z \| 2026-09-11 08:16Z \| 24\.0 h \| 0\.388 → 0\.286 \| -0\.102 \| 1 — 1 liberal \| MILL CLOSES \(lib\) \| ≥ 4 on this issue \(3 ok\) \+ 1 on any issue \(1 ok\) · 1 on other issues \|/);
+    hasT('a fully tagged window names its issue and counts everything else beside it',
+      /\| Abortion \| 2026-09-11 14:16Z \| 2026-09-11 19:16Z \| 5\.0 h \| 0\.082 → 0\.163 \| \+0\.082 \| 3 — 2 conservative, 1 unspun \| LATE TERM \(con\); CLINIC REGRET \(con\) \| 1 on this issue \(1 ok\) · 2 actions in all \|/);
+    hasT('an open window can hold nothing on its own issue and say so',
+      /\| Taxes \| 2026-09-11 08:16Z \| 0\.286 \| 12\.0 h \|[^\n]*\| 0 on this issue \(0 ok\) \+ 1 on any issue \(1 ok\) · 1 on other issues · 5 actions in all \|/);
+    hasT('...while a window with no named disobedience reads exactly as before',
+      /\| Abortion \| 2026-09-11 19:16Z \| 0\.163 \| 1\.0 h \| 0 \| — \| 0 of 2 \(0 ok\) \|/);
+    check('...and the tagged brief is no more causal than the untagged one',
+      !/\b(because|caused|causes|due to|as a result|moved by|led to|triggered|thanks to|resulted in)\b/i.test(secT),
+      (secT.match(/\b(because|caused|causes|due to|as a result|moved by|led to|triggered|thanks to|resulted in)\b/gi) || []).join(', '));
   }
 
   // gov-watch below 0.7.0 keeps the headline and the date and drops the prose and the spin.
@@ -407,7 +454,19 @@ has('your city lists the neighbours', /### In San Francisco[\s\S]*\| Alocrin \| 
 has('alignment quadrants are counted', /\| social \+ \/ economic − \| 1 \|/);
 has('skills table has the 30-day delta and the city gains', /\| heart \| 56\.26 \| \+50\.65 \| 0\.315 \| 0\.472 \|/);
 has('actions collapse ids and sum outcomes', /\| \/combat\/\{id\}\/action \| 5 \| 60% \| 0 \| 0 \|/);
-has('disobedience success rate and jail count', /\| \/disobedience \| 2,549 \| 81% \| 56 \| 4 \| street_sense 0\.038, persuasion 0\.030/);
+// Yield per MEASURED attempt, with its n: 96.29 over the 2,145 attempts that measured
+// street_sense, not over all 2,549. Divided by every attempt it read 0.038, and one +15
+// writing sample over 26 polls read as "0.577 per poll".
+has('disobedience success rate, jail count, and yield per measured attempt with its n',
+  /\| \/disobedience \| 2,549 \| 81% \| 56 \| 4 \| street_sense 0\.045 \(n=2,145\), persuasion 0\.035 \(n=2,187\) \|/);
+has('...and collapsed combat endpoints pool their measured attempts', /\| \/combat\/\{id\}\/action \| 5 \| 60% \| 0 \| 0 \| pistol 0\.133 \(n=3\) \|/);
+has('the actions table says what its yield is per', /\| xp per measured attempt \(top 3\) \|/);
+has('a measured gain names its endpoint', /\| persuasion \| \+0\.040 \| 182\.87 \| action: \/disobedience ×2 \|/);
+has('an inferred gain says so, and names what it ruled out and on what evidence',
+  /\| street_sense \| \+0\.380 \| 227\.50 \| inferred by exclusion: \/disobedience ×19 — ruled out \/actions\/poll \(alone 5×, never moved it\) \|/);
+has('an ambiguous gain lists its endpoints once each', /\| persuasion \| \+0\.630 \| 182\.87 \| ambiguous: \/disobedience, \/actions\/poll \|/);
+has('the gains are counted by label, and inferred is kept apart from the yields',
+  /Across all 4 deltas kept: train 1, ambiguous 1, action 1, inferred 1\. Only `action` rows feed the yields above; `inferred` rows are a reading of the evidence, not a measurement\./);
 has('an action with no recorded outcome is n/a, not 0%', /\| \/terminal\/exec \| 5 \| n\/a \| 0 \| 0 \|/);
 has('education lists open courses with rewards', /\| CMT2230 \| law \+5 \|/);
 has('sleepers table', /\| Riley Klein \| Bartender \| Club \| Abortion \| 43 \| yes \|/);

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.8.0
-// @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive or ambiguous. Passive — zero added requests.
+// @version      0.9.0
+// @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive, ambiguous, or — kept apart from the measured numbers — inferred by exclusion. Records which issue each disobedience, protest and poll was aimed at, read off the request the game itself sent. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
 // @supportURL   https://github.com/dataterminals/politiko-research/issues
@@ -39,12 +39,39 @@
  *               /api/terminal/exec, /api/city/bank/rob, /api/travel, /api/jobs/specials
  *                                              — responses to actions YOU submitted,
  *                                                recorded as events for attribution
+ *               GET  /api/actions/poll/issues  — fires when YOU open the opinion-poll
+ *                                                screen; its list of issue names (20
+ *                                                strings) is kept, to name the issue an
+ *                                                action was aimed at
+ *               GET  /api/protests, /api/protests/<id>
+ *                                              — fire on the protest screens. ONLY each
+ *                                                protest's id and issue are taken, and
+ *                                                held in memory for this page load, never
+ *                                                stored: a join names only its side, and
+ *                                                this is what names its issue. Nothing
+ *                                                else in those responses — the
+ *                                                participant lists included — is kept.
+ *
+ *   Request bodies: read on FIVE action endpoints and nowhere else, for the fields
+ *             listed and nothing else, which are copied onto that action's own event
+ *             so the ledger can say what the action was aimed at:
+ *               POST /api/disobedience         issue_id → issue, site_key → site, leaning
+ *               POST /api/protests             issue_id → issue, stance
+ *               POST /api/protests/<id>/join   side (its issue comes from the protest
+ *                                              list above, when this page load saw it)
+ *               POST /api/actions/graffiti     location_key → site, side
+ *               POST /api/actions/poll         issue
+ *             The body read is the JSON string the game's own client handed to fetch,
+ *             read after the request has already gone. Parsing a string cannot change
+ *             it. A body passed inside a Request object is a stream the app has not
+ *             consumed, and is never touched. Every other field of those bodies, and
+ *             every body on every other endpoint, is left unread.
  *
  *             Only YOUR OWN character's data is ever stored. Another player's
- *             /stats response is ignored and never written anywhere. Request
- *             bodies are never read. The `auth` localStorage key (your tokens) is
- *             never touched, and credential-looking fields in any recorded
- *             response are redacted before storage.
+ *             /stats response is ignored and never written anywhere.
+ *             The `auth` localStorage key (your tokens) is never touched, and
+ *             credential-looking fields in any recorded response are redacted
+ *             before storage.
  *
  *   Sends:    nothing, to anyone
  *
@@ -57,8 +84,9 @@
  *             the moment you click.
  *
  *   Storage:  localStorage keys prefixed `pkxp:` — your own readings, deltas,
- *             action events, person-scrubbed response samples, panel position
- *             and size
+ *             action events (each with the issue, site, leaning, side or stance it
+ *             was aimed at, where its request named one), the game's list of issue
+ *             names, person-scrubbed response samples, panel position and size
  *
  *   Alerts:   none. No notifications, no sound, no title changes; the panel only
  *             renders while the tab is visible
@@ -75,7 +103,10 @@
  * sheet-sandwich (a reading before and after; a window refocus on the mounted
  * page also refetches) is the operator-driven instrument, exactly like
  * people-watch's roster walk. Windows holding several actions are kept and
- * shown as ambiguous, never averaged into per-action numbers.
+ * shown as ambiguous, never averaged into per-action numbers. Since 0.9.0 one
+ * narrow case of those is named rather than left blank — when every endpoint
+ * but one has been watched alone and never moved that skill — and it is named
+ * as INFERRED, in its own colour, and still never averaged (see ENGINE).
  *
  * The profile stats tab is NOT a reliable sheet, and as of 2026-08-11 the
  * reason is measured: it answers sealed with `privacy_rights_axis: 0`, and the
@@ -95,7 +126,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.8.0';
+  const VERSION = '0.9.0';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -138,6 +169,10 @@
       if (p === '/education' || p.startsWith('/education/')) return { kind: 'education' };
       const own = p.match(/^\/users\/([^/]+)\/stats$/);
       if (own) return { kind: 'stats-sheet', name: decodeURIComponent(own[1]) };
+      // Lookups, not readings: the names an issue goes by, and which issue each
+      // protest is about. See AIM below for why either is wanted.
+      if (p === '/actions/poll/issues') return { kind: 'issue-list' };
+      if (p === '/protests' || /^\/protests\/[^/]+$/.test(p)) return { kind: 'protests' };
       return null;
     }
     if (m !== 'POST') return null;
@@ -150,7 +185,12 @@
     const ep = p.replace(/\/\d+(?=\/|$)/g, '/{id}');
     if (/^\/actions\/[a-z-]+(\/|$)/.test(p)) return { kind: 'action', ep };
     if (p === '/disobedience') return { kind: 'action', ep };
-    if (p === '/protests' || /^\/protests\/[^/]+\/join$/.test(p)) return { kind: 'action', ep };
+    if (p === '/protests') return { kind: 'action', ep };
+    // A join's body names only a side, so its issue has to come from the protest
+    // it joined. `ref` is that protest's id: it lives on this routing message and
+    // is used once to look the issue up, and it is never copied onto the event.
+    const join = p.match(/^\/protests\/([^/]+)\/join$/);
+    if (join) return { kind: 'action', ep, ref: join[1] };
     if (/^\/combat\/[^/]+\/(action|resolve)$/.test(p)) return { kind: 'action', ep };
     if (p === '/terminal/exec') return { kind: 'action', ep };
     if (p === '/city/bank/rob') return { kind: 'action', ep };
@@ -181,6 +221,105 @@
       return data.success ? (bust ? `success+${bust}` : 'success') : (bust ? `fail+${bust}` : 'fail');
     }
     return bust ? 'bust' : null;
+  };
+
+  // ===========================================================================
+  // AIM — what an action was aimed at. New in 0.9.0.
+  //
+  // Through 0.8.0 an event was { t, ep, outcome } and nothing else, so a burst of
+  // disobedience on Civil Rights and one on LGBT Rights were the same nineteen
+  // rows. The 2026-09-24 focus groups could only be read after asking the
+  // operator which issue each burst had been on (docs/10, docs/21).
+  //
+  // The answer was on the wire the whole time, in the request the game's own
+  // client sent. Measured in the 2026-09-23 bundles: every call goes through one
+  // wrapper that hands fetch a string URL and an init whose body is
+  // JSON.stringify of the payload, and the client has no XHR path at all (the
+  // only one in the bundle is the phaser asset loader, GET-only). So the body is
+  // a plain string sitting in the arguments this tap already holds.
+  //
+  // The rule is an allowlist, the same shape as the router: an endpoint not in
+  // AIM has its body left unread, and a field not named in its picker is never
+  // copied. Values must be short strings or finite numbers; anything else drops.
+  // ===========================================================================
+  const bodyOf = (args) => {
+    // Only the init's body, and only a string. A Request object carries its body
+    // as a stream the app has not consumed yet; reading it would race the app
+    // for it, so a request built that way simply has no aim.
+    const init = args?.[1];
+    const b = init && typeof init === 'object' ? init.body : undefined;
+    if (typeof b !== 'string' || !b || b.length > 4096) return null;
+    try {
+      const o = JSON.parse(b);
+      return o && typeof o === 'object' && !Array.isArray(o) ? o : null;
+    } catch { return null; }
+  };
+
+  // Keyed by the collapsed endpoint `classify` produces. The bundle's names on
+  // the left, ours on the right — `site` is where on the map, `leaning` the
+  // disobedience slider (−3…+3, 0 is centre), `stance` a protest organiser's
+  // −3…+3, `side` a joiner's or a tagger's left/right.
+  const AIM = {
+    '/disobedience': (b) => ({ issue: b.issue_id, site: b.site_key, leaning: b.leaning }),
+    '/protests': (b) => ({ issue: b.issue_id, stance: b.stance }),
+    '/protests/{id}/join': (b) => ({ side: b.side }),
+    '/actions/graffiti': (b) => ({ site: b.location_key, side: b.side }),
+    '/actions/poll': (b) => ({ issue: b.issue }),
+  };
+  const aimOf = (ep, body) => {
+    const pick = AIM[ep];
+    if (!pick || !body || typeof body !== 'object') return null;
+    const out = {};
+    for (const [k, v] of Object.entries(pick(body))) {
+      if (typeof v === 'string' && v && v.length <= 64) out[k] = v;
+      else if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+    }
+    return Object.keys(out).length ? out : null;
+  };
+  // The one call site, in the tap: the body's fields, plus a join's issue from
+  // the protest lookup when this page load has seen that protest listed.
+  const aimFor = (msg, args, protests) => {
+    // The allowlist is asked BEFORE the body is touched: a terminal command or a
+    // combat move is never so much as parsed, which is what the header promises.
+    const aim = (AIM[msg.ep] ? aimOf(msg.ep, bodyOf(args)) : null) ?? {};
+    if (msg.ref != null && aim.issue == null && protests?.has(String(msg.ref))) {
+      aim.issue = protests.get(String(msg.ref));
+    }
+    return Object.keys(aim).length ? aim : null;
+  };
+
+  // An issue has three spellings in one client. Disobedience and protests send a
+  // slug (`civil-rights`, `police-behavior`); the poll list and every memo use a
+  // name (`Civil Rights`, `Police Behavior`); and ActivismPage's own label table
+  // says `Police` for the same issue. Lower-cased letters only is the one key all
+  // three agree on — measured 20 of 20 against the poll list, 2026-09-23 — and it
+  // is the key tools/read-stores.js and poll-watch join on. test-read-stores.js
+  // fails if ISSUE_KEY drifts between the three files.
+  const ISSUE_KEY = /[^a-z]/g;
+  const issueKey = (s) => String(s ?? '').toLowerCase().replace(ISSUE_KEY, '');
+  // The game's own name for an issue when the poll list has been seen, else the
+  // raw value exactly as the request carried it. Never a guess in between.
+  const issueName = (names, raw) => {
+    const k = issueKey(raw);
+    return (k && (names ?? []).find((n) => issueKey(n) === k)) || String(raw);
+  };
+
+  // id → issue, from GET /protests (an array) or GET /protests/<id> (one row).
+  // Only those two fields are taken; the rest of each row is never looked at.
+  const PROTEST_CAP = 200;
+  const harvestProtests = (data, map) => {
+    const rows = Array.isArray(data) ? data
+      : Array.isArray(data?.protests) ? data.protests
+        : data && typeof data === 'object' ? [data] : [];
+    for (const r of rows) {
+      if (!r || typeof r !== 'object' || r.id == null) continue;
+      const issue = [r.issue, r.issue_id].find((v) => typeof v === 'string' && v && v.length <= 64);
+      if (!issue) continue;
+      const id = String(r.id);
+      map.delete(id);
+      map.set(id, issue);
+      if (map.size > PROTEST_CAP) map.delete(map.keys().next().value);
+    }
   };
 
   // ===========================================================================
@@ -221,12 +360,37 @@
   //   residual, no actions in window       → passive     (jail/travel if seen)
   //   residual, N actions of ONE endpoint  → action ×N   (total/N per attempt)
   //   residual, 2+ DIFFERENT endpoints     → ambiguous   (kept, never averaged)
+  //     …unless all but one are ruled out  → inferred    (kept, never averaged)
   //
   // Readings with UNCHANGED values still advance `last[key].t` — a reading that
   // shows no gain is evidence there was no gain, and it narrows future windows.
+  //
+  // Since 0.9.0 an unchanged reading is also counted, which is what makes the
+  // `inferred` row possible. Every window holding ONE endpoint alone adds its
+  // attempts to `actStats[ep].alone[key]`, moved or not — so an endpoint's
+  // profile says not only what it was seen to award, but how many attempts it
+  // was watched for with each key in view. "Poll never awards street_sense" was
+  // unanswerable before: absence from `xp` could equally mean never measured.
+  //
+  // The exclusion rule, and it is deliberately narrow. A mixed window's residual
+  // on `key` is inferred to be ONE endpoint's when:
+  //   - that endpoint has itself measured a change in `key` in a clean window,
+  //     so the claim is "the one here known to award it", never "whoever is left";
+  //   - and every OTHER endpoint in the window has been watched alone for at
+  //     least MIN_ALONE attempts with `key` in view and never moved it.
+  // Anything short of that stays ambiguous. The row is `inferred`, carries the
+  // endpoints it ruled out and how many solo attempts ruled each one out, and
+  // goes nowhere near `actStats.xp` — it is a reading of the evidence, not a
+  // measurement, and the per-action averages stay built from clean windows only.
+  //
+  // Why 5: an endpoint that moves a key on at least half its attempts shows it
+  // within five solo attempts 97% of the time. One that moves it rarely can
+  // slip past that, which is the reason the row says `inferred` in a colour of
+  // its own rather than borrowing the measured green.
   // ===========================================================================
   const EPS = 5e-7; // below the 4-dp precision the game itself displays
   const CAP = { deltas: 1500, events: 1500, feed: 12 };
+  const MIN_ALONE = 5;
 
   const makeLedger = () => ({
     me: null,
@@ -239,26 +403,55 @@
     assessment: null,           // {snapshot_date, previous_date, change, currentSeen}
     changeVerdict: null,        // what the dossier's `change` column turned out to be
     mastery: {},                // ep → {v, since, steps[]} — the rate the game doesn't show
-    events: [],                 // {t, kind:'action'|'train'|'edu'|'status', …}
-    deltas: [],                 // {t, key, d, from, to, attrib:{type, ep?, n?, note?}}
-    actStats: {},               // ep → {n, outcomes:{}, xp:{key:{sum,n}}}
+    issueNames: [],             // the game's names for the issues, from the poll screen
+    events: [],                 // {t, kind:'action'|'train'|'edu'|'status', …}; an action
+                                //   may carry issue/site/leaning/side/stance (0.9.0)
+    deltas: [],                 // {t, key, d, from, to, attrib:{type, ep?, n?, note?, eps?, by?}}
+    actStats: {},               // ep → {n, outcomes:{}, xp:{key:{sum,n}}, alone:{key:attempts}}
     firstSeen: null,
   });
 
   const eventsIn = (L, t0, t1) => L.events.filter((e) => e.t > t0 && e.t <= t1);
 
+  // The one rule that names a mixed window's residual. See the ENGINE comment;
+  // returns the row's attrib, or null to leave it ambiguous.
+  const exclusion = (L, key, actions, eps) => {
+    const ruledOut = (ep) => {
+      const a = L.actStats[ep];
+      return !!a && !a.xp?.[key] && (a.alone?.[key] ?? 0) >= MIN_ALONE;
+    };
+    const left = eps.filter((ep) => !ruledOut(ep));
+    if (left.length !== 1 || !L.actStats[left[0]]?.xp?.[key]) return null;
+    const ep = left[0];
+    return {
+      type: 'inferred', rule: 'exclusion', ep,
+      n: actions.filter((a) => a.ep === ep).length,
+      by: eps.filter((e) => e !== ep).map((e) => ({ ep: e, alone: L.actStats[e].alone[key] })),
+    };
+  };
+
   const closeWindow = (L, key, value, t, out) => {
     const prev = L.last[key];
     L.last[key] = { v: value, t };
-    if (!prev || !(Math.abs(value - prev.v) > EPS)) return;
+    if (!prev) return;
+
+    const win = eventsIn(L, prev.t, t);
+    const actions = win.filter((e) => e.kind === 'action');
+    const eps = [...new Set(actions.map((a) => a.ep))];
+    // One endpoint alone, with this key in view: evidence whichever way the key
+    // went. Counted before the no-change return, because no change IS the datum.
+    if (eps.length === 1) {
+      const a = (L.actStats[eps[0]] ??= { n: 0, outcomes: {}, xp: {} });
+      const alone = (a.alone ??= {});
+      alone[key] = (alone[key] ?? 0) + actions.length;
+    }
+    if (!(Math.abs(value - prev.v) > EPS)) return;
 
     const d = value - prev.v;
-    const win = eventsIn(L, prev.t, t);
     const trainPart = win.reduce((s, e) => s + (e.kind === 'train' && e.key === key ? (e.gain ?? 0) : 0), 0);
     const eduPart = win.reduce((s, e) => s + (e.kind === 'edu'
       ? (e.rewards ?? []).filter((r) => r.key === key).reduce((a, r) => a + (r.amount ?? 0), 0) : 0), 0);
     const residual = d - trainPart - eduPart;
-    const actions = win.filter((e) => e.kind === 'action');
 
     // Measured/declared awards get their own rows, so they are never folded into
     // an action's residual, and the residual row carries the attribution.
@@ -270,7 +463,6 @@
     if (trainPart !== 0) row(trainPart, { type: 'train', n: 0 });
     if (eduPart !== 0) row(eduPart, { type: 'education', n: 0 });
     if (Math.abs(residual) > EPS) {
-      const eps = [...new Set(actions.map((a) => a.ep))];
       // A window holding several actions is only unattributable if they were
       // DIFFERENT actions. Three disobediences in one window are three samples
       // of one endpoint: the total belongs to it, and total/3 is a sound
@@ -287,7 +479,9 @@
           ?? (L.status === 'jailed' || L.status === 'traveling' ? L.status : null);
         row(residual, { type: 'passive', n: 0, note });
       } else {
-        row(residual, { type: 'ambiguous', n: actions.length, eps: [...new Set(actions.map((a) => a.ep))] });
+        // Never touches actStats.xp: an inferred row is a reading of the
+        // evidence, and the per-action averages stay clean-window only.
+        row(residual, exclusion(L, key, actions, eps) ?? { type: 'ambiguous', n: actions.length, eps });
       }
     }
   };
@@ -295,6 +489,26 @@
   const pushEvent = (L, e) => {
     L.events.push(e);
     if (L.events.length > CAP.events) L.events.splice(0, L.events.length - CAP.events);
+  };
+
+  // The aim the tap read off the request, with its issue put into the game's own
+  // name where the poll list has been seen. A poll's memo names its issue in the
+  // reply too (measured in this tool's own samples), which covers a poll whose
+  // body could not be read and teaches the name list one more spelling.
+  const ISSUE_NAMES_CAP = 60;
+  const aimed = (L, msg, data) => {
+    const a = { ...(msg.aim ?? {}) };
+    const said = msg.ep === '/actions/poll' && typeof data.issue === 'string' && data.issue
+      && data.issue.length <= 64 ? data.issue : null;
+    if (said) {
+      a.issue ??= said;
+      L.issueNames ??= [];
+      if (!L.issueNames.some((n) => issueKey(n) === issueKey(said)) && L.issueNames.length < ISSUE_NAMES_CAP) {
+        L.issueNames.push(said);
+      }
+    }
+    if (a.issue != null) a.issue = issueName(L.issueNames, a.issue);
+    return a;
   };
 
   // One classified response in, zero or more delta rows out (already appended).
@@ -450,12 +664,19 @@
       };
     }
 
+    if (msg.kind === 'issue-list') {
+      const list = Array.isArray(data.issues)
+        ? data.issues.filter((s) => typeof s === 'string' && s && s.length <= 64) : [];
+      if (list.length) L.issueNames = list.slice(0, ISSUE_NAMES_CAP);
+      return out;
+    }
+
     if (msg.kind === 'action') {
       const a = (L.actStats[msg.ep] ??= { n: 0, outcomes: {}, xp: {} });
       a.n += 1;
       const o = outcomeOf(msg.ep, data);
       if (o) a.outcomes[o] = (a.outcomes[o] ?? 0) + 1;
-      pushEvent(L, { t, kind: 'action', ep: msg.ep, outcome: o });
+      pushEvent(L, { t, kind: 'action', ep: msg.ep, outcome: o, ...aimed(L, msg, data) });
 
       // Mastery IS shown by the game — ActivismPage renders "your mastery
       // N / 100" (learning <35, practiced <60, fluent 60+) off
@@ -562,6 +783,29 @@
     }
     const keys = Object.keys(L.last);
     lines.push(`readings held: ${keys.length} key${keys.length === 1 ? '' : 's'} · deltas recorded: ${L.deltas.length} · sample endpoints: ${Object.keys(samples).length}`);
+    if (L.deltas.length) {
+      // How much of the record is measured, and how much is labelled something
+      // else — the "why is so much ambiguous?" question, answered in one line.
+      const by = {};
+      for (const d of L.deltas) by[d.attrib?.type ?? '?'] = (by[d.attrib?.type ?? '?'] ?? 0) + 1;
+      lines.push(`attribution: ${['action', 'train', 'education', 'inferred', 'ambiguous', 'passive']
+        .filter((k) => by[k]).map((k) => `${k} ${by[k]}`).join(' · ')}`);
+    }
+    // What the logged actions were aimed at (0.9.0). Polls are readings, not
+    // pushes, so they are left out here as everywhere else that counts pushes.
+    const aimedAt = L.events.filter((e) => e.kind === 'action' && e.ep !== '/actions/poll'
+      && (e.issue != null || e.ep === '/disobedience' || String(e.ep).startsWith('/protests')));
+    if (aimedAt.length) {
+      // Grouped by the issue key, so an event stored as `civil-rights` before the
+      // poll screen was seen and one stored as `Civil Rights` after are one issue.
+      const per = new Map();
+      for (const e of aimedAt) {
+        const k = e.issue != null ? issueKey(e.issue) : '';
+        const g = per.get(k) ?? { label: e.issue != null ? issueName(L.issueNames, e.issue) : 'no issue recorded', n: 0 };
+        g.n += 1; per.set(k, g);
+      }
+      lines.push(`aimed at (events held): ${[...per.values()].sort((a, b) => b.n - a.n).map((g) => `${g.label} ${g.n}`).join(' · ')}`);
+    }
 
     // The actual answer the tool exists to produce. It was missing from every
     // paste until 0.2.6 — the report described the instrument and omitted the
@@ -633,6 +877,10 @@
   const listeners = new Set();
   const onApiResponse = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 
+  // Protest id → issue, for this page load only. Filled from the protest
+  // screens' own responses (see the listener below) and never written to storage.
+  const protestIssue = new Map();
+
   const origFetch = window.fetch;
   window.fetch = async function (...args) {
     const res = await origFetch.apply(this, args);
@@ -641,7 +889,10 @@
       const url = typeof req === 'string' ? req : req?.url ?? '';
       const method = (args[1]?.method ?? (typeof req === 'object' ? req?.method : null) ?? 'GET');
       if (url.includes('/api/')) {
-        const msg = classify(url, method);
+        let msg = classify(url, method);
+        // The one place a request body is read: an action that succeeded, after
+        // the request has gone. See AIM for what is taken and why.
+        if (msg && res.ok && msg.kind === 'action') msg = { ...msg, aim: aimFor(msg, args, protestIssue) };
         if (msg && !res.ok) {
           // Body left unread. Only the own-sheet endpoint records its failure —
           // the broken stats tab was invisible to an ok-only tap (docs/10).
@@ -662,6 +913,9 @@
   };
 
   onApiResponse((msg, data) => {
+    // A lookup, not a reading: nothing is stored, nothing is redrawn. The protest
+    // list refetches every 15 s while it is open, and each pass costs one walk.
+    if (msg.kind === 'protests') { harvestProtests(data, protestIssue); return; }
     const t = Date.now();
     const rows = ingest(L, msg, data, t);
     if (msg.kind === 'action') recordSample(samples, msg.ep, data, t);
@@ -923,17 +1177,36 @@
     : i.kind.startsWith('http') ? `<b>an error (${esc(i.kind.toUpperCase())})</b>`
       : '<b>empty</b>';
 
+  const shortEp = (ep) => String(ep).replace(/^\/actions\//, '').replace(/^\//, '');
   const attribText = (a) => {
     if (a.type === 'action') {
-      const name = esc(a.ep.replace(/^\/actions\//, '').replace(/^\//, ''));
+      const name = esc(shortEp(a.ep));
       return a.n > 1 ? `${name} ×${a.n} (avg)` : name;
     }
+    // Inferred reads as a claim about an endpoint, so it has to look like one AND
+    // look unlike a measurement: the ≈, the italic and its own colour all say so.
+    if (a.type === 'inferred') return `<i>≈ ${esc(shortEp(a.ep))}${a.n > 1 ? ` ×${a.n}` : ''}</i>`;
     if (a.type === 'train') return 'train';
     if (a.type === 'education') return 'education';
     if (a.type === 'ambiguous') return `ambiguous ×${a.n}`;
     return a.note ? `passive · ${esc(a.note)}` : 'passive';
   };
-  const ATTRIB_COLOR = { action: '#34d399', train: '#38bdf8', education: '#a78bfa', passive: '#a1a1aa', ambiguous: '#fbbf24' };
+  // The hover text: what a label is standing on. Narrow panels have no room for
+  // it inline, and the two non-measured labels are the ones that owe a reason.
+  const attribTitle = (a) => {
+    if (a.type === 'inferred') {
+      return `Inferred by exclusion, not measured. ${(a.by ?? []).map((b) => `${shortEp(b.ep)} was watched alone for ${b.alone} attempts and never moved this`).join('; ')}; `
+        + `${shortEp(a.ep)} is the one here seen to award it. Kept out of the per-action averages.`;
+    }
+    if (a.type === 'ambiguous') {
+      return `${a.n} actions of ${(a.eps ?? []).length} kinds in this window (${(a.eps ?? []).map(shortEp).join(', ')}): the total is measured, the split is not.`;
+    }
+    return '';
+  };
+  const ATTRIB_COLOR = {
+    action: '#34d399', train: '#38bdf8', education: '#a78bfa', passive: '#a1a1aa', ambiguous: '#fbbf24',
+    inferred: '#a3e635', // lime: between the measured green and the ambiguous amber, and neither
+  };
 
   const CSS = `
     /* FAB KIT v9 — shared verbatim block.
@@ -1202,11 +1475,11 @@
   `;
 
   const totalsBy = (from) => {
-    const by = {}; // key → {action, train, education, passive, ambiguous}
+    const by = {}; // key → {action, train, education, passive, ambiguous, inferred}
     for (const d of L.deltas) {
       if (d.t < from) continue;
-      const b = (by[d.key] ??= { action: 0, train: 0, education: 0, passive: 0, ambiguous: 0 });
-      b[d.attrib.type] += d.d;
+      const b = (by[d.key] ??= { action: 0, train: 0, education: 0, passive: 0, ambiguous: 0, inferred: 0 });
+      b[d.attrib.type] = (b[d.attrib.type] ?? 0) + d.d;
     }
     return by;
   };
@@ -1216,7 +1489,7 @@
     const bd = panel.querySelector('.bd');
     const feed = L.deltas.slice(-CAP.feed).reverse();
     const sess = totalsBy(sessionStart), all = totalsBy(0);
-    const sum = (b) => b.action + b.train + b.education + b.passive + b.ambiguous;
+    const sum = (b) => Object.values(b).reduce((s, x) => s + x, 0);
 
     const lastReadAt = Object.values(L.last).length
       ? Math.max(...Object.values(L.last).map((x) => x.t)) : null;
@@ -1248,7 +1521,7 @@
         visit and window refocus, and this panel diffs what arrives.</div>` : ''}
       ${pending.length ? `<div class="hint" style="border-color:#155e75;color:#7dd3fc">
         <b>${pending.length} action${pending.length === 1 ? '' : 's'} not measured yet</b>
-        (${esc([...new Set(pending.map((p) => p.ep.replace(/^\/actions\//, '').replace(/^\//, '')))].join(', '))}).
+        (${esc([...new Set(pending.map((p) => `${shortEp(p.ep)}${p.issue != null ? ` · ${p.issue}` : ''}`))].join(', '))}).
         Nothing is lost — a gain only becomes a number once a reading closes the window.
         Click <b>home ↻</b> below to take one now.${pending.length > 1
           ? ` With ${pending.length} actions in the window the total is measured but cannot be
@@ -1264,7 +1537,7 @@
           <tr><td class="muted">${age(d.t)}</td>
           <td class="num" style="color:${d.d >= 0 ? '#34d399' : '#f87171'}">${fmt(d.d)}</td>
           <td>${esc(d.key)}</td>
-          <td style="color:${ATTRIB_COLOR[d.attrib.type]}">${attribText(d.attrib)}</td></tr>`).join('')}</table>`}
+          <td style="color:${ATTRIB_COLOR[d.attrib.type] ?? '#a1a1aa'}" title="${esc(attribTitle(d.attrib))}">${attribText(d.attrib)}</td></tr>`).join('')}</table>`}
       </div>
       <div>
         <h4>skills · session / all-time</h4>
@@ -1313,8 +1586,10 @@
   const copyTSV = () => {
     const lines = [['time', 'key', 'delta', 'from', 'to', 'attribution', 'detail'].join('\t')];
     for (const d of L.deltas) {
-      lines.push([new Date(d.t).toISOString(), d.key, d.d, d.from, d.to, d.attrib.type,
-        d.attrib.ep ?? d.attrib.note ?? (d.attrib.eps ?? []).join(',')].join('\t'));
+      const detail = d.attrib.type === 'inferred'
+        ? `${d.attrib.ep} (ruled out: ${(d.attrib.by ?? []).map((b) => `${b.ep} alone ${b.alone}`).join(', ')})`
+        : d.attrib.ep ?? d.attrib.note ?? (d.attrib.eps ?? []).join(',');
+      lines.push([new Date(d.t).toISOString(), d.key, d.d, d.from, d.to, d.attrib.type, detail].join('\t'));
     }
     try { navigator.clipboard.writeText(lines.join('\n')); } catch (e) { log('clipboard', e); }
   };

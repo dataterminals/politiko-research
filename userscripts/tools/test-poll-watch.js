@@ -432,7 +432,41 @@ check('a log starting exactly at the window edge does cover it',
 ledger([{ kind: 'action', ep: '/disobedience' }, act(T0 - 1000), act(T0 + 1000)]);
 eq('an entry with no timestamp is skipped, not counted as now',
   layer.windowActions(T0, T1).n, 1);
+
+// 0.9.0: xp-watch 0.9.0 names the issue each action's request aimed at. The total
+// above does not move; the disobedience inside it splits three ways.
+console.log('\n— ...and which issue it was aimed at (0.9.0) —');
+ledger([
+  act(T0 - 20 * 86_400_000),
+  { ...act(T0 + 60_000), issue: 'civil-rights' },         // the slug the request sent
+  { ...act(T0 + 61_000), issue: 'Civil Rights' },         // the name, once xp-watch knew it
+  { ...act(T0 + 62_000), issue: 'LGBT Rights' },
+  act(T0 + 63_000),                                       // logged before 0.9.0: names none
+  act(T0 + 64_000, '/terminal/exec'),
+  { ...act(T0 + 65_000, '/actions/poll'), issue: 'Civil Rights' }, // a reading, not a push
+]);
+const split = layer.windowActions(T0, T1, 'Civil Rights');
+eq('the total is the 0.8.0 total', split.n, 5);
+eq('the slug and the memo\'s name are one issue', split.here, 2);
+eq('another issue is counted apart', split.elsewhere, 1);
+eq('an action that names no issue is never assigned to one', split.unknown, 1);
+eq('a terminal command is in the total and in no split', split.here + split.elsewhere + split.unknown, 4);
+eq('...and the split is drawn', split.named, true);
+eq('the same log against another issue', (({ here, elsewhere, unknown }) => [here, elsewhere, unknown])(
+  layer.windowActions(T0, T1, 'LGBT Rights')), [1, 2, 1]);
+ledger([act(T0 - 1000), act(T0 + 1000), act(T0 + 2000)]);
+eq('a log that names no issue draws no split', layer.windowActions(T0, T1, 'Civil Rights').named, false);
+eq('...and counts exactly as 0.8.0 did', layer.windowActions(T0, T1, 'Civil Rights').n, 2);
+ledger([act(T0 + 60_000), { ...act(T0 + 61_000), issue: 'Taxes' }]);
+eq('a log that starts mid-window still refuses to count, split or not',
+  layer.windowActions(T0 + 30_000, T1, 'Taxes').covered, false);
 store.delete('pkxp:ledger');
+check('the memo passes its own issue to the count',
+  /windowActions\(prev\.t, p\.t, p\.issue\)/.test(CODE), 'the per-issue half needs the memo\'s issue');
+check('...says "on this issue" only when something named one',
+  /\} else if \(!w\.named\) \{[\s\S]{0,700}on this issue/.test(CODE), 'the split must stay silent on an untagged window');
+check('...and still calls it a count, not a cause', (CODE.match(/A count, not a cause/g) || []).length >= 1
+  && /is a count, not a cause/.test(CODE), 'the tooltip lost its caveat');
 
 console.log('\n— the game clock stamps a memo when the app has supplied one —');
 

@@ -315,6 +315,12 @@ made two claims — no leaning reaches ±3, *and* an untouched public does not d
 "her actions in this window" can never be "her actions on this issue". The windows, from
 `read-stores`' Herald-against-polls join:
 
+> **2026-09-23, xp-watch 0.9.0:** from this version on it does. Each action now carries the
+> issue its request named, and `read-stores` and poll-watch 0.9.0 split a window's
+> disobedience into this issue, other issues, and any issue (logged earlier). See
+> [`10-xp-surface.md`](10-xp-surface.md). Everything below was logged before that, and
+> stays as unresolved as this section says.
+
 | window | her actions in it | what is accounted for |
 |---|---|---|
 | Civil Rights 09-12 13:06:56 → 09-15 11:40:10 | 30 (24 ok) | two bursts: **23** at 09-12 13:35–13:38, which is the measured −2 LGBT bar, and **7** at 09-15 11:30 |
@@ -489,6 +495,8 @@ All of it from stores the tools already keep, zero added requests:
   reading xp-watch's ledger — whether **any** action of yours falls inside it. That last line
   is deliberately weaker than it looks, for the reason in *Who moved them is open*: the
   ledger is not per-issue, so zero of hers rules her out and a count never rules her in.
+  *(Per-issue since poll-watch and xp-watch 0.9.0, 2026-09-23, for actions logged from then
+  on. Even then a count places her at work on the issue and still never rules her in.)*
 - **poll-watch: the decay curve.** Still unbuilt. Fit popularity decay across untouched
   intervals and flag a re-raise — *"acted on since your last poll, by someone"* — which the
   Intelligence test above will either establish or kill as a tell.

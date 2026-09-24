@@ -877,7 +877,8 @@ window.HARNESS_FIXTURES = {
     source: 'OpinionPollPage in the 2026-08-03 bundle pull',
     note: 'Fire the clock and the issue list first, then the memos. Same-issue memos in sequence are what produce the per-bucket deltas, the window line and the trend; fire the two Women\'s Rights ones back to back and every bucket should pick up a +n/−n against the first. The error reply is there to prove the shape gate drops non-memos. '
       + 'The window line reads "Δ vs your last poll" here because the bench has no xp-watch beside it — that is the no-claim state, not a zero. The other three need a log where it looks, and the ORDER of the clicks is what distinguishes them. Let A = {t:Date.now()-864e5,kind:"action",ep:"/disobedience"} (a day old, so the log reaches back past the window) and N = the same with t:Date.now(). '
-      + 'Set events:[A] and fire both memos → "no actions of yours". Set events:[A], fire the first memo, set events:[A,N], fire the second → "1 action of yours". Set events:[N] BETWEEN the two memos → the log now begins after the window opened, so it says "log starts mid-window" and counts nothing.',
+      + 'Set events:[A] and fire both memos → "no actions of yours". Set events:[A], fire the first memo, set events:[A,N], fire the second → "1 action of yours". Set events:[N] BETWEEN the two memos → the log now begins after the window opened, so it says "log starts mid-window" and counts nothing. '
+      + '0.9.0, the per-issue half: as the second recipe, but with N carrying issue:"womens-rights" (the slug a request sends) plus a second in-window action with issue:"LGBT Rights" → "2 actions of yours · 1 on this issue", and hovering it names the one on another issue. With no issue on any in-window event the line stays the 0.8.0 one. The panel sits over these buttons at its default spot, so drag it aside first.',
     calls: [
       {
         label: 'game clock (stamps each memo)',
