@@ -394,6 +394,64 @@ group says whether the paper moves the public with no player involved, and `read
 *Herald against the polls* section already lines up every story against every window,
 including the ones still open.
 
+### Two leftward bursts on Civil Rights, polled between (added 2026-09-24)
+
+Three focus groups on Civil Rights, the last two each run straight after a burst of
+disobedience. The operator confirms both bursts were aimed at Civil Rights, at a leaning of
+**−1 (slight left)**. That is her statement, not a reading, because xp-watch records neither
+the issue nor the leaning (*Who moved them is open*). The buckets agree with it: neutral
+drained into slight left, which is the one move neither a centrist nor a rightward action
+has made anywhere in this file.
+
+| | 09-23 07:48:08 | 09-24 02:57:38 | 09-24 03:21:27 |
+|---|---|---|---|
+| since the poll before | — | 19.2 h; **19 actions (12 ok)**, all at 02:57:24–:30 | 24 min; **28 actions (18 ok)**, 03:20:35–03:21:17 |
+| slight left | 0 | 2 | 4 |
+| neutral | 11 | 8 | 5 |
+| slight right | 29 | 29 | 30 |
+| centre right | 0 | 0 | 0 |
+| far right | 59 | 59 | 59 |
+| mean | 2.081 | 2.082 | 2.071 |
+| popularity · volatility | 1000 · stable | 987 · stable | 1000 · moderate |
+
+Measured:
+
+- **Each burst took three points out of neutral**, and neutral is the only bucket either
+  drew from. Against neutral as the pool, that is 3 of 11 (27 %) and 3 of 8 (38 %) — under
+  the 43–44 % the two centrist bars took from theirs, from fewer actions at a lower success
+  rate: 63 % and 64 %, where every centrist bar in this file ran above 80 %.
+- **Same shape as the LGBT −1 bar** in *The leftward discount*: neutral loses, slight left
+  gains two, slight right holds or gains one. Two issues now, one fingerprint. Neither
+  leftward bar took anyone off slight right, although it sits one step from neutral and was
+  the larger bucket both times.
+- **The mean said nothing, again.** Six points moved and the mean went +0.001, then −0.010.
+  The first is even the wrong sign, because the buckets summed to 99 before and 98 after.
+- **Far right held at 59 for 19.6 hours.** At the 0.27 points an hour that *Who moved them
+  is open* computed for mean reversion, it should have lost about five.
+- **Volatility read `stable` eight seconds after 19 actions on this issue**, and `moderate`
+  only after 28 more. *Two activity tells* already says `stable` proves nothing about last
+  night. It does not prove anything about the last minute either.
+- **A focus group can be run from jail.** Both polls came within ten seconds of a jailing:
+  jailed 02:57:30, poll 02:57:38; jailed 03:21:18, poll 03:21:27. Seen twice.
+- **The stop rate was 4 in 47, or 8.5 %.** A jailing ended the first burst at 19 actions.
+  Hospitals ended the next two at 14 and 9, with stays of 12 s and 5 s. A jailing ended the
+  last at 5. That is past the five-percent line *The burst* draws.
+
+Inferred:
+
+- **The 19 quiet hours probably did little to this issue.** Both bursts moved the same three
+  points, though the first window also held 19 hours and four World stories: *HATE RALLY*
+  and *NEW JOBS* (conservative), *MEDICAL DEBT CRISIS* twice (liberal). If the quiet stretch
+  had moved neutral much, the first jump would be the bigger one, and it is not. That is one
+  pair on integer buckets, so it is a lean, not a result. The clean control, a poll before
+  any burst, was not taken: the first poll landed eight seconds after one.
+- **Whatever moves this far end is not a steady drift toward neutral.** Far right held here
+  for 19.6 hours. And poll-watch's store shows it *rising* before that: 53 on 09-16, 59 on
+  09-23. That window holds 341 of her disobedience actions, on issues the ledger cannot
+  name, so the rise is not attributed. The far end moves in both directions, and a steady
+  inward drift fits neither reading. It fits a third party better. The Intelligence poll is still the clean
+  test, and it still has not been run.
+
 ### What it costs the operator's own compass
 
 From `align-watch`'s 66 readings: the social axis carries ~5,200 samples at a mean of
@@ -470,7 +528,9 @@ takes; every number here was hers to take, and the tools only remember what came
   `congress_alignment_swing` after it (20). The Nov Y14 election moved the House right by 25
   seats, so the mechanism exists.
 - **What moves a ±3 bucket**, and whether mean reversion or a third party emptied the two
-  above. The Intelligence poll separates them for $1,000.
+  above. The Intelligence poll separates them for $1,000. Since then, Civil Rights' far
+  right has held for 19.6 hours and risen 53 → 59 over a week (*Two leftward bursts*). That
+  fits a third party better than a drift, but it is one issue, and the poll is still unrun.
 - **Whether the Herald's `spin` moves a poll.** Nine stories, an open abortion window, and
   nobody has looked.
 - **What `popularity` measures**, beyond "attention, capped, decaying".
@@ -493,3 +553,9 @@ one the operator ran in normal play; no poll was run to write this file, and no 
 their `spin` come from gov-watch's store, and the story-to-window join is
 [`tools/read-stores.js`](../tools/read-stores.js)' own section, which states its own
 adjacency caveat and is worth reading before leaning on it.
+
+For the 2026-09-24 pass: the same method, with a bundle collected at 03:22Z. Both polls
+and all 47 actions were the operator's own, in normal play. The issue the bursts were aimed
+at, and their −1 leaning, are her word, given after the fact. Action
+counts, outcomes, jailings and hospital stays come from xp-watch's ledger, and the poll
+history from poll-watch's store.
