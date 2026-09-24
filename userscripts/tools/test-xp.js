@@ -211,7 +211,7 @@ ok('the footer wraps instead of clipping a button at the resize floor', /#pkxp \
 const ENGINE = cut('  const slug = (label)', '  // Persistent state');
 const build = () => new Function('log', `${ENGINE}
   return { slug, classify, outcomeOf, scrub, makeLedger, ingest, recordSample, buildReport, EPS, CAP,
-    bodyOf, aimOf, aimFor, issueKey, issueName, harvestProtests, MIN_ALONE };`)(() => {});
+    bodyOf, aimOf, aimFor, issueKey, issueName, harvestProtests, MIN_ALONE, collapseEp, migrateEps };`)(() => {});
 const E = build();
 
 console.log('\n— router: a strict allowlist —');
@@ -230,6 +230,15 @@ console.log('\n— router: a strict allowlist —');
   check('sleeper meet: id collapsed', c('/api/actions/sleeper-recruitment/44/meet', 'POST'), { kind: 'action', ep: '/actions/sleeper-recruitment/{id}/meet' });
   check('combat action: id collapsed', c('/api/combat/17/action', 'POST'), { kind: 'action', ep: '/combat/{id}/action' });
   check('combat resolve: id collapsed', c('/api/combat/17/resolve', 'POST'), { kind: 'action', ep: '/combat/{id}/resolve' });
+  // 0.10.0: combat's real ids are UUIDs, and until now only numeric ids collapsed, so
+  // every fight was an endpoint of its own — with its id in storage.
+  check('combat action: UUID collapsed', c('/api/combat/22db76d5-da28-4a57-927d-0b3f251fb0bf/action', 'POST'), { kind: 'action', ep: '/combat/{id}/action' });
+  check('combat resolve: UUID collapsed', c('/api/combat/22db76d5-da28-4a57-927d-0b3f251fb0bf/resolve', 'POST'), { kind: 'action', ep: '/combat/{id}/resolve' });
+  check('...in capitals too', c('/api/combat/22DB76D5-DA28-4A57-927D-0B3F251FB0BF/action', 'POST'), { kind: 'action', ep: '/combat/{id}/action' });
+  check('a UUID-ish segment that is not a UUID is left alone',
+    E.collapseEp('/combat/22db76d-da28-4a57-927d-0b3f251fb0bf/action'), '/combat/22db76d-da28-4a57-927d-0b3f251fb0bf/action');
+  check('a word segment is never an id', E.collapseEp('/actions/car-theft/start'), '/actions/car-theft/start');
+  check('a UUID glued to a word is not a segment', E.collapseEp('/combat/x22db76d5-da28-4a57-927d-0b3f251fb0bf/action'), '/combat/x22db76d5-da28-4a57-927d-0b3f251fb0bf/action');
   check('terminal exec', c('/api/terminal/exec', 'POST'), { kind: 'action', ep: '/terminal/exec' });
   check('bank rob', c('/api/city/bank/rob', 'POST'), { kind: 'action', ep: '/city/bank/rob' });
   check('travel', c('/api/travel', 'POST'), { kind: 'action', ep: '/travel' });
@@ -899,6 +908,96 @@ console.log('\n— 0.9.0: attribution by exclusion — where it must not —');
   const rows = read(L, { street_sense: 10.38 });
   check('an old ledger with no solo counts stays ambiguous, and does not throw', rows[0].attrib.type, 'ambiguous');
 }
+
+// ---------------------------------------------------------------------------
+// 0.10.0 — the ids out of everything already stored
+// ---------------------------------------------------------------------------
+console.log('\n— 0.10.0: the migration takes every stored id out, and loses no count —');
+{
+  // Two fights (A, B), each with its own UUID endpoints, as 0.9.x stored them, beside
+  // a disobedience entry that must come through untouched.
+  const A = '22db76d5-da28-4a57-927d-0b3f251fb0bf', B = '588e9e69-90d3-4ef7-955a-e84ae6e84fac';
+  const L = E.makeLedger();
+  L.actStats = {
+    [`/combat/${A}/action`]: { n: 3, outcomes: { success: 2, fail: 1 }, xp: { agility: { sum: 0.3, n: 3 } }, alone: { agility: 3 } },
+    [`/combat/${B}/action`]: { n: 2, outcomes: { success: 2 }, xp: { agility: { sum: 0.1, n: 2 }, pistol: { sum: 0.2, n: 2 } }, alone: { agility: 2, pistol: 2 } },
+    [`/combat/${A}/resolve`]: { n: 1, outcomes: {}, xp: {} },
+    [`/combat/${B}/resolve`]: { n: 1, outcomes: { success: 1 }, xp: {} },
+    '/disobedience': { n: 40, outcomes: { success: 30 }, xp: { persuasion: { sum: 0.8, n: 40 } } },
+  };
+  L.mastery = { '/disobedience': { v: 72, since: 30, steps: [] } };
+  L.events = [
+    { t: 1, kind: 'action', ep: `/combat/${A}/action`, outcome: 'success' },
+    { t: 2, kind: 'action', ep: `/combat/${A}/resolve`, outcome: null },
+    { t: 3, kind: 'action', ep: '/disobedience', outcome: 'success', issue: 'Civil Rights' },
+    { t: 4, kind: 'status', from: 'active', to: 'jailed' },
+  ];
+  L.deltas = [
+    { t: 5, key: 'agility', d: 0.1, attrib: { type: 'ambiguous', n: 4, eps: [`/combat/${A}/action`, `/combat/${B}/action`, `/combat/${A}/resolve`] } },
+    { t: 6, key: 'agility', d: 0.1, attrib: { type: 'action', ep: `/combat/${B}/action`, n: 1 } },
+    { t: 7, key: 'heart', d: 0.47, attrib: { type: 'train', n: 0 } },
+  ];
+  const samples = {
+    [`/combat/${A}/action`]: [{ t: 10, body: '{"a":1}' }, { t: 30, body: '{"a":3}' }],
+    [`/combat/${B}/action`]: [{ t: 20, body: '{"b":2}' }, { t: 40, body: '{"b":4}' }],
+    '/disobedience': [{ t: 50, body: '{"success":true}' }],
+  };
+
+  check('it reports that it changed something', E.migrateEps(L, samples), true);
+  check('actStats keys are the collapsed endpoints', Object.keys(L.actStats).sort(), ['/combat/{id}/action', '/combat/{id}/resolve', '/disobedience']);
+  const act = L.actStats['/combat/{id}/action'];
+  check('attempts add', act.n, 5);
+  check('outcomes add', act.outcomes, { success: 4, fail: 1 });
+  check('xp sums and their n add', [+act.xp.agility.sum.toFixed(4), act.xp.agility.n, act.xp.pistol], [0.4, 5, { sum: 0.2, n: 2 }]);
+  check('alone counts add — five solo attempts on agility is a profile now', act.alone, { agility: 5, pistol: 2 });
+  check('resolves pool too', [L.actStats['/combat/{id}/resolve'].n, L.actStats['/combat/{id}/resolve'].outcomes], [2, { success: 1 }]);
+  check('an endpoint with no id comes through untouched', L.actStats['/disobedience'], { n: 40, outcomes: { success: 30 }, xp: { persuasion: { sum: 0.8, n: 40 } } });
+  check('mastery with no id is kept as is', L.mastery, { '/disobedience': { v: 72, since: 30, steps: [] } });
+  check('events are rewritten, and nothing else on them moves',
+    L.events.map((e) => [e.ep, e.outcome, e.issue]), [['/combat/{id}/action', 'success', undefined], ['/combat/{id}/resolve', null, undefined], ['/disobedience', 'success', 'Civil Rights'], [undefined, undefined, undefined]]);
+  check('an ambiguous row keeps its type and lists each endpoint once',
+    L.deltas[0].attrib, { type: 'ambiguous', n: 4, eps: ['/combat/{id}/action', '/combat/{id}/resolve'] });
+  check('an attributed row is rewritten', L.deltas[1].attrib.ep, '/combat/{id}/action');
+  check('a row with no endpoint is left alone', L.deltas[2].attrib, { type: 'train', n: 0 });
+  check('sample rings join, newest kept, oldest first',
+    samples['/combat/{id}/action'].map((s) => s.t), [20, 30, 40]);
+  check('...and no UUID-keyed ring remains', Object.keys(samples).sort(), ['/combat/{id}/action', '/disobedience']);
+
+  const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+  check('no fight id survives anywhere in the ledger or the samples', UUID.test(JSON.stringify(L)) || UUID.test(JSON.stringify(samples)), false);
+
+  const before = JSON.stringify([L, samples]);
+  check('it is idempotent: a second run changes nothing and says so', [E.migrateEps(L, samples), JSON.stringify([L, samples]) === before], [false, true]);
+  check('a fresh 0.10.0 ledger needs nothing', E.migrateEps(E.makeLedger(), {}), false);
+}
+{
+  // A ruled-out endpoint on an inferred row is an endpoint too.
+  const L = E.makeLedger();
+  L.deltas = [{ t: 1, key: 'agility', d: 0.1, attrib: { type: 'inferred', rule: 'exclusion', ep: '/combat/588e9e69-90d3-4ef7-955a-e84ae6e84fac/action', n: 3,
+    by: [{ ep: '/combat/588e9e69-90d3-4ef7-955a-e84ae6e84fac/resolve', alone: 6 }] } }];
+  E.migrateEps(L, {});
+  check('an inferred row\'s endpoint and its ruled-out endpoints are rewritten',
+    [L.deltas[0].attrib.ep, L.deltas[0].attrib.by[0].ep], ['/combat/{id}/action', '/combat/{id}/resolve']);
+  // Two mastery tracks cannot be summed; the one that moved last wins.
+  L.mastery = { '/x/11111111-1111-1111-1111-111111111111/y': { v: 3, since: 5, steps: [] }, '/x/22222222-2222-2222-2222-222222222222/y': { v: 4, since: 9, steps: [] } };
+  E.migrateEps(L, {});
+  check('colliding mastery keeps the track that moved last', L.mastery, { '/x/{id}/y': { v: 4, since: 9, steps: [] } });
+}
+{
+  // What the collapse buys going forward: two different fights in two clean windows
+  // are now one profile, and each attempt counts toward MIN_ALONE.
+  const L = ledgerWith({ agility: 10 });
+  for (const id of ['22db76d5-da28-4a57-927d-0b3f251fb0bf', '588e9e69-90d3-4ef7-955a-e84ae6e84fac']) {
+    const msg = E.classify(`/api/combat/${id}/action`, 'POST');
+    for (let i = 0; i < 3; i++) E.ingest(L, msg, { success: true }, clock += 10);
+    read(L, { agility: 10 });
+  }
+  check('two fights, one profile: six solo attempts', L.actStats['/combat/{id}/action'].alone, { agility: 6 });
+  check('...and nothing keyed by a fight', Object.keys(L.actStats), ['/combat/{id}/action']);
+}
+ok('the router collapses through collapseEp', /const ep = collapseEp\(p\);/.test(SRC));
+ok('the migration runs on load, and a change is saved', /if \(migrateEps\(L, samples\)\) \{ dirty = true;/.test(SRC));
+ok('the header says no fight id is kept', /no fight,\s*\n?\s*\*?\s*recruit or protest id is kept/.test(SRC));
 
 // ---------------------------------------------------------------------------
 // The tap itself, sliced out and driven against a stub fetch. What has to hold:

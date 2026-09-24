@@ -717,9 +717,42 @@ single sample looks like one.
 ### Open, from this section
 
 - **Which combat endpoint trains what.** Combat is the largest ambiguous group (42 rows),
-  and exclusion cannot help it as things stand. Fight ids are UUIDs, and the router
+  and exclusion cannot help it as things stand. ~~Fight ids are UUIDs, and the router
   collapses only numeric ids, so each fight is its own endpoint and no profile ever reaches
-  five. Separately, `resolve` never sits alone in a window.
+  five.~~ **Fixed in 0.10.0, below.** The other half stands: `resolve` never sits alone in a
+  window.
+
+### Fights were endpoints of their own — xp-watch 0.10.0 (2026-09-24)
+
+The router collapsed numeric ids only, and combat's ids are UUIDs. So every fight was
+stored as its own endpoint, with its id: `/combat/22db76d5-…/action`. Two costs followed.
+Combat's per-action XP never pooled, so no profile could reach `MIN_ALONE`. And the router's
+own comment said no id is stored, which was false for combat.
+
+0.10.0 collapses UUID segments as well as numeric ones, with the same two shapes
+`read-stores.js` already collapsed for display. On first load it also rewrites everything
+already stored: actStats, mastery, events, delta attributions and sample rings. Entries
+that collapse together are merged, and every count adds. The migration is idempotent and
+runs on every load.
+
+Measured on a scratch copy of the operator's 09-24 ledger (the store itself untouched):
+
+| | before | after |
+|---|---|---|
+| actStats keys | 121 | 11 |
+| sample rings | 121 | 11 |
+| fight ids stored (ledger + samples) | 694 | **0** |
+| ledger + samples | 279 KB | 197 KB |
+| attempts / measured-xp samples | 2,906 / 3,123 | 2,906 / 3,123 |
+
+Combat is now one profile: **124 actions and 55 resolves**, with no measured gain on
+either. No fight has sat alone between two readings. So pooling the ids was necessary for
+exclusion to ever help combat, but it is not enough on its own.
+
+**History is not re-attributed.** A past ambiguous row whose endpoints now collapse to one
+stays ambiguous, because nothing was learned from it in its day. On this ledger no row is
+affected. Also measured: none of the 187 stored sample bodies carries a UUID, so a fight id
+only ever lived in endpoint strings and keys.
 - **Whether the `issue_id` on the wire is the table's slug.** One 0.9.0 event answers it.
 
 ## Open questions

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Politiko — XP Watch
 // @namespace    https://github.com/dataterminals/politiko-research
-// @version      0.9.1
+// @version      0.10.0
 // @description  Ledger of your own stat/skill changes, diffed from responses the game already fetched: per-action XP where one action sits alone in a window, train/education awards measured exactly, everything else honestly labelled passive, ambiguous, or — kept apart from the measured numbers — inferred by exclusion. Records which issue each disobedience, protest and poll was aimed at, read off the request the game itself sent. Passive — zero added requests.
 // @author       dataterminals
 // @homepageURL  https://github.com/dataterminals/politiko-research
@@ -86,7 +86,10 @@
  *   Storage:  localStorage keys prefixed `pkxp:` — your own readings, deltas,
  *             action events (each with the issue, site, leaning, side or stance it
  *             was aimed at, where its request named one), the game's list of issue
- *             names, person-scrubbed response samples, panel position and size
+ *             names, person-scrubbed response samples, panel position and size.
+ *             Endpoints are stored with every id collapsed to {id}: no fight,
+ *             recruit or protest id is kept. Before 0.10.0 combat's UUID ids were;
+ *             the first load of 0.10.0 rewrites them out of everything stored.
  *
  *   Alerts:   none. No notifications, no sound, no title changes; the panel only
  *             renders while the tab is visible
@@ -126,7 +129,7 @@
   'use strict';
 
   const TAG = '[pk-xp-watch]';
-  const VERSION = '0.9.1';
+  const VERSION = '0.10.0';
   const log = (...a) => console.debug(TAG, ...a);
 
   const K = { ledger: 'pkxp:ledger', samples: 'pkxp:samples', ui: 'pkxp:ui' };
@@ -149,6 +152,14 @@
   // Train responses name the target by LABEL ("First Aid"), not key. The train GET
   // supplies label→key pairs which we remember; this is the cold-start fallback.
   const slug = (label) => String(label ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+
+  // An endpoint with its ids taken out, so per-target attempts aggregate under
+  // one key and no id is ever stored. Numeric ids (a recruit, a protest) since
+  // 0.1; UUIDs since 0.10.0 — combat's ids are UUIDs, and until then every fight
+  // was an endpoint of its own, stored with its id (see MIGRATION below).
+  // tools/read-stores.js collapses the same two shapes for display.
+  const ID_SEGMENT = /\/(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?=\/|$)/gi;
+  const collapseEp = (p) => String(p).replace(ID_SEGMENT, '/{id}');
 
   // ===========================================================================
   // ROUTER — which /api responses this tool reads, and as what. Everything else
@@ -180,9 +191,9 @@
     if (p === '/train') return { kind: 'train-award' };
     // Action endpoints worth an event: things that plausibly train a skill.
     // Extending this list is an edit to the script, on purpose (clause 6).
-    // Numeric path segments are collapsed to {id} so per-target attempts
-    // aggregate under one endpoint and no id is stored.
-    const ep = p.replace(/\/\d+(?=\/|$)/g, '/{id}');
+    // Numeric and UUID path segments are collapsed to {id} (collapseEp), so
+    // per-target attempts aggregate under one endpoint and no id is stored.
+    const ep = collapseEp(p);
     if (/^\/actions\/[a-z-]+(\/|$)/.test(p)) return { kind: 'action', ep };
     if (p === '/disobedience') return { kind: 'action', ep };
     if (p === '/protests') return { kind: 'action', ep };
@@ -853,6 +864,89 @@
     return lines.join('\n');
   };
 
+  // ===========================================================================
+  // MIGRATION (0.10.0) — the ids out of everything already stored.
+  //
+  // Through 0.9.x the router collapsed only numeric ids, and combat's are UUIDs,
+  // so every fight was an endpoint of its own. The operator's ledger of
+  // 2026-09-24 held 582 of them: 112 actStats keys with n of 1–6 each, 80
+  // events, 42 delta attributions, and 112 sample rings. Two consequences:
+  // combat's per-action XP never pooled, so no combat profile could ever reach
+  // MIN_ALONE; and the router's own comment said no id is stored, which was
+  // false. Collapsing new traffic fixes neither for what is already on disk, and
+  // leaving old UUID events in place would quietly re-create a UUID-keyed profile
+  // the next time a window holding one closed.
+  //
+  // So every stored endpoint is put through collapseEp:
+  //   actStats    entries that collapse together are MERGED — n, outcomes,
+  //               xp sums and n, and alone counts all add, because each was a
+  //               count of the same kind of attempt
+  //   mastery     renamed; on a collision the track that moved last is kept,
+  //               since two counter histories cannot be summed (only
+  //               /disobedience has one on record, which never collides)
+  //   events      each ep rewritten
+  //   deltas      ep, eps (deduplicated) and the ruled-out eps of an inferred row
+  //   samples     rings that collapse together are joined, newest SAMPLE_RING kept
+  //
+  // What it does NOT do is re-attribute history. A past ambiguous row whose
+  // endpoints now collapse to one (two fights' actions) stays ambiguous: it was
+  // not attributable under the keys of its day, nothing was learned from it, and
+  // rewriting it now would put numbers into the averages that no window ever
+  // measured as clean.
+  //
+  // Idempotent — a collapsed key collapses to itself — so it runs on every load
+  // with no version flag, and returns whether anything changed.
+  // ===========================================================================
+  const migrateEps = (L, samples) => {
+    let changed = false;
+    const fix = (ep) => {
+      if (typeof ep !== 'string') return ep;
+      const c = collapseEp(ep);
+      if (c !== ep) changed = true;
+      return c;
+    };
+
+    const stats = {};
+    for (const [ep, a] of Object.entries(L.actStats ?? {})) {
+      const k = fix(ep);
+      const into = stats[k];
+      if (!into) { stats[k] = a; continue; }
+      into.n = (into.n ?? 0) + (a?.n ?? 0);
+      for (const [o, n] of Object.entries(a?.outcomes ?? {})) (into.outcomes ??= {})[o] = (into.outcomes[o] ?? 0) + n;
+      for (const [key, x] of Object.entries(a?.xp ?? {})) {
+        const y = ((into.xp ??= {})[key] ??= { sum: 0, n: 0 });
+        y.sum += x?.sum ?? 0; y.n += x?.n ?? 0;
+      }
+      for (const [key, n] of Object.entries(a?.alone ?? {})) (into.alone ??= {})[key] = (into.alone[key] ?? 0) + n;
+    }
+    L.actStats = stats;
+
+    const mastery = {};
+    for (const [ep, m] of Object.entries(L.mastery ?? {})) {
+      const k = fix(ep);
+      if (!mastery[k] || (m?.since ?? 0) > (mastery[k]?.since ?? 0)) mastery[k] = m;
+    }
+    L.mastery = mastery;
+
+    for (const e of L.events ?? []) if (e && e.ep) e.ep = fix(e.ep);
+    for (const d of L.deltas ?? []) {
+      const a = d && d.attrib;
+      if (!a) continue;
+      if (a.ep) a.ep = fix(a.ep);
+      if (Array.isArray(a.eps)) a.eps = [...new Set(a.eps.map(fix))];
+      if (Array.isArray(a.by)) for (const b of a.by) if (b && b.ep) b.ep = fix(b.ep);
+    }
+
+    for (const [ep, ring] of Object.entries(samples ?? {})) {
+      const k = fix(ep);
+      if (k === ep) continue;
+      delete samples[ep];
+      samples[k] = (samples[k] ?? []).concat(Array.isArray(ring) ? ring : [])
+        .sort((x, y) => (x?.t ?? 0) - (y?.t ?? 0)).slice(-SAMPLE_RING);
+    }
+    return changed;
+  };
+
   // ---------------------------------------------------------------------------
   // Persistent state
   // ---------------------------------------------------------------------------
@@ -861,6 +955,8 @@
   const samples = readJSON(K.samples, {});
   const sessionStart = Date.now();
   let dirty = false;
+  // Saved on the next tick of the ordinary 3 s cadence, like any other change.
+  if (migrateEps(L, samples)) { dirty = true; log('0.10.0: ids collapsed out of stored endpoints'); }
   const save = () => {
     if (!dirty) return;
     dirty = false;

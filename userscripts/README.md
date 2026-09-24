@@ -24,7 +24,7 @@ bump; the table below is hand-kept and can drift.
 | Comms Move | 0.1.2 | [`comms-move.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/comms-move.user.js) |
 | Time Bridge | 0.1.0 | [`time-bridge.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/time-bridge.user.js) |
 | WS Watch | 0.9.0 | [`ws-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/ws-watch.user.js) |
-| XP Watch | 0.9.1 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
+| XP Watch | 0.10.0 | [`xp-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/xp-watch.user.js) |
 | Raid Watch | 0.8.0 | [`raid-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/raid-watch.user.js) |
 | Sleeper Watch | 0.10.0 | [`sleeper-watch.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/sleeper-watch.user.js) |
 | Quick Jump | 0.8.0 | [`quick-jump.user.js`](https://raw.githubusercontent.com/dataterminals/politiko-research/main/userscripts/quick-jump.user.js) |
@@ -737,6 +737,16 @@ lists put their largest entry first, so an ellipsis cuts the tail rather than th
 
 There are no draggable dividers; that is People Watch's refinement. The footer's buttons
 wrap onto a second line rather than clipping **clear** off the edge of a narrow panel.
+
+**Fights pool into one endpoint (0.10.0).** Combat's ids are UUIDs, and until 0.10.0 only
+numeric ids were collapsed. So every fight was its own row in the actions table, with its
+id kept in storage. On the operator's ledger that was 112 entries of one to six attempts
+each. Now `/combat/{id}/action` and `/combat/{id}/resolve` are two rows, and no id is kept.
+
+The first load of 0.10.0 rewrites what is already stored, merging entries so no count is
+lost. On that same ledger: 121 endpoint keys become 11, 694 stored fight ids become none,
+and the store shrinks by about 80 KB. Past ambiguous rows keep their label; history is not
+re-attributed.
 
 ## What are the home page's little green arrows?
 
