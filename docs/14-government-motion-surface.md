@@ -331,6 +331,100 @@ It bought three days. The two overrides above took the same axis to +1 by Sep 15
 is worth 72 hours against a chamber that wants it back** — and the court is the one institution
 the right does not hold: five left, three centre, one right.
 
+### The Nov Y16 election, from the public feed (added 2026-09-23)
+
+One manual `GET /api/public/government` and one `GET /api/public/stats`, 2026-09-23
+12:18:53Z, unauthenticated, from the desktop box, on the precedent
+[`06`](06-time-surface.md) set for `/api/public/stats`. Kept verbatim in
+`artifacts/public-government-2026-09-23T12-18-53Z.json`. **The Herald side of this
+election — the slate, what passed, the `congress_alignment_swing` — is in gov-watch's store
+on the operator's browser and in no bundle yet**, so this is the government *after* the
+election, not the election.
+
+| | 09-17 20:49Z bundle | 09-23 12:18Z public |
+|---|---|---|
+| president | Bayer, −1, favour 26 | **Hilll, +3, favour 54** |
+| House left / centre / right | 68 / 106 / 261 | **26 / 77 / 332** |
+| House at +3 | 182 | **206** |
+| Senate left / centre / right | 17 / 26 / 57 | **11 / 15 / 74** |
+| Senate at +3 | 35 | **52** |
+| court | 5 left, 3 centre, 1 right | unchanged |
+
+Four policies moved in the bracket, and the bracket is 5.6 days wide with an election in
+it, so none is attributable from here:
+
+| policy | 09-17 | 09-23 |
+|---|---|---|
+| Police Regulation | 3 | **2** |
+| Nuclear Power | 2 | **3** |
+| Corporate Law | 1 | **2** |
+| Animal Rights | −1 | **0** |
+
+Civil Rights, Election Reform, Gun Control, Privacy Rights and Tax Structure all still
+read +3.
+
+What it changes: the veto was the real check above, and the executive is now +3. For the
+game year that opens 2026-09-23 22:31Z a rightward bill needs no override, and a centreward
+bill has nothing to pass through but the ballot. Police Regulation 3 → 2 is still worth
+chasing when the store is next exported — but the question this paragraph was written to
+ask, whether the ballot follows the public, was answered the same evening from the front
+page, below, and not from Police.
+
+### The Nov Y16 front page: the ballot is not the public (added 2026-09-23)
+
+The operator opened the Herald from her phone the same evening — Edition No. 193, dated
+November 1, Year 16 — and sent the front page as a screenshot
+(`artifacts/herald-nov-y16-election-2026-09-23-phone.jpg`). No tool of ours runs on the
+phone, so this edition is in no store; the transcription below is the record. Six
+`Election` entries:
+
+| entry | result |
+|---|---|
+| Lower Corporate Tax Rates | **Passes by Ballot — 99 % of voters approved** |
+| Expand Voting Rights | Fails by Ballot — 0 % |
+| Protect LGBT Rights | Fails by Ballot — 0 % |
+| Promote Racial Equality | Fails by Ballot — 0 % |
+| Congressional Elections: Year 15 Results | House 276 seats changed, Senate 23 rotated; swing **L++ +2 · L+ −3 · Mod− −47 · Mod −40 · Mod+ +33 · R+ +14 · R++ +41** |
+| President Hilll Wins Presidential Election | Hilll (Far-Right Republican) **58 %**, Kertzmann (Liberal Democrat) 42 % |
+
+Four things this settles, in order of weight.
+
+**The ballot does not follow the per-issue public.** *Protect LGBT Rights* moves Gay Rights
++1 → 0. The LGBT public on 09-17 was **87 % neutral**, 10 slight right, 2 centre right —
+the measure's target is where the public stands — and it drew **0 % of voters**. *Promote
+Racial Equality* (+3 → +2) drew 0 % on a public whose mean was 1.88, already left of the
+target. *Lower Corporate Tax Rates*, on an issue this project has never polled, drew 99 %.
+Across two elections, **eight measures out of eight have gone by direction**: rightward
+passes, centreward or leftward fails. The 09-17 *Inferred* bullet below is falsified and
+the rival reading it named is the one left standing. Whatever "voters" are, they are not the
+focus group, and 99/0 is not the shape of any public a poll has ever returned.
+
+**Players are not the voters.** The 2026-09-03 client — the same build as today's for
+everything but `StocksPage` ([`00`](00-recon-baseline.md)) — has no vote, ballot, election,
+candidate or campaign endpoint, and "voters approved" is not a string in it: the sentence is
+server prose in the entry's `body`. The one "Registration is open" in the client is the
+education portal's course enrolment, which is also what the sidebar's *registration window*
+countdown is. The ballot is decided entirely server-side, by an electorate the client never
+names.
+
+**The swing is both chambers combined, and it is the whole of the bracket's motion.**
+Summing the House and Senate deltas between the 09-17 bundle and the 09-23 public read gives
+exactly the printed swing — −3: +2, −2: −3, −1: −47, 0: −40, +1: +33, +2: +14, +3: +41 — so
+the labels answer [`20`](20-newspaper-surface.md)'s open question (the seven alignment
+words, chambers folded together), and nothing else moved a seat in those 5.6 days.
+
+**Corporate Law 1 → 2 is attributable** to the ballot. Police Regulation 3 → 2, Nuclear
+Power 2 → 3 and Animal Rights −1 → 0 are not on this front page and stay unattributed;
+the editions between 09-17 and this one are in no store either, because the operator was
+not at a desktop in that stretch.
+
+One thing it does *not* settle is what the electorate is. Two numbers from the same edition
+point different ways: the presidential race split **58/42**, a public-shaped number, while
+every measure split 99/0 or 0/100. Two candidates worth naming and neither measured: the NPC
+legislature under the wiki's weighted count (the Corporate Tax overrides ran 83–97 % on the
+raw tally), or [`13`](13-world-politics-surface.md)'s `GET /api/protests/state-dominance` —
+the one political surface in the game nothing has ever read, on a page a normal visit fills.
+
 ## Inferred
 
 Everything here is ours. None of it is something the client does.
@@ -353,17 +447,20 @@ Added 2026-09-17, from the Record:
 - **Impeachment is favourability-triggered, not scheduled.** One conviction, at exactly the
   10 % the client's own string names. One data point, and the alternative — that a player or a
   faction files it and the threshold is coincidence — is not excluded by anything in the store.
-- **The ballot is decided by the per-issue public.** Both passing measures were rightward on
-  issues whose polls read 2.9 and right-dominant; both failures were leftward, and one of them
-  failed on a public that was **83 % neutral**. The rival reading — that the ballot simply
-  follows the same right-wing supermajority Congress does, and direction alone decides it —
-  fits all four outcomes just as well. **The discriminator is Women's Rights**, whose public is
-  genuinely left at −1.38 while *Promote Gender Equality* dies in Congress 9–426 and 12–423. If
-  that ever reaches a ballot and passes, the ballot is the public. Until then, treat "move the
-  public, win the ballot" as the *hypothesis a campaign is betting on*, not as measured.
+- ~~**The ballot is decided by the per-issue public.**~~ **Falsified 2026-09-23.** Both passing
+  measures were rightward on issues whose polls read 2.9 and right-dominant; both failures were
+  leftward, and one of them failed on a public that was **83 % neutral**. The rival reading —
+  that the ballot simply follows the same right-wing supermajority Congress does, and direction
+  alone decides it — fit all four outcomes just as well, and at Nov Y16 it fit four more: a
+  measure whose target was where 87 % of the public stood drew 0 % of voters. Direction is
+  eight for eight. "Move the public, win the ballot" is not a hypothesis a campaign can bet on.
 - **What reaches the ballot is unknown, and salience is the obvious suspect.** Three of the four
   measures were on issues being polled and worked at the time, two of them at popularity 1000.
-  Nothing in any payload says how the slate is chosen.
+  Nothing in any payload says how the slate is chosen. Weakened 2026-09-23: Nov Y16's slate
+  carried *Lower Corporate Tax Rates*, on an issue nobody here has polled or worked. What all
+  eight measures across two elections have in common is the Record — every one is a bill
+  Congress had already voted on that year. The slate reads as the year's bills re-run, not as
+  the issues being worked.
 
 ## What this makes buildable
 
@@ -419,7 +516,12 @@ What it must not do, and the reasons are the repo's hard rules rather than taste
   `member` events, and nothing says whether that is members being replaced or a seat's
   alignment drifting under the same member.
 - **How the ballot slate is chosen**, and **what decides a ballot measure** — the two questions
-  the Nov Y16 election is about to answer either way. See *Inferred*.
+  the Nov Y16 election was going to answer either way. Both moved 2026-09-23, from the front
+  page. The slate looks like the year's Record bills re-run, eight for eight. What decides a
+  measure is **not** the per-issue public; direction has predicted all eight; the electorate is
+  server-side and unnamed, and the two candidates are in the front-page section above. **What
+  the public does at all** is the question that replaces it — the law tracks the public
+  ([`21`](21-opinion-motion-surface.md)) and no measured mechanism now connects them.
 - **What `result_metadata.score` is measured in**, and whether it is comparable between
   cycles.
 

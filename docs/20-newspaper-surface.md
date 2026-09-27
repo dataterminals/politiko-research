@@ -129,6 +129,12 @@ change-ledger design exists precisely because nothing published deltas. Somethin
 What the labels are is not readable from the bundle — the component prints whatever
 arrives. Chambers, parties, and issues are all plausible.
 
+> **Read 2026-09-23.** The Nov Y16 entry printed `L++ +2 · L+ −3 · Mod− −47 · Mod −40 ·
+> Mod+ +33 · R+ +14 · R++ +41`: the seven alignment words, and the deltas are the House and
+> Senate summed — they match the two chambers' change between the 09-17 bundle and a public
+> read of the government after the election to the seat. See
+> [`14`](14-government-motion-surface.md).
+
 ### The calendar, and a December that runs to the 35th
 
 ```js

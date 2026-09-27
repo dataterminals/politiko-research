@@ -22,6 +22,12 @@ Faction names appear below because the game shows them to anyone. Player usernam
 > priced on it should not be run. See
 > [*The ±3 buckets empty*](#the-3-buckets-empty-added-2026-09-17). Two further corrections
 > are marked in place: what this Congress passes, and what a bar's yield tracks.
+>
+> **Corrected again 2026-09-23.** The ballot does not follow the public. At Nov Y16
+> *Protect LGBT Rights* — target neutral — drew **0 % of voters** on the 87 %-neutral public
+> the centrist bars built, and eight measures out of eight across two elections have gone by
+> direction alone. "Move the public, win the ballot" is dead as a campaign; the evidence is in
+> [`14`](14-government-motion-surface.md). What the public *does* do is now the open question.
 
 ## The finding that shapes everything
 
@@ -354,6 +360,10 @@ Two candidates remain, and this file cannot yet separate them:
 in this file is perishable. Still 93 ⇒ somebody is working LGBT and Civil Rights specifically,
 and the drift story is wrong. One focus group, $1,000 and 5 energy, settles it.
 
+> **Run 2026-09-23: 93 → 86.** Both, then — drift is real, and at a tenth of the rate
+> Civil Rights lost its far end, so drift did not empty Civil Rights. See
+> [*The Intelligence poll*](#the-intelligence-poll-an-untouched-3-bucket-drifts-slowly-added-2026-09-23).
+
 ### What a bar moves is a fraction of the pool within reach (added 2026-09-17)
 
 The two centrist bars on Civil Rights are five days apart and moved very different numbers
@@ -401,6 +411,59 @@ Since then the Herald printed *CLINIC REGRET* and *LATE TERM*, both conservative
 group says whether the paper moves the public with no player involved, and `read-stores`'
 *Herald against the polls* section already lines up every story against every window,
 including the ones still open.
+
+### The Intelligence poll: an untouched +3 bucket drifts, slowly (added 2026-09-23)
+
+The discriminator above was run. One focus group on Intelligence, 2026-09-23, from the
+operator's phone — a poll she chose to run in normal play, on a device where no tool of ours
+runs, so the reading is **hand-transcribed from a screenshot**
+(`artifacts/poll-intelligence-2026-09-23-phone.jpg`) rather than read from poll-watch's
+store. The buckets are integers and the poll is deterministic, so a transcription loses
+nothing but the store's timestamp.
+
+| | 09-11 22:29Z | 09-23 (phone) | Δ |
+|---|---|---|---|
+| far left | 1 | 0 | −1 |
+| centre left | 0 | 1 | +1 |
+| slight left | 0 | 0 | |
+| neutral | 0 | 0 | |
+| slight right | 1 | 0 | −1 |
+| centre right | 3 | **11** | **+8** |
+| far right | 93 | **86** | **−7** |
+| mean | 2.888 | 2.837 | −0.051 |
+| popularity | 33 | 23 | −10 |
+| volatility / salience | stable / quiet | stable / quiet | |
+| fringe flag | active | active | |
+
+Nobody has any reason to work Intelligence, and nothing says anybody did: popularity fell
+rather than re-raised, volatility stayed `stable`, and the operator's ledger holds no
+Intelligence bar. So this is what an untouched captured issue does in twelve days: **seven
+points leave far right and land one step in, at centre right.** The far end is not a wall
+for anyone. It is not a floor either; it leaks on its own.
+
+Two things follow, and they cut in opposite directions.
+
+**Mean reversion is real, so nothing is permanent.** About 0.6 far-right points a day on
+this issue. Every gain in this file is perishable in principle — and the decay is slow
+enough that a bar's worth of movement outlives a week.
+
+**Mean reversion is far too slow to be what emptied Civil Rights.** Civil Rights lost 19
+far-right points in 2.9 days (09-12 → 09-15): about 6.5 a day, eleven times this rate.
+Drift accounts for two of the nineteen. The rest was something else — the third party the
+section above could not rule out, or a drain that scales with how hard an issue is being
+worked by *anyone* (Civil Rights sat at popularity 1000 and *boiling*; Intelligence at 23
+and *quiet*). This reading does not separate those two; a heavily-worked issue that nobody
+centres would. Either way: **the issues nobody works are not coming to the middle on their
+own on any useful timescale**, and an issue that is losing its far end fast is being worked.
+
+Two smaller findings ride along. **The fringe flag is not "being worked now"**: it is set on
+an issue nobody has touched in twelve days. And **popularity decay is not linear all the
+way down**: 33 → 23 in twelve days, against a rule that would have put it at zero in two
+hours from 33. It flattens near the floor, or has one.
+
+**Method.** The methodology cost of a phone poll is exactly one thing: the store does not
+have it. poll-watch's next memo on Intelligence will diff against 09-11, and read-stores'
+windows will not know this reading exists. The screenshot is the record.
 
 ### Two leftward bursts on Civil Rights, polled between (added 2026-09-24)
 
@@ -457,8 +520,9 @@ Inferred:
   for 19.6 hours. And poll-watch's store shows it *rising* before that: 53 on 09-16, 59 on
   09-23. That window holds 341 of her disobedience actions, on issues the ledger cannot
   name, so the rise is not attributed. The far end moves in both directions, and a steady
-  inward drift fits neither reading. It fits a third party better. The Intelligence poll is still the clean
-  test, and it still has not been run.
+  inward drift fits neither reading. It fits a third party better. The Intelligence poll
+  above (09-23, from the phone, so in no store) points the same way: an untouched far end
+  drifts inward only about 0.6 points a day.
 
 ### What it costs the operator's own compass
 
@@ -482,9 +546,15 @@ Everything here is ours. None of it is something the client says.
   shape only, and LGBT — whose dominant bloc is neutral — showed no drift at all.
 - **"64 % swing" is the fraction of the leaning that lands.** The compass moved as if so.
   The preview's number for centre was not recorded; it may be the same field at 100 %.
-- **Popularity decay is about linear at ~19/h from the cap.** Two points.
+- **Popularity decay is about linear at ~19/h from the cap.** Two points — and a third,
+  added 2026-09-23, says the line does not run all the way down: Intelligence read 33 on
+  09-11 and 23 twelve days later, untouched, where 19/h would have reached zero in two
+  hours. Near the floor it flattens, or there is one.
 - **The fringe flag marks the four issues one faction has worked.** Correlation across eight
   polls; a +3 issue with a small far-right bucket and the flag set would settle its meaning.
+  Half-settled 2026-09-23 from the other side: Intelligence, untouched for twelve days at
+  popularity 23 and *quiet*, still carries the flag with 86 % far right. So it is **not**
+  "being worked now". Bucket size, or "was ever worked", are what remain.
 
 ## What this makes buildable
 
@@ -520,6 +590,8 @@ takes; every number here was hers to take, and the tools only remember what came
   +2 down. See *The ladder test*. What remains unknown is what, if anything, moves a ±3
   bucket — a protest's `forecast_shift`, a media campaign, the law itself, or nothing.
 - **The decay curve past two points**, and whether it is linear, exponential, or issue-dependent.
+  A third point (33 → 23 in twelve days, untouched) says it flattens low; the shape between
+  the cap and the floor is still open.
 - ~~**Whether a 3 → 2 bill is the way out of a captured issue.**~~ **Answered, and the
   2026-09-12 note here was wrong.** That note read *"this Congress passes bills toward the
   centre and kills bills away from it"* off raw majorities, before gov-watch stored outcomes.
@@ -527,20 +599,25 @@ takes; every number here was hers to take, and the tools only remember what came
   passed** — both the same rightward bill, both by overriding the president, neither toward
   the centre. Direction predicts nothing. A bill is **not** the way out. See
   [`14-government-motion-surface.md`](14-government-motion-surface.md).
-- **Whether the ballot follows the public.** It is now the live question, because the ballot is
-  the only thing that has moved a law without a supermajority: at the Nov Y15 election two
-  measures passed the same afternoon after a year of dying in Congress. The discouraging
-  calibration for this file is that **LGBT failed by ballot on an 83 %-neutral public** — the
-  public 200-odd centrist actions bought. Neutral is not a winning public; centring an issue
-  neutralises it. Whether a *left* public wins one is untested.
+- ~~**Whether the ballot follows the public.**~~ **Answered 2026-09-23: it does not.** It was
+  the live question because the ballot is the only thing that has moved a law without a
+  supermajority. At Nov Y15 LGBT failed by ballot on an 83 %-neutral public; at Nov Y16 it
+  failed again at **0 % of voters** on 87 % neutral, with the measure's target at neutral, and
+  every rightward measure has passed. No public this file can build wins one. Whether a *left*
+  public would is no longer worth the energy to test.
 - **Whether elections follow the public.** The Nov Y16 election — **Tue 2026-09-22, 12:36 PM
   ET**, congress and president together — is the test; the Herald publishes
   `congress_alignment_swing` after it (20). The Nov Y14 election moved the House right by 25
-  seats, so the mechanism exists.
-- **What moves a ±3 bucket**, and whether mean reversion or a third party emptied the two
-  above. The Intelligence poll separates them for $1,000. Since then, Civil Rights' far
-  right has held for 19.6 hours and risen 53 → 59 over a week (*Two leftward bursts*). That
-  fits a third party better than a drift, but it is one issue, and the poll is still unrun.
+  seats, so the mechanism exists. **Held.** The government after it — a +3 president and a
+  House gone from 261 right to 332 — is in [`14`](14-government-motion-surface.md) from the
+  public feed; whether that followed the polls is for gov-watch's store to say.
+- ~~**What moves a ±3 bucket**, and whether mean reversion or a third party emptied the two
+  above. The Intelligence poll separates them for $1,000.~~ **Half answered 2026-09-23.** An
+  untouched +3 bucket drifts inward at about 0.6 points a day, which is a tenth of what
+  Civil Rights lost; mean reversion alone did not empty it. Since then, Civil Rights' far
+  right has held for 19.6 hours and risen 53 → 59 over a week (*Two leftward bursts*), which
+  fits a third party better than a drift. Whether that is a third party's bar or a drain
+  that scales with attention on the issue is the open half.
 - **Whether the Herald's `spin` moves a poll.** Nine stories, an open abortion window, and
   nobody has looked.
 - **What `popularity` measures**, beyond "attention, capped, decaying".
@@ -569,3 +646,8 @@ and all 47 actions were the operator's own, in normal play. The issue the bursts
 at, and their −1 leaning, are her word, given after the fact. Action
 counts, outcomes, jailings and hospital stays come from xp-watch's ledger, and the poll
 history from poll-watch's store.
+
+For the 2026-09-23 Intelligence reading: one focus group the operator ran in normal play,
+from her phone, where no userscript runs. The numbers were transcribed by hand from her
+screenshot, which is kept in `artifacts/` (gitignored). It is the one reading in this file
+that poll-watch's store does not hold. No request was made to write it up.
